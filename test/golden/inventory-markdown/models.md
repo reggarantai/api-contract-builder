@@ -21,7 +21,23 @@ Type: object
 | Field | Type | Required | Description | Rules |
 | --- | --- | --- | --- | --- |
 | `message` | string | Yes |  |  |
-| `code` | string |  |  |  |
+| `code` | string |  | Stable code to branch on, e.g. ACCOUNT_LOCKED |  |
+
+## Schedule
+
+Recurring deliveries of one item from one supplier.
+
+Type: object
+
+| Field | Type | Required | Description | Rules |
+| --- | --- | --- | --- | --- |
+| `id` | string (uuid) | Yes |  |  |
+| `supplierId` | string (uuid) | Yes |  |  |
+| `sku` | string | Yes |  |  |
+| `quantity` | integer | Yes |  | ≥ 1 |
+| `firstDelivery` | string (date) | Yes |  |  |
+| `repeat` | string | Yes |  | one of `once`, `weekly`, `monthly` |
+| `note` | string or null |  |  | at most 500 characters |
 
 ## Stock
 
@@ -36,3 +52,27 @@ Type: object
 | `quantity` | integer | Yes |  | ≥ 0 |
 | `category` | [Category](#category) |  |  |  |
 | `tags` | array of string |  |  | unique items |
+
+## Supplier
+
+A company that delivers stock.
+
+Type: object
+
+| Field | Type | Required | Description | Rules |
+| --- | --- | --- | --- | --- |
+| `id` | string (uuid) | Yes |  |  |
+| `name` | string | Yes |  |  |
+| `email` | string (email) |  |  |  |
+
+## User
+
+A person who can sign in.
+
+Type: object
+
+| Field | Type | Required | Description | Rules |
+| --- | --- | --- | --- | --- |
+| `id` | string (uuid) | Yes |  |  |
+| `name` | string | Yes |  |  |
+| `email` | string (email) | Yes |  |  |

@@ -1,84 +1,114 @@
 # API Contract Builder
 
-Write API contracts page by page — description, mockups, endpoints, requests, and
-responses — and export them to OpenAPI 3.1 and Markdown so frontend and backend engineers
-can work in parallel.
+Write API contracts the way the product is discussed: **page by page**. For each screen,
+describe what it does, attach its mockups, and list the endpoints it calls and when. Then
+hand the contract over as **OpenAPI 3.1** for frontend and backend tools and as
+**Markdown** for everyone else, so frontend and backend can build in parallel.
 
-> **Status:** early development. See [docs/PLAN.md](docs/PLAN.md) for the MVP plan and
-> milestones.
+![A page with its description, acceptance criteria, and mockups](docs/images/page-view.png)
 
-## Run with Docker
+- **Pages**: description and acceptance criteria in Markdown, mockup images, and the
+  endpoints the page calls, each with a trigger (on load, on submit, on an action).
+- **Endpoints**: parameters, request bodies, responses per status code, named examples,
+  authentication, a status (draft, in review, agreed), and notes for each side.
+- **Models**: reusable schemas, edited with a field builder or as JSON Schema.
+- **Export**: OpenAPI 3.1 (YAML or JSON) and a Markdown bundle (.zip), for the whole
+  project or one page. Contracts are validated before export, and warnings point at
+  missing examples and unused endpoints or models.
+
+It runs locally, for one author, as a single Docker container. Data stays on your machine.
+
+## Quick start
+
+Until the first release is on Docker Hub, build the image from this repository:
 
 ```bash
-docker build -t api-contract-builder:local .
+docker build -t api-contract-builder .
 docker run -d --name api-contract-builder \
   -p 127.0.0.1:3000:3000 \
   -v api-contract-builder-data:/data \
-  api-contract-builder:local
+  api-contract-builder
 ```
 
-Or with Docker Compose: `docker compose up -d --build`.
+Open <http://127.0.0.1:3000> and choose **Create sample project** to look around a
+finished contract (Login, Registration, Stock list, and Create schedule pages), or start
+your own with **New project**.
 
-Then open <http://127.0.0.1:3000>. All data (the SQLite database and uploaded images) lives
-in the volume mounted at `/data`, so it survives upgrades and container restarts.
+The port is published on `127.0.0.1` only, so the app is reachable from your machine and
+nowhere else. With Docker Compose: `docker compose up -d --build`.
 
-A prebuilt image on Docker Hub will be available from the first release.
+## Handing the contract over
 
-## Development
+![The Export tab](docs/images/export.png)
 
-Requirements: Node.js 24+ and pnpm (the version is pinned in `package.json`).
+The **Export** tab downloads the contract for the whole project or for one page.
+
+**Frontend**
+
+- Start a mock server from the OpenAPI file. It answers with the examples in the contract:
+
+  ```bash
+  npx @stoplight/prism-cli mock inventory-app.openapi.yaml
+  curl -H "Authorization: Bearer x" http://127.0.0.1:4010/stocks
+  curl -X DELETE -H "Authorization: Bearer x" -H "Prefer: code=404" http://127.0.0.1:4010/stocks/SKU-999
+  curl -H "Authorization: Bearer x" -H "Prefer: example=empty" http://127.0.0.1:4010/stocks
+  ```
+
+- Generate types or a client, for example with
+  [openapi-typescript](https://openapi-ts.dev) or [Orval](https://orval.dev).
+
+**Backend**
+
+- Generate server stubs or types with [OpenAPI Generator](https://openapi-generator.tech),
+  [oapi-codegen](https://github.com/oapi-codegen/oapi-codegen) (Go), or the tool of your
+  stack.
+- Check a running implementation against the contract with Prism's proxy, which reports
+  every request and response that doesn't match:
+  `npx @stoplight/prism-cli proxy inventory-app.openapi.yaml http://localhost:8080`.
+
+**Everyone else**
+
+The Markdown bundle has a README, one file per page with its mockups and endpoints, and
+the models. It reads well on GitHub, GitLab, or any Markdown viewer, and includes the
+OpenAPI file too.
+
+![An endpoint in the editor](docs/images/endpoint-editor.png)
+
+## Data, backups, and upgrades
+
+Everything (the SQLite database and uploaded mockups) lives in the `/data` volume, so it
+survives restarts, upgrades, and removing the container.
+
+**Back up** to `api-contract-builder-backup.tgz` in the current folder:
 
 ```bash
-pnpm install
-pnpm dev
+docker stop api-contract-builder
+docker run --rm -v api-contract-builder-data:/data -v "$PWD":/backup alpine \
+  tar czf /backup/api-contract-builder-backup.tgz -C /data .
+docker start api-contract-builder
 ```
 
-`pnpm dev` starts the API on <http://127.0.0.1:3000> and the app on
-<http://localhost:5173> (Vite proxies `/api` to the API).
+**Restore** a backup, replacing the current data:
 
-| Command            | Description                                                     |
-| ------------------ | --------------------------------------------------------------- |
-| `pnpm dev`         | Start the API server (watch mode) and the Vite dev server       |
-| `pnpm build`       | Build the client (`dist/client`) and the server (`dist/server`) |
-| `pnpm start`       | Run the production build (app and API on one port)              |
-| `pnpm test`        | Run unit and API tests (Vitest)                                 |
-| `pnpm test:e2e`    | Build, then run browser tests (Playwright)                      |
-| `pnpm typecheck`   | Type-check client and server (TypeScript 7)                     |
-| `pnpm check`       | Lint, check formatting, and check import order with Biome       |
-| `pnpm check:fix`   | Apply safe Biome fixes and format                               |
-| `pnpm lint`        | Lint only                                                       |
-| `pnpm format`      | Format only                                                     |
-| `pnpm db:generate` | Generate a migration after changing `src/server/db/schema.ts`   |
+```bash
+docker stop api-contract-builder
+docker run --rm -v api-contract-builder-data:/data -v "$PWD":/backup alpine \
+  sh -c 'rm -rf /data/* && tar xzf /backup/api-contract-builder-backup.tgz -C /data'
+docker start api-contract-builder
+```
 
-Export tests compare against golden files in `test/golden/`. After an intended change to
-the export, regenerate them with `UPDATE_GOLDEN=1 pnpm test` and review the diff.
+**Upgrade** by building (or, after the first release, pulling) the new image and starting
+a new container on the same volume. Database migrations run on startup.
 
-Before the first `pnpm test:e2e`, install the test browser with
-`pnpm exec playwright install chromium`. Browser tests run against the production build on
-port 4100 with a throwaway data directory.
+```bash
+docker rm -f api-contract-builder
+docker run -d --name api-contract-builder \
+  -p 127.0.0.1:3000:3000 \
+  -v api-contract-builder-data:/data \
+  api-contract-builder
+```
 
-### Editor setup
-
-Project settings for Zed (`.zed/settings.json`) and VS Code (`.vscode/settings.json`) make
-Biome the formatter and run its safe fixes and import sorting on save.
-
-**Zed** — install two extensions from `zed: extensions`:
-
-- **Biome**: lint and format. It uses the Biome version from `node_modules`.
-- **TypeScript Language Server** (`tsgo`): the native TypeScript 7 language server. The
-  project settings pin it to the same TypeScript version as `package.json` and turn off
-  Zed's default `vtsls` / `typescript-language-server`. When upgrading TypeScript, update
-  `lsp.typescript-ls.settings.package_version` too.
-
-**VS Code** — install the recommended
-[Biome extension](https://biomejs.dev/guides/editors/first-party-extensions/). TypeScript 7
-does not ship `tsserver.js`, so VS Code uses its own bundled TypeScript; `pnpm typecheck` is
-the source of truth.
-
-After adding a shadcn/ui component, run `pnpm check:fix` to bring it in line with the
-project's lint and format rules.
-
-### Configuration
+## Configuration
 
 | Variable        | Default                           | Description                             |
 | --------------- | --------------------------------- | --------------------------------------- |
@@ -87,17 +117,10 @@ project's lint and format rules.
 | `DATA_DIR`      | `./data` (`/data` in Docker)      | SQLite database and uploaded images     |
 | `MAX_UPLOAD_MB` | `10`                              | Largest mockup image accepted, per file |
 
-### Project layout
+## Contributing
 
-```
-src/client    React SPA (TanStack Router, TanStack Query, shadcn/ui)
-src/server    Hono API and database (Drizzle + SQLite)
-src/shared    Zod schemas shared by client and server
-drizzle       SQL migrations, applied automatically on startup
-```
-
-`dependencies` in `package.json` holds only what the server needs at runtime. Everything
-bundled into the client by Vite is a `devDependency`, which keeps the Docker image small.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, tests, and conventions,
+and [docs/PLAN.md](docs/PLAN.md) for the plan and the decisions behind it.
 
 ## License
 

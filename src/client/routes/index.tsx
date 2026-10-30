@@ -10,6 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { CreateProjectDialog } from "@/features/projects/create-project-dialog";
+import { CreateSampleButton } from "@/features/projects/create-sample-button";
 import { projectsQueryOptions } from "@/features/projects/queries";
 import { formatRelativeTime } from "@/lib/format";
 
@@ -26,7 +27,12 @@ function HomePage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
         <h1 className="font-heading text-2xl font-semibold">Projects</h1>
-        {projects.data && projects.data.length > 0 && <CreateProjectDialog />}
+        {projects.data && projects.data.length > 0 && (
+          <div className="flex gap-2">
+            <CreateSampleButton />
+            <CreateProjectDialog />
+          </div>
+        )}
       </div>
 
       {projects.data?.length === 0 && (
@@ -34,10 +40,12 @@ function HomePage() {
           <CardHeader className="text-center">
             <CardTitle>No projects yet</CardTitle>
             <CardDescription>
-              Create a project to start writing API contracts page by page.
+              Create a project to start writing API contracts page by page, or
+              look around a finished sample first.
             </CardDescription>
           </CardHeader>
-          <CardFooter className="justify-center">
+          <CardFooter className="justify-center gap-2">
+            <CreateSampleButton />
             <CreateProjectDialog />
           </CardFooter>
         </Card>

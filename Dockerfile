@@ -33,6 +33,7 @@ WORKDIR /app
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY drizzle ./drizzle
+COPY samples ./samples
 COPY package.json ./
 
 RUN mkdir -p /data && chown node:node /data

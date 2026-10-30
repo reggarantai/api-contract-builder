@@ -71,3 +71,15 @@ export function useDeleteProject() {
       queryClient.invalidateQueries({ queryKey: projectKeys.list() }),
   });
 }
+
+/** Creates the sample project (Login, Registration, Stock list, Create schedule). */
+export function useCreateSampleProject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiPost("/samples", undefined, projectSchema),
+    onSuccess: (project) => {
+      queryClient.setQueryData(projectKeys.detail(project.id), project);
+      return queryClient.invalidateQueries({ queryKey: projectKeys.list() });
+    },
+  });
+}

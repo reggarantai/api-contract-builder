@@ -27,6 +27,7 @@ describe("app", () => {
       clientDir: null,
       uploadsDir: path.join(temp.dir, "uploads"),
       maxUploadBytes: 1024,
+      samplesDir: path.resolve("samples"),
     });
 
     const response = await app.request("/api/health");
@@ -43,6 +44,7 @@ describe("app", () => {
       clientDir: null,
       uploadsDir: path.join(temp.dir, "uploads"),
       maxUploadBytes: 1024,
+      samplesDir: path.resolve("samples"),
     });
 
     const response = await app.request("/api/does-not-exist");
@@ -68,6 +70,7 @@ describe("app", () => {
         clientDir,
         uploadsDir: path.join(temp.dir, "uploads"),
         maxUploadBytes: 1024,
+        samplesDir: path.resolve("samples"),
       });
 
       const response = await app.request("/assets/app.js");
@@ -83,6 +86,7 @@ describe("app", () => {
         clientDir,
         uploadsDir: path.join(temp.dir, "uploads"),
         maxUploadBytes: 1024,
+        samplesDir: path.resolve("samples"),
       });
 
       const response = await app.request("/projects/some-project");
@@ -98,6 +102,7 @@ describe("app", () => {
         clientDir,
         uploadsDir: path.join(temp.dir, "uploads"),
         maxUploadBytes: 1024,
+        samplesDir: path.resolve("samples"),
       });
 
       const response = await app.request("/api/does-not-exist");

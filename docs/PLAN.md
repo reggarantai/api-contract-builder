@@ -314,6 +314,18 @@ Progress:
   - Golden files in `test/golden/inventory-markdown/` pin the output; a test checks every
     image and file link resolves inside the zip. `test/golden` is excluded from Biome,
     which had reformatted the golden tables.
+- **M9 — done (2026-10-30), built test-first; M8 waits for the Docker Hub namespace and
+  GitHub repository.** Notes:
+  - The sample project (Login, Registration, Stock list, Create schedule) is built through
+    the API by `src/server/samples/inventory.ts` (`POST /api/samples`), and is also the
+    fixture for the export golden files, so what users see is what the tests pin.
+  - Its mockups are wireframes rendered from HTML (`scripts/render-sample-mockups.ts`). It
+    leaves `GET /health` off every page and without an example on purpose, to show the
+    export warnings.
+  - README covers the quick start, handing the contract to frontend (Prism, codegen) and
+    backend, and backup/restore/upgrade (the backup and restore commands were run against
+    a real volume). CONTRIBUTING covers the setup, test-first workflow, golden files, and
+    conventions. README screenshots come from `scripts/take-screenshots.ts`.
 - Note for M8: the image is ~430 MB uncompressed, mostly the Node base image (~340 MB).
   `better-sqlite3` ships prebuilt binaries for every platform (~27 MB); the ones for other
   platforms could be pruned.

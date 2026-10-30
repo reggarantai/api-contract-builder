@@ -18,6 +18,8 @@ export type Config = {
   uploadsDir: string;
   /** Largest mockup file accepted. */
   maxUploadBytes: number;
+  /** Assets of the sample project. */
+  samplesDir: string;
   migrationsDir: string;
   /** Built SPA directory, or null when the client has not been built. */
   clientDir: string | null;
@@ -27,6 +29,7 @@ export type Config = {
 // started from the project root (or /app inside the Docker image).
 const MIGRATIONS_DIR = "drizzle";
 const CLIENT_DIR = "dist/client";
+const SAMPLES_DIR = "samples";
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const result = envSchema.safeParse(env);
@@ -46,6 +49,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     databasePath: path.join(dataDir, "app.db"),
     uploadsDir: path.join(dataDir, "uploads"),
     maxUploadBytes: Math.round(MAX_UPLOAD_MB * 1024 * 1024),
+    samplesDir: path.resolve(SAMPLES_DIR),
     migrationsDir: path.resolve(MIGRATIONS_DIR),
     clientDir: fs.existsSync(path.join(clientDir, "index.html"))
       ? clientDir

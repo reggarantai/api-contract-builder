@@ -10,6 +10,7 @@ import { healthRoutes } from "./routes/health";
 import { modelRoutes } from "./routes/models";
 import { pageRoutes } from "./routes/pages";
 import { projectRoutes } from "./routes/projects";
+import { sampleRoutes } from "./routes/samples";
 import { createUploadStorage } from "./storage/uploads";
 
 export type AppOptions = {
@@ -21,6 +22,8 @@ export type AppOptions = {
   uploadsDir: string;
   /** Largest mockup file accepted. */
   maxUploadBytes: number;
+  /** Assets of the sample project (mockup images). */
+  samplesDir: string;
 };
 
 export function createApp({
@@ -29,6 +32,7 @@ export function createApp({
   clientDir,
   uploadsDir,
   maxUploadBytes,
+  samplesDir,
 }: AppOptions) {
   const app = new Hono();
   const storage = createUploadStorage(uploadsDir);
@@ -39,6 +43,10 @@ export function createApp({
   app.route("/api/projects", endpointRoutes(db));
   app.route("/api/projects", pageRoutes(db, storage, maxUploadBytes));
   app.route("/api/projects", exportRoutes(db, storage));
+  app.route(
+    "/api/samples",
+    sampleRoutes((url, init) => app.request(url, init), samplesDir),
+  );
   app.all("/api/*", (c) => c.json<ApiErrorBody>({ error: "Not found" }, 404));
 
   // Uploaded files never change (their names are new IDs), so cache them for

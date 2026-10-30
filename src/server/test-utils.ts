@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { createApp } from "./app";
 import { openDatabase } from "./db/client";
+import { buildInventorySample } from "./samples/inventory";
 
 export const migrationsDir = path.resolve("drizzle");
 
@@ -26,6 +27,7 @@ export function createTestApp({ maxUploadBytes = 1024 * 1024 } = {}) {
     clientDir: null,
     uploadsDir,
     maxUploadBytes,
+    samplesDir: path.resolve("samples"),
   });
 
   return {
@@ -42,7 +44,10 @@ export function createTestApp({ maxUploadBytes = 1024 * 1024 } = {}) {
         body: body === undefined ? undefined : JSON.stringify(body),
       });
     },
-    upload(url: string, files: { name: string; type: string; data: Buffer }[]) {
+    upload(
+      url: string,
+      files: { name: string; type: string; data: Uint8Array }[],
+    ) {
       const form = new FormData();
       for (const file of files) {
         form.append(
@@ -57,4 +62,17 @@ export function createTestApp({ maxUploadBytes = 1024 * 1024 } = {}) {
       temp.cleanup();
     },
   };
+}
+
+/** A mockup image of the sample project, from samples/mockups. */
+export function readSampleMockup(name: string) {
+  return fs.readFileSync(path.resolve("samples/mockups", `${name}.png`));
+}
+
+/** Builds the sample project in a test app. */
+export function buildSample(t: ReturnType<typeof createTestApp>) {
+  return buildInventorySample(
+    { request: t.request, upload: t.upload },
+    readSampleMockup,
+  );
 }

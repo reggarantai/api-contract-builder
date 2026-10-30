@@ -10,11 +10,13 @@ servers:
     description: Staging — Reset every night
 tags:
   - name: Login
-    description: Users sign in with email and password.
+    description: Users sign in with their email and password.
+  - name: Registration
+    description: New users create an account with their work email.
   - name: Stock list
-    description: All items, newest first.
-  - name: Stock detail
-  - name: Add stock
+    description: All items with their quantity. Items with no stock are highlighted.
+  - name: Create schedule
+    description: Plans recurring restock deliveries from a supplier.
 security:
   - bearerAuth: []
 paths:
@@ -22,6 +24,7 @@ paths:
     post:
       operationId: postAuthLogin
       summary: Sign in
+      description: After 5 wrong passwords in a row the account is locked for 15 minutes.
       tags:
         - Login
       security: []
@@ -42,11 +45,15 @@ paths:
                   type: string
                   format: password
                   minLength: 8
+                remember:
+                  type: boolean
+                  description: Keep the session for 30 days
             examples:
               valid:
                 value:
                   email: ana@example.com
                   password: correct-horse
+                  remember: true
       responses:
         "200":
           description: OK
@@ -56,13 +63,20 @@ paths:
                 type: object
                 required:
                   - token
+                  - user
                 properties:
                   token:
                     type: string
+                  user:
+                    $ref: "#/components/schemas/User"
               examples:
                 signed-in:
                   value:
                     token: eyJhbGciOi...
+                    user:
+                      id: 0b5c2d4e-8f1a-4b3c-9d2e-7a6f5e4d3c2b
+                      name: Ana Lima
+                      email: ana@example.com
         "401":
           description: Unauthorized
           content:
@@ -72,7 +86,19 @@ paths:
               examples:
                 wrong-password:
                   value:
-                    message: Email or password is wrong
+                    message: Email or password is wrong. 4 attempts left.
+                    code: WRONG_PASSWORD
+        "423":
+          description: Account locked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                locked:
+                  value:
+                    message: Too many attempts. Try again in 15 minutes.
+                    code: ACCOUNT_LOCKED
       x-status: agreed
       x-notes-fe: Keep the email after an error.
       x-pages:
@@ -80,10 +106,76 @@ paths:
           slug: login
           trigger: on_submit
           note: Show errors inline
+  /auth/register:
+    post:
+      operationId: postAuthRegister
+      summary: Create an account
+      tags:
+        - Registration
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - email
+                - password
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 80
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+            examples:
+              new-user:
+                value:
+                  name: Ana Lima
+                  email: ana@example.com
+                  password: correct-horse
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+              examples:
+                created:
+                  value:
+                    id: 0b5c2d4e-8f1a-4b3c-9d2e-7a6f5e4d3c2b
+                    name: Ana Lima
+                    email: ana@example.com
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                email-taken:
+                  value:
+                    message: An account with this email already exists.
+                    code: EMAIL_TAKEN
+      x-status: review
+      x-notes-be: Send a welcome email after creating the account.
+      x-pages:
+        - page: Registration
+          slug: registration
+          trigger: on_submit
   /health:
     get:
       operationId: getHealth
       summary: Health check
+      description: For monitoring. No page uses it and it has no example, so the Export tab warns about both.
       security: []
       responses:
         "200":
@@ -96,12 +188,132 @@ paths:
                   status:
                     type: string
       x-status: draft
+  /me:
+    get:
+      operationId: getMe
+      summary: Current user
+      tags:
+        - Login
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+              examples:
+                ana:
+                  value:
+                    id: 0b5c2d4e-8f1a-4b3c-9d2e-7a6f5e4d3c2b
+                    name: Ana Lima
+                    email: ana@example.com
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                signed-out:
+                  value:
+                    message: Sign in first.
+      x-status: agreed
+      x-pages:
+        - page: Login
+          slug: login
+          trigger: on_load
+          note: Skip the page when already signed in
+  /schedules:
+    post:
+      operationId: postSchedules
+      summary: Create a restock schedule
+      tags:
+        - Create schedule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - supplierId
+                - sku
+                - quantity
+                - firstDelivery
+                - repeat
+              properties:
+                supplierId:
+                  type: string
+                  format: uuid
+                sku:
+                  type: string
+                quantity:
+                  type: integer
+                  minimum: 1
+                firstDelivery:
+                  type: string
+                  format: date
+                repeat:
+                  type: string
+                  enum:
+                    - once
+                    - weekly
+                    - monthly
+                note:
+                  type:
+                    - string
+                    - "null"
+                  maxLength: 500
+            examples:
+              weekly:
+                value:
+                  supplierId: 9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b
+                  sku: SKU-002
+                  quantity: 50
+                  firstDelivery: 2026-11-15
+                  repeat: weekly
+                  note: null
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Schedule"
+              examples:
+                created:
+                  value:
+                    id: 4d3c2b1a-0f9e-4d8c-b7a6-5f4e3d2c1b0a
+                    supplierId: 9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b
+                    sku: SKU-002
+                    quantity: 50
+                    firstDelivery: 2026-11-15
+                    repeat: weekly
+                    note: null
+        "422":
+          description: Unprocessable Content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                past-date:
+                  value:
+                    message: The first delivery must be in the future.
+                    code: DATE_IN_PAST
+      x-status: draft
+      x-notes-fe: Only offer items whose supplier is set.
+      x-pages:
+        - page: Create schedule
+          slug: create-schedule
+          trigger: on_submit
   /stocks:
     get:
       operationId: getStocks
       summary: List stock items
       tags:
         - Stock list
+        - Create schedule
       parameters:
         - name: page
           in: query
@@ -115,6 +327,11 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: search
+          in: query
+          description: Matches SKU or name
+          schema:
+            type: string
       responses:
         "200":
           description: OK
@@ -148,108 +365,16 @@ paths:
         - page: Stock list
           slug: stock-list
           trigger: on_load
-    post:
-      operationId: postStocks
-      summary: Add a stock item
-      tags:
-        - Add stock
-      requestBody:
-        description: The new item
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Stock"
-            examples:
-              new-item:
-                value:
-                  sku: SKU-002
-                  name: Gadget
-                  quantity: 0
-      responses:
-        "201":
-          description: Created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Stock"
-              examples:
-                created:
-                  value:
-                    sku: SKU-002
-                    name: Gadget
-                    quantity: 0
-        "409":
-          description: Conflict
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-              examples:
-                duplicate-sku:
-                  value:
-                    message: SKU-002 already exists
-      x-status: review
-      x-notes-be: Reject duplicate SKUs with 409.
-      x-pages:
-        - page: Add stock
-          slug: add-stock
-          trigger: on_submit
-  /stocks/{sku}:
-    get:
-      operationId: getStocksBySku
-      summary: Get a stock item
-      tags:
-        - Stock detail
-      parameters:
-        - name: sku
-          in: path
-          required: true
-          description: Stock keeping unit
-          schema:
-            type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Stock"
-              examples:
-                found:
-                  value:
-                    sku: SKU-001
-                    name: Widget
-                    quantity: 12
-                    category:
-                      id: 6f1c2b9e-0b7a-4c64-9a8e-2f1d3c4b5a69
-                      name: Parts
-                      parent: null
-                    tags:
-                      - metal
-        "404":
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-              examples:
-                not-found:
-                  value:
-                    message: No item SKU-999
-      x-status: draft
-      x-pages:
-        - page: Stock detail
-          slug: stock-detail
+        - page: Create schedule
+          slug: create-schedule
           trigger: on_load
+          note: Fill the item list
+  /stocks/{sku}:
     delete:
       operationId: deleteStocksBySku
       summary: Remove a stock item
       tags:
         - Stock list
-      deprecated: true
-      security:
-        - apiKeyAuth: []
       parameters:
         - name: sku
           in: path
@@ -260,12 +385,49 @@ paths:
       responses:
         "204":
           description: No Content
-      x-status: draft
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                not-found:
+                  value:
+                    message: No item SKU-999
+      x-status: review
       x-pages:
         - page: Stock list
           slug: stock-list
           trigger: on_action
           note: Delete button in each row
+  /suppliers:
+    get:
+      operationId: getSuppliers
+      summary: List suppliers
+      tags:
+        - Create schedule
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Supplier"
+              examples:
+                one-supplier:
+                  value:
+                    - id: 9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b
+                      name: Acme Supplies
+                      email: orders@acme.example
+      x-status: draft
+      x-pages:
+        - page: Create schedule
+          slug: create-schedule
+          trigger: on_load
+          note: Fill the supplier list
 components:
   schemas:
     Category:
@@ -293,6 +455,43 @@ components:
           type: string
         code:
           type: string
+          description: Stable code to branch on, e.g. ACCOUNT_LOCKED
+    Schedule:
+      description: Recurring deliveries of one item from one supplier.
+      type: object
+      required:
+        - id
+        - supplierId
+        - sku
+        - quantity
+        - firstDelivery
+        - repeat
+      properties:
+        id:
+          type: string
+          format: uuid
+        supplierId:
+          type: string
+          format: uuid
+        sku:
+          type: string
+        quantity:
+          type: integer
+          minimum: 1
+        firstDelivery:
+          type: string
+          format: date
+        repeat:
+          type: string
+          enum:
+            - once
+            - weekly
+            - monthly
+        note:
+          type:
+            - string
+            - "null"
+          maxLength: 500
     Stock:
       description: An item in stock.
       type: object
@@ -319,6 +518,37 @@ components:
           items:
             type: string
           uniqueItems: true
+    Supplier:
+      description: A company that delivers stock.
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+    User:
+      description: A person who can sign in.
+      type: object
+      required:
+        - id
+        - name
+        - email
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+          format: email
   securitySchemes:
     bearerAuth:
       type: http

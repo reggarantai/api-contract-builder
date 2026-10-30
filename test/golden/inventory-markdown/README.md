@@ -30,21 +30,23 @@ Unless an endpoint says otherwise, requests use **bearerAuth**.
 
 | Page | Endpoints | Mockups |
 | --- | --- | --- |
-| [Login](pages/login.md) | 1 | 2 |
+| [Login](pages/login.md) | 2 | 2 |
+| [Registration](pages/registration.md) | 1 | 1 |
 | [Stock list](pages/stock-list.md) | 2 | 1 |
-| [Stock detail](pages/stock-detail.md) | 1 | 0 |
-| [Add stock](pages/add-stock.md) | 1 | 0 |
+| [Create schedule](pages/create-schedule.md) | 3 | 1 |
 
 ## Endpoints
 
 | Method | Path | Summary | Status | Pages |
 | --- | --- | --- | --- | --- |
 | `POST` | `/auth/login` | Sign in | Agreed | [Login](pages/login.md#post-authlogin) |
+| `POST` | `/auth/register` | Create an account | In review | [Registration](pages/registration.md#post-authregister) |
 | `GET` | `/health` | Health check | Draft | — |
-| `GET` | `/stocks` | List stock items | Agreed | [Stock list](pages/stock-list.md#get-stocks) |
-| `POST` | `/stocks` | Add a stock item | In review | [Add stock](pages/add-stock.md#post-stocks) |
-| `GET` | `/stocks/{sku}` | Get a stock item | Draft | [Stock detail](pages/stock-detail.md#get-stockssku) |
-| `DELETE` | `/stocks/{sku}` | Remove a stock item | Draft | [Stock list](pages/stock-list.md#delete-stockssku) |
+| `GET` | `/me` | Current user | Agreed | [Login](pages/login.md#get-me) |
+| `POST` | `/schedules` | Create a restock schedule | Draft | [Create schedule](pages/create-schedule.md#post-schedules) |
+| `GET` | `/stocks` | List stock items | Agreed | [Stock list](pages/stock-list.md#get-stocks), [Create schedule](pages/create-schedule.md#get-stocks) |
+| `DELETE` | `/stocks/{sku}` | Remove a stock item | In review | [Stock list](pages/stock-list.md#delete-stockssku) |
+| `GET` | `/suppliers` | List suppliers | Draft | [Create schedule](pages/create-schedule.md#get-suppliers) |
 
 ## Mock the API
 

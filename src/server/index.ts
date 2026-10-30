@@ -12,6 +12,7 @@ const app = createApp({
   clientDir: config.clientDir,
   uploadsDir: config.uploadsDir,
   maxUploadBytes: config.maxUploadBytes,
+  samplesDir: config.samplesDir,
 });
 
 const server = serve(

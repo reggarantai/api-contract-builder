@@ -4,22 +4,25 @@ Part of [Inventory App](../README.md).
 
 ## Description
 
-All items, newest first.
+All items with their quantity. Items with no stock are highlighted.
 
 ## Acceptance criteria
 
-_None yet._
+- [ ] Items with quantity 0 are shown in red
+- [ ] Deleting asks for confirmation
 
 ## Mockups
 
-![table.png](../images/stock-list/01-table.png)
+![Item with no stock in red](../images/stock-list/01-stock-list.png)
+
+_Item with no stock in red_
 
 ## Endpoints
 
 | When | Method | Path | Summary | Status |
 | --- | --- | --- | --- | --- |
 | When the page loads | `GET` | [`/stocks`](#get-stocks) | List stock items | Agreed |
-| On a user action — Delete button in each row | `DELETE` | [`/stocks/{sku}`](#delete-stockssku) | Remove a stock item | Draft |
+| On a user action — Delete button in each row | `DELETE` | [`/stocks/{sku}`](#delete-stockssku) | Remove a stock item | In review |
 
 ### GET /stocks
 
@@ -35,6 +38,7 @@ List stock items
 | --- | --- | --- | --- | --- | --- |
 | `page` | query | integer |  | Page number, from 1 | ≥ 1 |
 | `category` | query | string (uuid) |  | Only items in this category |  |
+| `search` | query | string |  | Matches SKU or name |  |
 
 #### Responses
 
@@ -89,9 +93,8 @@ Example `empty` — No items yet:
 Remove a stock item
 
 - **When:** On a user action — Delete button in each row
-- **Status:** Draft
-- **Authentication:** apiKeyAuth
-- **Deprecated:** avoid in new code
+- **Status:** In review
+- **Authentication:** bearerAuth (project default)
 
 #### Parameters
 
@@ -104,3 +107,20 @@ Remove a stock item
 ##### 204 No Content
 
 No body.
+
+##### 404 Not Found
+
+`application/json` — [Error](../models.md#error)
+
+| Field | Type | Required | Description | Rules |
+| --- | --- | --- | --- | --- |
+| `message` | string | Yes |  |  |
+| `code` | string |  | Stable code to branch on, e.g. ACCOUNT_LOCKED |  |
+
+Example `not-found`:
+
+```json
+{
+  "message": "No item SKU-999"
+}
+```

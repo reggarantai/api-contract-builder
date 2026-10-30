@@ -4,8 +4,8 @@ import prismHttp from "@stoplight/prism-http";
 import prismClient from "@stoplight/prism-http/dist/client.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { buildInventoryProject } from "../../../test/fixtures/inventory";
-import { createTestApp } from "../test-utils";
+import { SAMPLE_ITEMS } from "../samples/inventory";
+import { buildSample, createTestApp } from "../test-utils";
 
 const GOLDEN = path.resolve("test/golden/inventory.openapi.yaml");
 
@@ -17,11 +17,11 @@ const silentLogger: unknown = new Proxy(
 
 describe("export API", () => {
   let t: ReturnType<typeof createTestApp>;
-  let fixture: Awaited<ReturnType<typeof buildInventoryProject>>;
+  let fixture: Awaited<ReturnType<typeof buildSample>>;
 
   beforeEach(async () => {
     t = createTestApp();
-    fixture = await buildInventoryProject(t.request);
+    fixture = await buildSample(t);
   });
 
   afterEach(() => {
@@ -66,7 +66,7 @@ describe("export API", () => {
   it("exports a single page", async () => {
     const response = await t.request(
       "GET",
-      exportUrl(`?format=json&page=${fixture.stockListPageId}`),
+      exportUrl(`?format=json&page=${fixture.pageIds.stockList}`),
     );
 
     expect(response.headers.get("content-disposition")).toBe(
@@ -80,7 +80,12 @@ describe("export API", () => {
     expect(doc.info.title).toBe("Inventory App: Stock list");
     expect(Object.keys(doc.paths)).toEqual(["/stocks", "/stocks/{sku}"]);
     expect(Object.keys(doc.paths["/stocks/{sku}"] ?? {})).toEqual(["delete"]);
-    expect(Object.keys(doc.components.schemas)).toEqual(["Category", "Stock"]);
+    // DELETE /stocks/{sku} answers 404 with an Error.
+    expect(Object.keys(doc.components.schemas)).toEqual([
+      "Category",
+      "Error",
+      "Stock",
+    ]);
   });
 
   it("reports warnings and validity", async () => {
@@ -165,7 +170,7 @@ describe("export API", () => {
       );
 
       expect(first.status).toBe(200);
-      expect(first.data).toEqual(fixture.items);
+      expect(first.data).toEqual(SAMPLE_ITEMS);
       expect(first.violations.output).toEqual([]);
       expect(empty.data).toEqual([]);
     });
@@ -173,7 +178,7 @@ describe("export API", () => {
     it("returns error responses with their examples", async () => {
       const client = await mockClient();
 
-      const response = await client.get(
+      const response = await client.delete(
         "/stocks/SKU-999",
         { headers: auth },
         { mock: { dynamic: false, code: 404 } },
@@ -186,14 +191,27 @@ describe("export API", () => {
     it("validates request bodies against the contract", async () => {
       const client = await mockClient();
       const headers = { ...auth, "content-type": "application/json" };
+      const schedule = {
+        supplierId: "9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b",
+        sku: "SKU-002",
+        quantity: 50,
+        firstDelivery: "2026-11-15",
+        repeat: "weekly",
+      };
 
-      const valid = await client.post("/stocks", fixture.items[1], { headers });
+      const valid = await client.post("/schedules", schedule, { headers });
 
       expect(valid.status).toBe(201);
       expect(valid.violations.input).toEqual([]);
-      await expect(
-        client.post("/stocks", { name: "No SKU" }, { headers }),
-      ).rejects.toMatchObject({ status: 422 });
+      // The contract defines its own 422, so Prism answers with that example.
+      const invalid = await client.post(
+        "/schedules",
+        { ...schedule, repeat: "daily" },
+        { headers },
+      );
+      expect(invalid.status).toBe(422);
+      expect(invalid.violations.input).not.toEqual([]);
+      expect(invalid.data).toMatchObject({ code: "DATE_IN_PAST" });
     });
 
     it("enforces each endpoint's security", async () => {
@@ -209,13 +227,13 @@ describe("export API", () => {
       await expect(client.get("/stocks")).rejects.toMatchObject({
         status: 401,
       });
-      await expect(
-        client.delete("/stocks/SKU-001", { headers: auth }),
-      ).rejects.toMatchObject({ status: 401 });
-      const withApiKey = await client.delete("/stocks/SKU-001", {
-        headers: { "x-api-key": "secret" },
+      await expect(client.delete("/stocks/SKU-001")).rejects.toMatchObject({
+        status: 401,
       });
-      expect(withApiKey.status).toBe(204);
+      const signedIn = await client.delete("/stocks/SKU-001", {
+        headers: auth,
+      });
+      expect(signedIn.status).toBe(204);
     });
   });
 });
