@@ -68,3 +68,36 @@ export async function getModelSchema(
   expect(response.status()).toBe(200);
   return ((await response.json()) as { schema: unknown }).schema;
 }
+
+export type CreatedEndpoint = { id: string; method: string; path: string };
+
+export async function createEndpoint(
+  request: APIRequestContext,
+  projectId: string,
+  body: { method: string; path: string; summary?: string },
+  changes?: Record<string, unknown>,
+): Promise<CreatedEndpoint> {
+  const url = `/api/projects/${projectId}/endpoints`;
+  const created = await request.post(url, { data: body });
+  expect(created.status()).toBe(201);
+  const endpoint = (await created.json()) as CreatedEndpoint;
+  if (changes) {
+    const updated = await request.patch(`${url}/${endpoint.id}`, {
+      data: changes,
+    });
+    expect(updated.status()).toBe(200);
+  }
+  return endpoint;
+}
+
+export async function getEndpoint(
+  request: APIRequestContext,
+  projectId: string,
+  endpointId: string,
+) {
+  const response = await request.get(
+    `/api/projects/${projectId}/endpoints/${endpointId}`,
+  );
+  expect(response.status()).toBe(200);
+  return (await response.json()) as Record<string, unknown>;
+}

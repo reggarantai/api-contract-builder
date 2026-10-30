@@ -13,6 +13,7 @@ import {
 import { SLUG_MAX_LENGTH, slugify } from "../../shared/slug";
 import type { Db } from "../db/client";
 import { findProject } from "../db/projects";
+import { endpointsUsingScheme } from "../db/references";
 import { type ProjectRow, projects } from "../db/schema";
 import { jsonBody, toApiIssues, validationFailed } from "../validation";
 
@@ -147,6 +148,32 @@ export function projectRoutes(db: Db) {
         return validationFailed(c, toApiIssues(result.error));
       }
       const settings = result.data;
+
+      const schemeIssues = existing.securitySchemes
+        .filter(
+          (scheme) =>
+            !settings.securitySchemes.some((kept) => kept.id === scheme.id),
+        )
+        .flatMap((scheme) => {
+          const users = endpointsUsingScheme(db, existing.id, scheme.id);
+          return users.length > 0
+            ? [
+                {
+                  path: "securitySchemes",
+                  message: `${scheme.key} is used by ${users.join(", ")}`,
+                },
+              ]
+            : [];
+        });
+      if (schemeIssues.length > 0) {
+        return c.json<ApiErrorBody>(
+          {
+            error: "Some authentication schemes are still used by endpoints",
+            issues: schemeIssues,
+          },
+          409,
+        );
+      }
 
       if (
         settings.slug !== existing.slug &&

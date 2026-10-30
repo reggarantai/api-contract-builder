@@ -11,6 +11,8 @@ type SchemaEditorContextValue = {
   ) => void;
   /** Models a field can reference. */
   models: ModelSummary[];
+  /** Top-level field names are fixed: no adding, renaming, or removing. */
+  lockNames: boolean;
   /** Key of the field added last, so its name input takes focus. */
   focusKey: string | null;
   setFocusKey: (key: string | null) => void;

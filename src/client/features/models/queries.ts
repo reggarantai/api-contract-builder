@@ -85,3 +85,23 @@ export function useDeleteModel(projectId: string) {
     onSuccess: invalidateLists,
   });
 }
+
+/**
+ * Loads every model's schema of the project (from cache when possible) and
+ * returns a lookup by model ID, e.g. for generating examples.
+ */
+export function useLoadModelSchemas(projectId: string) {
+  const queryClient = useQueryClient();
+  return async () => {
+    const summaries = await queryClient.ensureQueryData(
+      modelsQueryOptions(projectId),
+    );
+    const models = await Promise.all(
+      summaries.map((summary) =>
+        queryClient.ensureQueryData(modelQueryOptions(projectId, summary.id)),
+      ),
+    );
+    const schemas = new Map(models.map((model) => [model.id, model.schema]));
+    return (modelId: string) => schemas.get(modelId);
+  };
+}

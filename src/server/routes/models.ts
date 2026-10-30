@@ -1,14 +1,7 @@
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import { ulid } from "ulid";
-import type { ApiErrorBody, ApiIssue } from "../../shared/api-error";
-import {
-  COMPONENT_REF_PREFIX,
-  collectRefs,
-  type JsonSchema,
-  modelIdOfRef,
-  modelRef,
-} from "../../shared/json-schema";
+import type { ApiErrorBody } from "../../shared/api-error";
 import {
   createModelInputSchema,
   DEFAULT_MODEL_SCHEMA,
@@ -18,6 +11,7 @@ import {
 } from "../../shared/models";
 import type { Db } from "../db/client";
 import { findProject, touchProject } from "../db/projects";
+import { checkModelRefs, usersOfModel } from "../db/references";
 import { type ModelRow, models } from "../db/schema";
 import { jsonBody, validationFailed } from "../validation";
 
@@ -75,41 +69,6 @@ function isNameTaken(
   return row !== undefined && row.id !== exceptModelId;
 }
 
-/** Issues for `$ref`s that don't point at a model of this project. */
-function checkRefs(
-  db: Db,
-  projectId: string,
-  schema: JsonSchema,
-  selfId?: string,
-): ApiIssue[] {
-  const modelIds = new Set(
-    db
-      .select({ id: models.id })
-      .from(models)
-      .where(eq(models.projectId, projectId))
-      .all()
-      .map((row) => row.id),
-  );
-  if (selfId) {
-    modelIds.add(selfId);
-  }
-
-  const messages = new Set<string>();
-  for (const ref of collectRefs(schema)) {
-    const id = modelIdOfRef(ref);
-    if (id !== null) {
-      if (!modelIds.has(id)) {
-        messages.add(`References a model that doesn't exist: ${ref}`);
-      }
-    } else if (!ref.startsWith("#") || ref.startsWith(COMPONENT_REF_PREFIX)) {
-      messages.add(
-        `Unsupported reference "${ref}"; reference a model of this project instead`,
-      );
-    }
-  }
-  return [...messages].map((message) => ({ path: "schema", message }));
-}
-
 function findModel(db: Db, projectId: string, modelId: string) {
   return db
     .select()
@@ -143,7 +102,7 @@ export function modelRoutes(db: Db) {
         return nameTaken(c);
       }
       const schema = input.schema ?? DEFAULT_MODEL_SCHEMA;
-      const issues = checkRefs(db, project.id, schema);
+      const issues = checkModelRefs(db, project.id, schema, "schema");
       if (issues.length > 0) {
         return validationFailed(c, issues);
       }
@@ -194,10 +153,11 @@ export function modelRoutes(db: Db) {
           return nameTaken(c);
         }
         if (input.schema !== undefined) {
-          const issues = checkRefs(
+          const issues = checkModelRefs(
             db,
             existing.projectId,
             input.schema,
+            "schema",
             existing.id,
           );
           if (issues.length > 0) {
@@ -227,20 +187,11 @@ export function modelRoutes(db: Db) {
         return modelNotFound(c);
       }
 
-      const ref = modelRef(model.id);
-      const usedBy = db
-        .select({ name: models.name, schema: models.schema })
-        .from(models)
-        .where(
-          and(eq(models.projectId, model.projectId), ne(models.id, model.id)),
-        )
-        .orderBy(sql`${models.name} collate nocase`)
-        .all()
-        .filter((other) => collectRefs(other.schema).includes(ref));
+      const usedBy = usersOfModel(db, model.projectId, model.id);
       if (usedBy.length > 0) {
         return c.json<ApiErrorBody>(
           {
-            error: `${model.name} is used by ${usedBy.map((other) => other.name).join(", ")}. Remove those references first.`,
+            error: `${model.name} is used by ${usedBy.join(", ")}. Remove those references first.`,
           },
           409,
         );

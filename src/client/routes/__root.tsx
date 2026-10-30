@@ -44,7 +44,8 @@ function RootLayout() {
         <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">
           <Outlet />
         </main>
-        <Toaster position="bottom-right" />
+        {/* Bottom left: Save buttons sit at the bottom right, Delete at the top right. */}
+        <Toaster position="bottom-left" />
       </div>
     </TooltipProvider>
   );

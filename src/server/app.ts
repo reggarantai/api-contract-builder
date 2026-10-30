@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { ApiErrorBody } from "../shared/api-error";
 import type { Db } from "./db/client";
+import { endpointRoutes } from "./routes/endpoints";
 import { healthRoutes } from "./routes/health";
 import { modelRoutes } from "./routes/models";
 import { projectRoutes } from "./routes/projects";
@@ -21,6 +22,7 @@ export function createApp({ db, version, clientDir }: AppOptions) {
   app.route("/api", healthRoutes(db, version));
   app.route("/api/projects", projectRoutes(db));
   app.route("/api/projects", modelRoutes(db));
+  app.route("/api/projects", endpointRoutes(db));
   app.all("/api/*", (c) => c.json<ApiErrorBody>({ error: "Not found" }, 404));
 
   app.onError((error, c) => {

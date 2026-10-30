@@ -53,6 +53,8 @@ type PropertyRowContext = {
   name: string;
   index: number;
   siblings: string[];
+  /** The name is fixed (and the field always required). */
+  locked: boolean;
 };
 
 /** The properties of the object schema at `path`, plus an "Add field" button. */
@@ -66,9 +68,10 @@ export function PropertyList({
   /** Name used in accessible labels, e.g. "address". */
   ownerName: string;
 }) {
-  const { root, update, setFocusKey } = useSchemaEditor();
+  const { root, update, setFocusKey, lockNames } = useSchemaEditor();
   const node = getAt(root, path);
   const names = propertyNames(node);
+  const locked = lockNames && path.length === 0;
 
   function addField() {
     const name = uniquePropertyName(node);
@@ -84,25 +87,27 @@ export function PropertyList({
           path={[...path, "properties", name]}
           depth={depth}
           displayName={name}
-          property={{ parentPath: path, name, index, siblings: names }}
+          property={{ parentPath: path, name, index, siblings: names, locked }}
         />
       ))}
-      <div
-        className="border-t px-3 py-1"
-        style={{ paddingLeft: `${0.75 + depth * INDENT_REM + 1.75}rem` }}
-      >
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="text-muted-foreground"
-          aria-label={`Add field to ${ownerName}`}
-          onClick={addField}
+      {!locked && (
+        <div
+          className="border-t px-3 py-1"
+          style={{ paddingLeft: `${0.75 + depth * INDENT_REM + 1.75}rem` }}
         >
-          <PlusIcon />
-          Add field
-        </Button>
-      </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground"
+            aria-label={`Add field to ${ownerName}`}
+            onClick={addField}
+          >
+            <PlusIcon />
+            Add field
+          </Button>
+        </div>
+      )}
     </>
   );
 }
@@ -164,7 +169,11 @@ export function SchemaRow({
           ) : (
             <span className="w-7 shrink-0" />
           )}
-          {property ? (
+          {property?.locked ? (
+            <span className="px-2.5 py-1.5 font-mono text-sm">
+              {property.name}
+            </span>
+          ) : property ? (
             <NameInput
               name={property.name}
               siblings={property.siblings}
@@ -202,6 +211,7 @@ export function SchemaRow({
           {property && (
             <Checkbox
               aria-label={`${displayName} is required`}
+              disabled={property.locked}
               checked={isRequired(
                 getAt(root, property.parentPath),
                 property.name,
@@ -242,7 +252,7 @@ export function SchemaRow({
           >
             <SlidersHorizontalIcon />
           </Button>
-          {property && (
+          {property && !property.locked && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button

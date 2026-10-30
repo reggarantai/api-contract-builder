@@ -268,6 +268,17 @@ Progress:
   edit (e.g. `oneOf`) show as "Custom" and are edited in JSON mode. Model names are unique
   per project, ignoring case. A model that other models reference can't be deleted.
   Playwright browser tests were added (`pnpm test:e2e`).
+- **M4 — done (2026-10-30), built test-first.** Changes from §4:
+  - Responses live in a JSON column on `endpoints` instead of an `endpoint_responses` table:
+    the editor always saves the whole endpoint and nothing queries single responses.
+  - Parameters are stored as one object schema per location (path, query, header); each
+    property is a parameter, so the schema builder edits them. M6 turns each property into
+    an OpenAPI parameter, moving its `description` to the parameter.
+  - Path parameters follow the path (renaming in place keeps the schema). Paths that differ
+    only in parameter names count as the same path, per OpenAPI.
+  - Models and security schemes that endpoints use can't be deleted or removed.
+  - Filtering the endpoint list by page waits for M5.
+  - Toasts moved to the bottom left; at the bottom right they covered the Save button.
 - Note for M8: the image is ~430 MB uncompressed, mostly the Node base image (~340 MB).
   `better-sqlite3` ships prebuilt binaries for every platform (~27 MB); the ones for other
   platforms could be pruned.

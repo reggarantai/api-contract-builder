@@ -12,6 +12,7 @@ import {
   changeKind,
   describeNode,
   parseSchemaJson,
+  propertyNames,
   type SchemaPath,
   summarizeNode,
   updateAt,
@@ -33,12 +34,27 @@ export function SchemaEditor({
   onChange,
   models,
   onValidityChange,
+  variant = "schema",
+  ownerName = "root",
+  lockNames = false,
+  emptyText = "No fields yet.",
 }: {
   value: JsonSchema;
   onChange: (value: JsonSchema) => void;
   models: ModelSummary[];
   /** Called with false while the JSON text can't be used as a schema. */
   onValidityChange?: (valid: boolean) => void;
+  /**
+   * "schema": any schema, with a root type and a JSON mode.
+   * "fields": an object schema edited as a list of fields only.
+   */
+  variant?: "schema" | "fields";
+  /** What the fields belong to, for labels like "Add field to query parameters". */
+  ownerName?: string;
+  /** Fixes the top-level field names (see `SchemaEditorContextValue.lockNames`). */
+  lockNames?: boolean;
+  /** Shown by the "fields" variant when there are no fields. */
+  emptyText?: string;
 }) {
   const [mode, setMode] = useState<Mode>("builder");
   const [jsonText, setJsonText] = useState("");
@@ -51,11 +67,20 @@ export function SchemaEditor({
       update: (path: SchemaPath, change: Parameters<typeof updateAt>[2]) =>
         onChange(updateAt(value, path, change)),
       models,
+      lockNames,
       focusKey,
       setFocusKey,
     }),
-    [value, onChange, models, focusKey],
+    [value, onChange, models, lockNames, focusKey],
   );
+
+  if (variant === "fields") {
+    return (
+      <SchemaEditorContext.Provider value={context}>
+        <FieldsBuilder ownerName={ownerName} emptyText={emptyText} />
+      </SchemaEditorContext.Provider>
+    );
+  }
 
   function changeMode(next: Mode) {
     if (next === "json") {
@@ -96,7 +121,7 @@ export function SchemaEditor({
 
       <TabsContent value="builder">
         <SchemaEditorContext.Provider value={context}>
-          <SchemaBuilder />
+          <SchemaBuilder ownerName={ownerName} />
         </SchemaEditorContext.Provider>
       </TabsContent>
 
@@ -127,7 +152,42 @@ export function SchemaEditor({
   );
 }
 
-function SchemaBuilder() {
+function ColumnHeaders() {
+  return (
+    <div className={cn(ROW_GRID, "text-xs font-medium text-muted-foreground")}>
+      <span className="pl-8">Name</span>
+      <span>Type</span>
+      <span className="text-center">Required</span>
+      <span>Description</span>
+    </div>
+  );
+}
+
+function FieldsBuilder({
+  ownerName,
+  emptyText,
+}: {
+  ownerName: string;
+  emptyText: string;
+}) {
+  const { root, lockNames } = useSchemaEditor();
+  const empty = propertyNames(root).length === 0;
+
+  return (
+    <div className="overflow-hidden rounded-lg border text-sm">
+      {empty ? (
+        <p className="px-3 py-2 text-muted-foreground">{emptyText}</p>
+      ) : (
+        <ColumnHeaders />
+      )}
+      {!(empty && lockNames) && (
+        <PropertyList path={[]} depth={0} ownerName={ownerName} />
+      )}
+    </div>
+  );
+}
+
+function SchemaBuilder({ ownerName }: { ownerName: string }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const { root, update } = useSchemaEditor();
   const info = describeNode(root);
@@ -175,20 +235,12 @@ function SchemaBuilder() {
       )}
 
       {(info.kind === "object" || info.kind === "array") && (
-        <div
-          className={cn(
-            ROW_GRID,
-            "border-t text-xs font-medium text-muted-foreground",
-          )}
-        >
-          <span className="pl-8">Name</span>
-          <span>Type</span>
-          <span className="text-center">Required</span>
-          <span>Description</span>
+        <div className="border-t">
+          <ColumnHeaders />
         </div>
       )}
       {info.kind === "object" && (
-        <PropertyList path={[]} depth={0} ownerName="root" />
+        <PropertyList path={[]} depth={0} ownerName={ownerName} />
       )}
       {info.kind === "array" && (
         <SchemaRow path={["items"]} depth={0} displayName="root[]" />
