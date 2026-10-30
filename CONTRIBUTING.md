@@ -1,8 +1,8 @@
 # Contributing
 
 Thanks for helping. This guide covers the setup, how changes are made and tested, and the
-conventions the code follows. The plan and the reasoning behind past decisions are in
-[docs/PLAN.md](docs/PLAN.md).
+conventions the code follows. How the app is built, and the reasoning behind its design,
+is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Setup
 
@@ -47,6 +47,19 @@ Before opening a pull request, run everything:
 
 ```bash
 pnpm check && pnpm typecheck && pnpm test && pnpm test:e2e
+```
+
+CI (`.github/workflows/ci.yml`) runs the same on every push to `main` and every pull
+request, and also builds the Docker image and runs `scripts/smoke-test-image.sh` on it:
+the container must turn healthy, run as a non-root user, export the sample project
+cleanly, keep its data across a restart, and ship only the SQLite binary for its platform.
+To check an image locally, including one built for the other architecture:
+
+```bash
+docker build -t api-contract-builder:dev .
+scripts/smoke-test-image.sh api-contract-builder:dev
+docker build --platform linux/amd64 -t api-contract-builder:dev-amd64 .
+scripts/smoke-test-image.sh api-contract-builder:dev-amd64 linux/amd64
 ```
 
 ### Golden files
@@ -95,6 +108,30 @@ of the file for how to run it).
   component to bring it in line.
 - **Commits**: a short imperative summary line, then what changed and why.
 
+## Releasing
+
+1. Set `version` in `package.json`, and add a `## [X.Y.Z] - YYYY-MM-DD` section to
+   `CHANGELOG.md`.
+2. Commit, then push a tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+
+The Release workflow (`.github/workflows/release.yml`) then:
+
+- runs CI, and checks that the tag matches `package.json`;
+- builds the image for `linux/amd64` and `linux/arm64`, and pushes `X.Y.Z`, `X.Y`, and
+  `latest` to Docker Hub (`reggarantai/api-contract-builder`), with provenance and an SBOM;
+- smoke-tests the published image on both platforms;
+- creates the GitHub release from the changelog section.
+
+It needs a Docker Hub access token with Read & Write access, saved as the
+`DOCKERHUB_TOKEN` secret of the `DOCKERHUB_TOKEN` environment (Settings → Environments),
+so only the publishing job can read it. Allowing only `v*` tags to deploy to that
+environment keeps every other run away from the token.
+
+The image's build stages run on the build machine's own platform, because no dependency is
+compiled; only the last stage is assembled per platform, so building for arm64 on an amd64
+runner needs almost no emulation. If you add a dependency with a native binary, the smoke
+test fails until the Dockerfile keeps the right binary for each platform.
+
 ## Project layout
 
 ```
@@ -110,7 +147,8 @@ e2e/            Playwright browser tests
 test/           fixtures shared by tests (images) and golden files
 drizzle/        SQL migrations
 samples/        sample project assets (mockup images)
-scripts/        maintenance scripts (mockups, screenshots)
+scripts/        maintenance scripts (mockups, screenshots, image smoke test, release notes)
+.github/        CI and release workflows, Dependabot for the workflows' actions
 ```
 
 ## Editor setup

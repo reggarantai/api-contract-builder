@@ -3,7 +3,9 @@
 ARG NODE_IMAGE=node:24-trixie-slim
 
 # ---- base: Node + pnpm (version taken from package.json "packageManager") ----
-FROM ${NODE_IMAGE} AS base
+# Runs on the build machine's platform: nothing installed here is compiled,
+# so building for another platform needs no emulation.
+FROM --platform=$BUILDPLATFORM ${NODE_IMAGE} AS base
 WORKDIR /app
 COPY package.json ./
 RUN npm install --global "$(node -p 'require("./package.json").packageManager')"
@@ -17,13 +19,25 @@ COPY . .
 RUN pnpm build
 
 # ---- prod-deps: server runtime dependencies only ----
+# better-sqlite3 ships a prebuilt binary for every platform plus its C
+# sources. Keep only the binary for the target platform (Debian, so glibc).
 FROM base AS prod-deps
+ARG TARGETARCH
 COPY pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile --prod
+RUN arch="$([ "$TARGETARCH" = amd64 ] && echo x64 || echo "$TARGETARCH")" \
+ && cd node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3 \
+ && test -f "prebuilds/linux-${arch}.node" \
+ && find prebuilds -type f ! -name "linux-${arch}.node" -delete \
+ && rm -rf deps src binding.gyp
 
 # ---- runtime ----
 FROM ${NODE_IMAGE} AS runtime
+LABEL org.opencontainers.image.title="API Contract Builder" \
+      org.opencontainers.image.description="Write API contracts page by page and export them to OpenAPI 3.1 and Markdown." \
+      org.opencontainers.image.source="https://github.com/reggarantai/api-contract-builder" \
+      org.opencontainers.image.licenses="MIT"
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=3000 \

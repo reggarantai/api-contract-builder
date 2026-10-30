@@ -7,3 +7,14 @@ data
 .DS_Store
 .env
 .env.*
+*.tsbuildinfo
+# Not needed to build or run the image; leaving them out also keeps edits to
+# them from invalidating the build cache.
+docs
+e2e
+test
+test-results
+playwright-report
+blob-report
+.zed
+.vscode

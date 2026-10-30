@@ -1,0 +1,11 @@
+# Keeps the pinned GitHub Actions up to date. npm packages are updated by
+# hand: TypeScript must stay in step with the tsgo version in .zed/settings.json.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

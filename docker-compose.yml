@@ -1,7 +1,6 @@
 services:
   app:
-    build: .
-    image: api-contract-builder:local
+    image: reggarantai/api-contract-builder:latest
     ports:
       # Bound to 127.0.0.1 so the app is only reachable from this machine.
       - "127.0.0.1:3000:3000"

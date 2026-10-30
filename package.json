@@ -5,6 +5,14 @@
   "description": "Write API contracts page by page and export them to OpenAPI 3.1 and Markdown.",
   "license": "MIT",
   "author": "Regga <coding@reggarantai.com>",
+  "homepage": "https://github.com/reggarantai/api-contract-builder#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/reggarantai/api-contract-builder.git"
+  },
+  "bugs": {
+    "url": "https://github.com/reggarantai/api-contract-builder/issues"
+  },
   "type": "module",
   "packageManager": "pnpm@12.11.2",
   "engines": {

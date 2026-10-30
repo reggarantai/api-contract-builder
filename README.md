@@ -1,5 +1,9 @@
 # API Contract Builder
 
+[![CI](https://github.com/reggarantai/api-contract-builder/actions/workflows/ci.yml/badge.svg)](https://github.com/reggarantai/api-contract-builder/actions/workflows/ci.yml)
+[![Docker Hub](https://img.shields.io/docker/v/reggarantai/api-contract-builder?sort=semver&label=Docker%20Hub)](https://hub.docker.com/r/reggarantai/api-contract-builder)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 Write API contracts the way the product is discussed: **page by page**. For each screen,
 describe what it does, attach its mockups, and list the endpoints it calls and when. Then
 hand the contract over as **OpenAPI 3.1** for frontend and backend tools and as
@@ -21,15 +25,15 @@ It runs locally, for one author, as a single Docker container. Data stays on you
 
 ## Quick start
 
-Until the first release is on Docker Hub, build the image from this repository:
-
 ```bash
-docker build -t api-contract-builder .
 docker run -d --name api-contract-builder \
   -p 127.0.0.1:3000:3000 \
   -v api-contract-builder-data:/data \
-  api-contract-builder
+  reggarantai/api-contract-builder:latest
 ```
+
+The image runs on `linux/amd64` and `linux/arm64`, Apple silicon included. To build it
+from this repository instead: `docker build -t api-contract-builder .`
 
 Open <http://127.0.0.1:3000> and choose **Create sample project** to look around a
 finished contract, or start your own with **New project**. The sample is an inventory app
@@ -38,7 +42,7 @@ API would be: problem details for errors, paged lists, refresh tokens in a cooki
 idempotent creates.
 
 The port is published on `127.0.0.1` only, so the app is reachable from your machine and
-nowhere else. With Docker Compose: `docker compose up -d --build`.
+nowhere else. With Docker Compose: `docker compose up -d`.
 
 ## Handing the contract over
 
@@ -101,16 +105,21 @@ docker run --rm -v api-contract-builder-data:/data -v "$PWD":/backup alpine \
 docker start api-contract-builder
 ```
 
-**Upgrade** by building (or, after the first release, pulling) the new image and starting
-a new container on the same volume. Database migrations run on startup.
+**Upgrade** by pulling the new image and starting a new container on the same volume.
+Database migrations run on startup.
 
 ```bash
+docker pull reggarantai/api-contract-builder:latest
 docker rm -f api-contract-builder
 docker run -d --name api-contract-builder \
   -p 127.0.0.1:3000:3000 \
   -v api-contract-builder-data:/data \
-  api-contract-builder
+  reggarantai/api-contract-builder:latest
 ```
+
+To stay on one minor version, use a tag like `0.1` instead of `latest`; each release is
+also tagged with its full version, like `0.1.0`. [CHANGELOG.md](CHANGELOG.md) lists what
+changed.
 
 ## Configuration
 
@@ -124,7 +133,8 @@ docker run -d --name api-contract-builder \
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, tests, and conventions,
-and [docs/PLAN.md](docs/PLAN.md) for the plan and the decisions behind it.
+and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how it's built and why. Ideas for later
+are [issues labeled enhancement](https://github.com/reggarantai/api-contract-builder/issues?q=label%3Aenhancement).
 
 ## License
 
