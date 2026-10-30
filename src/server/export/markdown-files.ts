@@ -2,10 +2,15 @@ import {
   ENDPOINT_STATUS_LABELS,
   type Endpoint,
   type EndpointBody,
+  type EndpointResponse,
   endpointLabel,
   PARAMETER_LOCATIONS,
 } from "../../shared/endpoints";
-import { isJsonObject, type JsonValue } from "../../shared/json-schema";
+import {
+  isJsonObject,
+  type JsonSchema,
+  type JsonValue,
+} from "../../shared/json-schema";
 import {
   type Mockup,
   PAGE_TRIGGER_LABELS,
@@ -25,6 +30,38 @@ import {
   typeLabel,
 } from "./markdown";
 import { type ExportInput, type ExportOptions, scopeOf } from "./openapi";
+
+/** One row per property of an object schema, without nested fields. */
+function topLevelRows(schema: JsonSchema, context: FieldContext) {
+  const properties = isJsonObject(schema.properties) ? schema.properties : {};
+  const required = Array.isArray(schema.required) ? schema.required : [];
+  return Object.entries(properties).flatMap(([name, property]) =>
+    fieldRows(
+      {
+        type: "object",
+        properties: { [name]: property },
+        required: required.includes(name) ? [name] : [],
+      },
+      context,
+    ).slice(0, 1),
+  );
+}
+
+/** A table with an Example column, left out when no row has an example. */
+function tableWithExamples(
+  headers: string[],
+  rows: [cells: string[], example: string][],
+) {
+  return rows.some(([, example]) => example)
+    ? table(
+        [...headers, "Example"],
+        rows.map(([cells, example]) => [...cells, example]),
+      )
+    : table(
+        headers,
+        rows.map(([cells]) => cells),
+      );
+}
 
 /**
  * The Markdown bundle for people: a README, one file per page, the models,
@@ -108,27 +145,44 @@ export function buildMarkdownFiles(
         (link) =>
           `- **When:** ${PAGE_TRIGGER_LABELS[link.trigger]}${link.note ? ` — ${link.note}` : ""}`,
       );
-    const parameterRows = PARAMETER_LOCATIONS.flatMap((location) => {
-      const schema = endpoint.parameters[location];
-      const properties = isJsonObject(schema.properties)
-        ? schema.properties
-        : {};
-      const required = Array.isArray(schema.required) ? schema.required : [];
-      return Object.entries(properties).map(([name, property]) => {
-        const [row] = fieldRows(
-          { type: "object", properties: { [name]: property } },
-          context,
-        );
-        return [
-          `\`${name}\``,
-          location,
-          row?.type ?? "",
-          location === "path" || required.includes(name) ? "Yes" : "",
-          row?.description ?? "",
-          row?.rules ?? "",
-        ];
-      });
-    });
+    const parameterRows = PARAMETER_LOCATIONS.flatMap((location) =>
+      topLevelRows(endpoint.parameters[location], context).map(
+        (row): [string[], string] => [
+          [
+            `\`${row.field}\``,
+            location,
+            row.type,
+            location === "path" || row.required ? "Yes" : "",
+            row.description,
+            row.rules,
+          ],
+          row.example,
+        ],
+      ),
+    );
+    const responseSection = (response: EndpointResponse) => {
+      const headerRows = topLevelRows(response.headers, context).map(
+        (row): [string[], string] => [
+          [
+            `\`${row.field}\``,
+            row.type,
+            row.required ? "Yes" : "",
+            row.description,
+            row.rules,
+          ],
+          row.example,
+        ],
+      );
+      return blocks(
+        `##### ${response.status} ${response.description}`,
+        headerRows.length > 0 &&
+          tableWithExamples(
+            ["Header", "Type", "Required", "Description", "Rules"],
+            headerRows,
+          ),
+        response.body ? bodySection(response.body, context) : "No body.",
+      ).trimEnd();
+    };
 
     return blocks(
       `### ${endpointLabel(endpoint)}`,
@@ -143,7 +197,7 @@ export function buildMarkdownFiles(
         .join("\n"),
       endpoint.description,
       parameterRows.length > 0 &&
-        `#### Parameters\n\n${table(["Name", "In", "Type", "Required", "Description", "Rules"], parameterRows)}`,
+        `#### Parameters\n\n${tableWithExamples(["Name", "In", "Type", "Required", "Description", "Rules"], parameterRows)}`,
       endpoint.requestBody &&
         blocks(
           "#### Request body",
@@ -151,12 +205,7 @@ export function buildMarkdownFiles(
           endpoint.requestBody.description,
           bodySection(endpoint.requestBody, context),
         ).trimEnd(),
-      `#### Responses\n\n${endpoint.responses
-        .map(
-          (response) =>
-            `##### ${response.status} ${response.description}\n\n${response.body ? bodySection(response.body, context) : "No body."}`,
-        )
-        .join("\n\n")}`,
+      `#### Responses\n\n${endpoint.responses.map(responseSection).join("\n\n")}`,
       endpoint.notesFe && `**Notes for frontend:** ${endpoint.notesFe}`,
       endpoint.notesBe && `**Notes for backend:** ${endpoint.notesBe}`,
     ).trimEnd();

@@ -84,6 +84,7 @@ describe("fieldRows", () => {
           name: { type: "string", minLength: 1, maxLength: 80 },
           code: { type: "string", pattern: "^[A-Z]+$" },
           price: { type: "number", minimum: 0, maximum: 100, examples: [9.5] },
+          scheme: { type: "string", enum: ["Bearer"] },
         },
       }),
     ).toEqual([
@@ -91,7 +92,26 @@ describe("fieldRows", () => {
       ["name", "string", "", "", "1–80 characters"],
       ["code", "string", "", "", "pattern `^[A-Z]+$`"],
       ["price", "number", "", "", "0–100"],
+      ["scheme", "string", "", "", "always `Bearer`"],
     ]);
+  });
+
+  it("mentions defaults among the rules and keeps the first example", () => {
+    const [page, cursor, legacy] = fieldRows(
+      {
+        type: "object",
+        properties: {
+          page: { type: "integer", minimum: 1, default: 1, examples: [2, 3] },
+          cursor: { type: "string", examples: ["a|b"] },
+          legacy: { type: "boolean", example: true },
+        },
+      },
+      context,
+    );
+
+    expect(page).toMatchObject({ rules: "≥ 1; default `1`", example: "`2`" });
+    expect(cursor?.example).toBe("`a\\|b`");
+    expect(legacy?.example).toBe("`true`");
   });
 
   it("expands model references in place, linking to the model, and stops at cycles", () => {

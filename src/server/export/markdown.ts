@@ -22,6 +22,8 @@ export type FieldRow = {
   required: boolean;
   description: string;
   rules: string;
+  /** The first example, as inline code, or "". */
+  example: string;
 };
 
 /** Text safe for one Markdown table cell. */
@@ -142,7 +144,9 @@ function rulesOf(schema: JsonSchema): string {
   const { schema: inner } = unwrapNullable(schema);
   const rules = [
     Array.isArray(inner.enum)
-      ? `one of ${inner.enum.map(code).join(", ")}`
+      ? inner.enum.length === 1
+        ? `always ${code(inner.enum[0] ?? null)}`
+        : `one of ${inner.enum.map(code).join(", ")}`
       : null,
     "const" in inner ? `always ${code(inner.const ?? null)}` : null,
     range(inner.minLength, inner.maxLength, "characters"),
@@ -156,8 +160,18 @@ function rulesOf(schema: JsonSchema): string {
     range(inner.minItems, inner.maxItems, "items"),
     inner.uniqueItems === true ? "unique items" : null,
     typeof inner.pattern === "string" ? `pattern ${code(inner.pattern)}` : null,
+    "default" in inner ? `default ${code(inner.default ?? null)}` : null,
   ];
   return rules.filter(Boolean).join("; ");
+}
+
+/** The first of `examples`, or `example` (the OpenAPI 3.0 keyword). */
+function exampleOf(schema: JsonSchema): string {
+  const { schema: inner } = unwrapNullable(schema);
+  if (Array.isArray(inner.examples) && inner.examples.length > 0) {
+    return code(inner.examples[0] ?? null);
+  }
+  return "example" in inner ? code(inner.example ?? null) : "";
 }
 
 function joinPath(prefix: string, name: string) {
@@ -203,6 +217,7 @@ export function fieldRows(
         required: required.includes(name),
         description: cell(description),
         rules: cell(rulesOf(property)),
+        example: cell(exampleOf(property)),
       },
       ...fieldRows(property, context, field, expanding),
     ];

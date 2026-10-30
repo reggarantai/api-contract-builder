@@ -9,6 +9,8 @@ import { useReportValidity } from "./validity";
 
 const CONTENT_TYPES = [
   "application/json",
+  "application/problem+json",
+  "application/merge-patch+json",
   "multipart/form-data",
   "application/x-www-form-urlencoded",
   "text/plain",

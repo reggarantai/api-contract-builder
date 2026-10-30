@@ -47,17 +47,29 @@ describe("Markdown export", () => {
     );
     expect(Object.keys(files).sort()).toEqual([
       "inventory-app/README.md",
-      "inventory-app/images/create-schedule/01-create-schedule.png",
+      "inventory-app/images/add-or-edit-stock-item/01-stock-item-form.png",
+      "inventory-app/images/app-shell/01-app-shell.png",
+      "inventory-app/images/forgot-password/01-forgot-password.png",
       "inventory-app/images/login/01-login-form.png",
       "inventory-app/images/login/02-login-error.png",
-      "inventory-app/images/registration/01-registration.png",
+      "inventory-app/images/registration/01-registration-form.png",
+      "inventory-app/images/registration/02-registration-check-email.png",
+      "inventory-app/images/reset-password/01-reset-password.png",
+      "inventory-app/images/stock-item/01-stock-item.png",
+      "inventory-app/images/stock-item/02-record-movement.png",
       "inventory-app/images/stock-list/01-stock-list.png",
+      "inventory-app/images/verify-email/01-verify-email-expired.png",
       "inventory-app/inventory-app.openapi.yaml",
       "inventory-app/models.md",
-      "inventory-app/pages/create-schedule.md",
+      "inventory-app/pages/add-or-edit-stock-item.md",
+      "inventory-app/pages/app-shell.md",
+      "inventory-app/pages/forgot-password.md",
       "inventory-app/pages/login.md",
       "inventory-app/pages/registration.md",
+      "inventory-app/pages/reset-password.md",
+      "inventory-app/pages/stock-item.md",
       "inventory-app/pages/stock-list.md",
+      "inventory-app/pages/verify-email.md",
     ]);
     expect(text(files, "inventory-app/inventory-app.openapi.yaml")).toBe(
       fs.readFileSync(OPENAPI_GOLDEN, "utf8"),
@@ -125,10 +137,10 @@ describe("Markdown export", () => {
       "inventory-app/pages/stock-list.md",
     ]);
     const models = text(files, "inventory-app/models.md");
-    expect(models).toContain("## Stock");
+    expect(models).toContain("## StockItem");
     expect(models).toContain("## Category");
-    expect(models).toContain("## Error");
-    expect(models).not.toContain("## Schedule");
+    expect(models).toContain("## Problem");
+    expect(models).not.toContain("## StockMovement");
   });
 
   it("leaves out the OpenAPI file while the contract isn't valid", async () => {

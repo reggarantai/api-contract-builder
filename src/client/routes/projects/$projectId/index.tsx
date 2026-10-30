@@ -1,5 +1,6 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { Markdown } from "@/components/markdown";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -33,12 +34,20 @@ function ProjectOverview() {
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      <Card className="lg:col-span-2">
+      <Card
+        className="lg:col-span-2"
+        role="region"
+        aria-labelledby="project-description"
+      >
         <CardHeader>
-          <CardTitle>Description</CardTitle>
-          <CardDescription className="whitespace-pre-wrap">
-            {project.description || "No description yet."}
-          </CardDescription>
+          <CardTitle id="project-description">Description</CardTitle>
+          {project.description ? (
+            <Markdown className="text-muted-foreground">
+              {project.description}
+            </Markdown>
+          ) : (
+            <CardDescription>No description yet.</CardDescription>
+          )}
         </CardHeader>
       </Card>
 

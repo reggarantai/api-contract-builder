@@ -19,8 +19,12 @@ const pages = (await (
 const endpoints = (await (
   await fetch(`${base}/api/projects/${project.id}/endpoints`)
 ).json()) as { id: string; method: string; path: string }[];
-const login = pages.find((page) => page.name === "Login");
-const schedules = endpoints.find((endpoint) => endpoint.path === "/schedules");
+const stockList = pages.find((page) => page.name === "Stock list");
+const recordMovement = endpoints.find(
+  (endpoint) =>
+    endpoint.method === "POST" &&
+    endpoint.path === "/stock-items/{itemId}/movements",
+);
 
 const browser = await chromium.launch();
 const page = await browser.newPage({
@@ -28,11 +32,13 @@ const page = await browser.newPage({
   deviceScaleFactor: 1,
 });
 
-await page.goto(`${base}/projects/${project.id}/pages/${login?.id}`);
+await page.goto(`${base}/projects/${project.id}/pages/${stockList?.id}`);
 await page.getByRole("link", { name: "Edit page" }).waitFor();
 await page.screenshot({ path: out("page-view") });
 
-await page.goto(`${base}/projects/${project.id}/endpoints/${schedules?.id}`);
+await page.goto(
+  `${base}/projects/${project.id}/endpoints/${recordMovement?.id}`,
+);
 await page.getByRole("region", { name: "Request body" }).waitFor();
 await page.screenshot({ path: out("endpoint-editor") });
 

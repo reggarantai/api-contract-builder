@@ -134,6 +134,7 @@ describe("buildOpenApi", () => {
                 id: "r1",
                 status: "200",
                 description: "OK",
+                headers: objectSchema({}),
                 body: {
                   contentType: "application/json",
                   schema: { $ref: "model:stock" },
@@ -147,7 +148,13 @@ describe("buildOpenApi", () => {
                   ],
                 },
               },
-              { id: "r2", status: "404", description: "Not Found", body: null },
+              {
+                id: "r2",
+                status: "404",
+                description: "Not Found",
+                headers: objectSchema({}),
+                body: null,
+              },
             ],
           }),
         ],
@@ -199,6 +206,74 @@ describe("buildOpenApi", () => {
         },
       },
     });
+  });
+
+  it("describes response headers, moving descriptions out of the schema", () => {
+    const input = testInput({
+      models: [testModel("cursor", "Cursor", { type: "string" })],
+      pages: [
+        testPage("p1", "Add stock", [
+          { endpointId: "e1", trigger: "on_submit", note: "" },
+        ]),
+      ],
+      endpoints: [
+        testEndpoint("e1", "POST", "/stocks", {
+          requestBody: null,
+          responses: [
+            {
+              id: "r1",
+              status: "201",
+              description: "Created",
+              headers: objectSchema(
+                {
+                  Location: {
+                    type: "string",
+                    format: "uri-reference",
+                    description: "Where the new item lives",
+                    examples: ["/stocks/SKU-1"],
+                  },
+                  "X-Next-Cursor": { $ref: "model:cursor" },
+                },
+                ["Location"],
+              ),
+              body: null,
+            },
+            {
+              id: "r2",
+              status: "409",
+              description: "Conflict",
+              headers: objectSchema({}),
+              body: null,
+            },
+          ],
+        }),
+      ],
+    });
+    const doc = buildOpenApi(input, { pageId: "p1" });
+
+    expect(doc.paths["/stocks"]?.post?.responses).toEqual({
+      "201": {
+        description: "Created",
+        headers: {
+          Location: {
+            description: "Where the new item lives",
+            required: true,
+            schema: {
+              type: "string",
+              format: "uri-reference",
+              examples: ["/stocks/SKU-1"],
+            },
+          },
+          "X-Next-Cursor": {
+            schema: { $ref: "#/components/schemas/Cursor" },
+          },
+        },
+      },
+      "409": { description: "Conflict" },
+    });
+    // A model used only by a header counts as used.
+    expect(Object.keys(doc.components?.schemas ?? {})).toEqual(["Cursor"]);
+    expect(lintContract(input)).toEqual([]);
   });
 
   it("describes request bodies and deprecation", () => {
@@ -399,6 +474,7 @@ describe("buildOpenApi", () => {
               id: "r",
               status: "200",
               description: "OK",
+              headers: objectSchema({}),
               body: {
                 contentType: "application/json",
                 schema: { type: "array", items: { $ref: "model:stock" } },
@@ -456,13 +532,20 @@ describe("lintContract", () => {
               id: "r1",
               status: "201",
               description: "Created",
+              headers: objectSchema({}),
               body: {
                 contentType: "application/json",
                 schema: {},
                 examples: [],
               },
             },
-            { id: "r2", status: "204", description: "No Content", body: null },
+            {
+              id: "r2",
+              status: "204",
+              description: "No Content",
+              headers: objectSchema({}),
+              body: null,
+            },
           ],
         }),
         testEndpoint("health", "GET", "/health"),
@@ -550,6 +633,15 @@ describe("validateContract", () => {
             query: objectSchema({ limit: { type: "integer", minimum: "ten" } }),
             header: objectSchema({}),
           },
+          responses: [
+            {
+              id: "r1",
+              status: "200",
+              description: "OK",
+              headers: objectSchema({ ETag: { type: "text" } }),
+              body: null,
+            },
+          ],
         }),
       ],
     });
@@ -557,6 +649,7 @@ describe("validateContract", () => {
     expect(await validateContract(input, buildOpenApi(input))).toEqual([
       "Model Broken: /type must be equal to one of the allowed values",
       "GET /stocks query parameters: /properties/limit/minimum must be number",
+      "GET /stocks 200 response headers: /properties/ETag/type must be equal to one of the allowed values",
     ]);
   });
 

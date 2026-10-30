@@ -402,7 +402,12 @@ export function summarizeNode(node: JsonValue | undefined): string[] {
     labels.push(node.format);
   }
   if (Array.isArray(node.enum)) {
-    labels.push(`${node.enum.length} values`);
+    const [only] = node.enum;
+    labels.push(
+      node.enum.length === 1
+        ? `always ${typeof only === "string" ? only : JSON.stringify(only)}`
+        : `${node.enum.length} values`,
+    );
   }
   const ranges = [
     rangeText(

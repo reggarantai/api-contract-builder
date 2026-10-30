@@ -83,7 +83,13 @@ describe("endpoints API", () => {
           required: ["id"],
         },
       },
-      responses: [{ status: "200", description: "OK" }],
+      responses: [
+        {
+          status: "200",
+          description: "OK",
+          headers: { type: "object", properties: {} },
+        },
+      ],
     });
   });
 
@@ -208,6 +214,32 @@ describe("endpoints API", () => {
     expect(known.status).toBe(200);
   });
 
+  it("saves response headers", async () => {
+    const endpoint = await createEndpoint({ method: "POST", path: "/stocks" });
+    const [response] = endpoint.responses;
+    const headers = {
+      type: "object",
+      properties: {
+        Location: {
+          type: "string",
+          format: "uri-reference",
+          description: "Where the new item lives",
+        },
+      },
+      required: ["Location"],
+    };
+
+    const result = await patchEndpoint(endpoint.id, {
+      responses: [{ ...response, headers }],
+    });
+    const reloaded = endpointResponseFieldsSchema.parse(
+      await (await t.request("GET", `${endpointsUrl()}/${endpoint.id}`)).json(),
+    );
+
+    expect(result.status).toBe(200);
+    expect(reloaded.responses[0]?.headers).toEqual(headers);
+  });
+
   it("requires model references to exist, wherever they are", async () => {
     const endpoint = await createEndpoint({ method: "GET", path: "/stocks" });
     const [response] = endpoint.responses;
@@ -223,6 +255,10 @@ describe("endpoints API", () => {
       responses: [
         {
           ...response,
+          headers: {
+            type: "object",
+            properties: { "X-Next": { $ref: "model:nowhere" } },
+          },
           body: {
             contentType: "application/json",
             schema: { type: "array", items: { $ref: "model:gone" } },
@@ -235,6 +271,7 @@ describe("endpoints API", () => {
     expect(result.status).toBe(400);
     expect((await errorOf(result)).issues?.map((issue) => issue.path)).toEqual([
       "parameters.query",
+      "responses.0.headers",
       "responses.0.body.schema",
     ]);
   });

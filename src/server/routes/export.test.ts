@@ -4,7 +4,7 @@ import prismHttp from "@stoplight/prism-http";
 import prismClient from "@stoplight/prism-http/dist/client.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { SAMPLE_ITEMS } from "../samples/inventory";
+import { SAMPLE_STOCK_ITEMS_PAGE } from "../samples/inventory";
 import { buildSample, createTestApp } from "../test-utils";
 
 const GOLDEN = path.resolve("test/golden/inventory.openapi.yaml");
@@ -78,13 +78,21 @@ describe("export API", () => {
       components: { schemas: Record<string, unknown> };
     };
     expect(doc.info.title).toBe("Inventory App: Stock list");
-    expect(Object.keys(doc.paths)).toEqual(["/stocks", "/stocks/{sku}"]);
-    expect(Object.keys(doc.paths["/stocks/{sku}"] ?? {})).toEqual(["delete"]);
-    // DELETE /stocks/{sku} answers 404 with an Error.
+    expect(Object.keys(doc.paths)).toEqual([
+      "/categories",
+      "/stock-items",
+      "/stock-items/{itemId}",
+    ]);
+    expect(Object.keys(doc.paths["/stock-items"] ?? {})).toEqual(["get"]);
+    expect(Object.keys(doc.paths["/stock-items/{itemId}"] ?? {})).toEqual([
+      "delete",
+    ]);
+    // Errors are Problems; the list pages with PageMeta.
     expect(Object.keys(doc.components.schemas)).toEqual([
       "Category",
-      "Error",
-      "Stock",
+      "PageMeta",
+      "Problem",
+      "StockItem",
     ]);
   });
 
@@ -102,10 +110,7 @@ describe("export API", () => {
     };
     expect(report.valid).toBe(true);
     expect(report.errors).toEqual([]);
-    expect(report.warnings.map((warning) => warning.message)).toEqual([
-      "GET /health: the 200 response has no example",
-      "GET /health isn't used by any page",
-    ]);
+    expect(report.warnings).toEqual([]);
   });
 
   it("refuses to export a contract that isn't valid", async () => {
@@ -154,64 +159,117 @@ describe("export API", () => {
       });
     }
 
-    // The in-process client throws Prism's problem responses (422, 401, …)
-    // instead of returning them, so those are checked as rejections.
+    // The in-process client throws Prism's own problem responses instead of
+    // returning them; where the contract has the status, Prism answers with
+    // the contract's example. Headers keep the contract's names and values.
+    const header = (response: { headers?: object }, name: string) =>
+      Object.entries(response.headers ?? {}).find(
+        ([key]) => key.toLowerCase() === name,
+      )?.[1] as unknown;
 
     const auth = { authorization: "Bearer token" };
+    const createHeaders = {
+      ...auth,
+      "content-type": "application/json",
+      "idempotency-key": "3f1d8a52-6b0e-4c1a-9d7e-2b4c6a8e0f13",
+    };
+    const itemId = SAMPLE_STOCK_ITEMS_PAGE.data[0].id;
+    const newItem = {
+      sku: "LBL-100",
+      name: "Shipping labels, 100 x 150 mm",
+      categoryId: SAMPLE_STOCK_ITEMS_PAGE.data[0].category.id,
+      unit: "box",
+    };
 
     it("returns the first example by default and others by name", async () => {
       const client = await mockClient();
 
-      const first = await client.get("/stocks", { headers: auth });
+      const first = await client.get("/stock-items", { headers: auth });
       const empty = await client.get(
-        "/stocks",
+        "/stock-items",
         { headers: auth },
         { mock: { dynamic: false, exampleKey: "empty" } },
       );
 
       expect(first.status).toBe(200);
-      expect(first.data).toEqual(SAMPLE_ITEMS);
+      expect(first.data).toEqual(SAMPLE_STOCK_ITEMS_PAGE);
       expect(first.violations.output).toEqual([]);
-      expect(empty.data).toEqual([]);
+      expect(empty.data).toMatchObject({ data: [], meta: { totalItems: 0 } });
     });
 
-    it("returns error responses with their examples", async () => {
+    it("returns errors as problem details", async () => {
       const client = await mockClient();
 
       const response = await client.delete(
-        "/stocks/SKU-999",
+        `/stock-items/${itemId}`,
         { headers: auth },
-        { mock: { dynamic: false, code: 404 } },
+        { mock: { dynamic: false, code: 409 } },
       );
 
-      expect(response.status).toBe(404);
-      expect(response.data).toEqual({ message: "No item SKU-999" });
+      expect(response.status).toBe(409);
+      expect(header(response, "content-type")).toBe("application/problem+json");
+      expect(response.data).toMatchObject({
+        type: "https://api.inventory.example/problems/item-has-stock",
+        status: 409,
+      });
+      expect(response.violations.output).toEqual([]);
     });
 
-    it("validates request bodies against the contract", async () => {
+    it("returns the response headers the contract describes", async () => {
       const client = await mockClient();
-      const headers = { ...auth, "content-type": "application/json" };
-      const schedule = {
-        supplierId: "9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b",
-        sku: "SKU-002",
-        quantity: 50,
-        firstDelivery: "2026-11-15",
-        repeat: "weekly",
-      };
 
-      const valid = await client.post("/schedules", schedule, { headers });
+      const created = await client.post("/stock-items", newItem, {
+        headers: createHeaders,
+      });
+      const signedIn = await client.post(
+        "/auth/login",
+        { email: "ana@example.com", password: "correct-horse-battery" },
+        { headers: { "content-type": "application/json" } },
+      );
+      const limited = await client.post(
+        "/auth/login",
+        { email: "ana@example.com", password: "correct-horse-battery" },
+        { headers: { "content-type": "application/json" } },
+        { mock: { dynamic: false, code: 429 } },
+      );
+
+      expect(created.status).toBe(201);
+      expect(header(created, "location")).toMatch(/^\/v1\/stock-items\//);
+      expect(header(signedIn, "set-cookie")).toMatch(
+        /^refresh_token=.+; HttpOnly; Secure/,
+      );
+      expect(header(signedIn, "cache-control")).toBe("no-store");
+      expect(limited.status).toBe(429);
+      expect(header(limited, "retry-after")).toBe(900);
+    });
+
+    it("validates requests against the contract", async () => {
+      const client = await mockClient();
+
+      const valid = await client.post("/stock-items", newItem, {
+        headers: createHeaders,
+      });
 
       expect(valid.status).toBe(201);
       expect(valid.violations.input).toEqual([]);
       // The contract defines its own 422, so Prism answers with that example.
       const invalid = await client.post(
-        "/schedules",
-        { ...schedule, repeat: "daily" },
-        { headers },
+        "/stock-items",
+        { ...newItem, unit: "crate" },
+        { headers: createHeaders },
       );
       expect(invalid.status).toBe(422);
       expect(invalid.violations.input).not.toEqual([]);
-      expect(invalid.data).toMatchObject({ code: "DATE_IN_PAST" });
+      expect(invalid.data).toMatchObject({
+        type: "https://api.inventory.example/problems/validation-failed",
+        errors: [expect.objectContaining({ pointer: expect.any(String) })],
+      });
+      // The API answers 400 without the key; Prism prefers a 422 for any
+      // invalid request, so this only checks that the key is required.
+      const withoutKey = await client.post("/stock-items", newItem, {
+        headers: { ...auth, "content-type": "application/json" },
+      });
+      expect(withoutKey.violations.input).not.toEqual([]);
     });
 
     it("enforces each endpoint's security", async () => {
@@ -219,21 +277,28 @@ describe("export API", () => {
 
       const publicEndpoint = await client.post(
         "/auth/login",
-        { email: "ana@example.com", password: "correct-horse" },
+        { email: "ana@example.com", password: "correct-horse-battery" },
         { headers: { "content-type": "application/json" } },
       );
 
       expect(publicEndpoint.status).toBe(200);
-      await expect(client.get("/stocks")).rejects.toMatchObject({
-        status: 401,
+      const signedOut = await client.get("/stock-items");
+      expect(signedOut.status).toBe(401);
+      expect(signedOut.data).toMatchObject({
+        type: "https://api.inventory.example/problems/token-expired",
       });
-      await expect(client.delete("/stocks/SKU-001")).rejects.toMatchObject({
-        status: 401,
-      });
-      const signedIn = await client.delete("/stocks/SKU-001", {
+      expect(header(signedOut, "www-authenticate")).toMatch(
+        /^Bearer realm="inventory"/,
+      );
+      // Refreshing takes the cookie, not the access token.
+      const withoutCookie = await client.post("/auth/refresh", undefined, {
         headers: auth,
       });
-      expect(signedIn.status).toBe(204);
+      expect(withoutCookie.status).toBe(401);
+      const refreshed = await client.post("/auth/refresh", undefined, {
+        headers: { cookie: "refresh_token=rt_1" },
+      });
+      expect(refreshed.status).toBe(200);
     });
   });
 });

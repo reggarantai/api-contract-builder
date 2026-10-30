@@ -131,7 +131,8 @@ export function GeneralSettings({ project }: { project: Project }) {
                 <Textarea
                   {...field}
                   id="settings-description"
-                  rows={4}
+                  rows={6}
+                  placeholder="What the API is for, and conventions every endpoint follows. Markdown is fine; the first paragraph is the summary."
                   aria-invalid={fieldState.invalid}
                 />
                 <FieldError errors={[fieldState.error]} />

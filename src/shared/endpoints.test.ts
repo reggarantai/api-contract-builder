@@ -5,6 +5,7 @@ import {
   endpointSchema,
   parsePathTemplate,
   pathMatchKey,
+  schemasOfEndpoint,
   suggestOperationId,
   syncPathParameters,
 } from "./endpoints";
@@ -120,6 +121,7 @@ describe("createEndpointDefaults", () => {
       {
         status: "200",
         description: "OK",
+        headers: { type: "object", properties: {} },
         body: { contentType: "application/json" },
       },
     ]);
@@ -197,6 +199,42 @@ describe("endpointSchema", () => {
     ).toEqual(["parameters.header", "parameters.header"]);
   });
 
+  it("rejects response headers that OpenAPI ignores and duplicate header names", () => {
+    const [ok] = base.responses;
+    if (!ok) throw new Error("expected a default response");
+
+    expect(
+      issuePaths({
+        ...base,
+        responses: [
+          {
+            ...ok,
+            headers: {
+              type: "object",
+              properties: {
+                "Content-Type": { type: "string" },
+                ETag: { type: "string" },
+                etag: { type: "string" },
+              },
+            },
+          },
+        ],
+      }),
+    ).toEqual(["responses.0.headers", "responses.0.headers"]);
+  });
+
+  it("requires response headers to be an object schema", () => {
+    const [ok] = base.responses;
+    if (!ok) throw new Error("expected a default response");
+
+    expect(
+      issuePaths({
+        ...base,
+        responses: [{ ...ok, headers: { type: "string" } }],
+      }),
+    ).toEqual(["responses.0.headers"]);
+  });
+
   it("rejects a request body on GET", () => {
     const post = createEndpointDefaults("POST", "/stocks");
     expect(issuePaths({ ...base, requestBody: post.requestBody })).toEqual([
@@ -251,5 +289,20 @@ describe("endpointSchema", () => {
         ],
       }),
     ).toEqual(["responses.0.body.examples.1.name"]);
+  });
+});
+
+describe("schemasOfEndpoint", () => {
+  it("lists every schema with where it sits, response headers included", () => {
+    const endpoint = createEndpointDefaults("POST", "/stocks");
+
+    expect(schemasOfEndpoint(endpoint).map(([path]) => path)).toEqual([
+      "parameters.path",
+      "parameters.query",
+      "parameters.header",
+      "requestBody.schema",
+      "responses.0.headers",
+      "responses.0.body.schema",
+    ]);
   });
 });

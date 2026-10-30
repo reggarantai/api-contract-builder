@@ -103,6 +103,7 @@ they reference transitively).
 | Page usage of an endpoint | `x-pages: [{page, trigger, note}]` on the operation                        |
 | Endpoint status / notes   | `x-status`, `x-notes-fe`, `x-notes-be`                                     |
 | Named examples            | `content.<type>.examples.<name>`                                           |
+| Response headers          | `responses.<status>.headers`                                               |
 
 Mockup images are not included in OpenAPI (they live in the Markdown export).
 
@@ -141,7 +142,8 @@ Each page file is self-contained, so a stakeholder can read one page without jum
 - full detail for each endpoint:
   - parameters table;
   - request body field table with an example JSON;
-  - one section per response status, with a field table and example JSON.
+  - one section per response status, with a headers table, a field table, and example
+    JSON.
 
 Nested schemas are flattened into readable field paths:
 
@@ -320,12 +322,71 @@ Progress:
     the API by `src/server/samples/inventory.ts` (`POST /api/samples`), and is also the
     fixture for the export golden files, so what users see is what the tests pin.
   - Its mockups are wireframes rendered from HTML (`scripts/render-sample-mockups.ts`). It
-    leaves `GET /health` off every page and without an example on purpose, to show the
-    export warnings.
+    left `GET /health` off every page and without an example on purpose, to show the
+    export warnings; sample v2 (below) dropped that.
   - README covers the quick start, handing the contract to frontend (Prism, codegen) and
     backend, and backup/restore/upgrade (the backup and restore commands were run against
     a real volume). CONTRIBUTING covers the setup, test-first workflow, golden files, and
     conventions. README screenshots come from `scripts/take-screenshots.ts`.
+- **Response headers and sample v2 — done (2026-10-30), built test-first.** Notes:
+  - Each response has a headers object schema, like parameters: each property is a
+    header, and `required` lists the required ones. It's edited with the field builder in
+    each response, exported as `responses.<status>.headers` (the property's `description`
+    moves to the header), and shown as a table above the body in Markdown. `Content-Type`
+    is refused (OpenAPI ignores it), and so are names that differ only in case.
+  - Migration `0005_response_headers` gives responses saved earlier empty headers.
+  - The sample is now an inventory app written like a production API: 9 pages (Login,
+    Registration, Verify email, Forgot password, Reset password, App shell, Stock list,
+    Stock item, Add or edit stock item), 17 endpoints, and 11 models. Its project
+    description lists the conventions every endpoint follows, and `samples.test.ts`
+    checks them on every operation of the export:
+    - errors are problem details (RFC 9457, `application/problem+json`); 400 means
+      invalid query or header parameters, 422 invalid body fields (with `errors`), 404
+      an unknown or deleted ID;
+    - 401 is only for credentials the request must send. Bearer 401s carry the
+      `WWW-Authenticate` challenge (RFC 6750). Wrong sign-in credentials answer 400,
+      like OAuth's `invalid_grant`, so a 401 handler that refreshes never fires on the
+      login form;
+    - paged lists return `data` + `meta` and take `page` and `pageSize`;
+    - creates take a required `Idempotency-Key` (only successes are replayed; a
+      resend while the first runs answers 409 `request-in-progress`) and answer 201,
+      with `Location` where the new thing has its own URL;
+    - every 429 has `Retry-After`; token responses send `Cache-Control: no-store`;
+      PATCH takes a JSON Merge Patch (`application/merge-patch+json`), with 415 and
+      `Accept-Patch` for other types;
+    - endpoints that take an email never show whether it has an account: register
+      always answers 202.
+  - The refresh token is an HttpOnly cookie (`refreshCookie` scheme). Sessions have
+    absolute lifetimes (12 hours, or 30 days with `remember`), the backend accepts the
+    previous refresh token for 30 seconds so several tabs can refresh at once, and
+    sign-out always answers 204. Staging is on its own site so cookies never cross.
+  - `Session` holds only the token; the user comes from `GET /me`. Recording a stock
+    movement answers 201 without `Location` (single movements have no URL of their
+    own); the Stock item page fetches the item again for its new status.
+  - Left out on purpose: `ETag`/`If-Match` on stock items (every movement changes the
+    item, so edits would often fail; a merge patch only touches the fields it sends),
+    a CSRF header (the cookie endpoints check `Origin`, and the cookie is
+    `SameSite=Strict`), and a `default` response on every operation (the description
+    says other errors are problem details too).
+  - The App shell page holds what every signed-in page does (refresh, current user, sign
+    out); `POST /auth/refresh` is linked to it twice, on load and for expiring tokens.
+  - Every schema in the sample can be edited in the builder, and
+    `sample-schemas.test.ts` checks that none shows as Custom. So the sample uses
+    one-value enums instead of `const` (shown as "always …" in the builder and in
+    Markdown), and says "at least 1 for receipts and issues" in words rather than with
+    `if`/`then`, which would turn the whole model into Custom.
+  - An independent review of the contract (HTTP semantics, auth security,
+    consistency) led to most of the points above.
+  - Exports: parameter and header tables in Markdown gain an Example column when any
+    row has an example, and `default` values show among the rules. The project
+    description is Markdown: the overview renders it, and project cards show its first
+    paragraph.
+  - Prism's in-process client returns the contract's own 401 example instead of throwing
+    when the contract has one, and keeps header names as written. Prism prefers a 422
+    for any invalid request and accepts `application/json` where a merge patch is
+    expected, so those cases are checked in the contract, not through the mock. The
+    sample was also checked with the Prism CLI over HTTP (`Set-Cookie`, `Location`,
+    `Retry-After`, `WWW-Authenticate`, `Cache-Control`, cookie security, `Prefer`).
 - Note for M8: the image is ~430 MB uncompressed, mostly the Node base image (~340 MB).
   `better-sqlite3` ships prebuilt binaries for every platform (~27 MB); the ones for other
   platforms could be pruned.

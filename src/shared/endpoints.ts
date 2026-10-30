@@ -32,8 +32,9 @@ export const ENDPOINT_STATUS_LABELS: Record<EndpointStatus, string> = {
 export const PARAMETER_LOCATIONS = ["path", "query", "header"] as const;
 export type ParameterLocation = (typeof PARAMETER_LOCATIONS)[number];
 
-// Header parameters OpenAPI ignores: they come from the body and security.
-const RESERVED_HEADERS = ["accept", "content-type", "authorization"];
+// Headers OpenAPI ignores: they come from the body and security.
+const RESERVED_REQUEST_HEADERS = ["accept", "content-type", "authorization"];
+const RESERVED_RESPONSE_HEADERS = ["content-type"];
 
 export const DEFAULT_CONTENT_TYPE = "application/json";
 
@@ -48,6 +49,7 @@ export const RESPONSE_DESCRIPTIONS: Record<string, string> = {
   "404": "Not Found",
   "409": "Conflict",
   "422": "Unprocessable Content",
+  "429": "Too Many Requests",
   "500": "Internal Server Error",
   default: "Unexpected error",
 };
@@ -218,6 +220,8 @@ export const responseSchema = z.object({
       "Use a status code like 200 or 4XX, or default",
     ),
   description: z.string().trim().min(1, "Description is required").max(500),
+  /** An object schema; each property is a header. */
+  headers: objectSchemaSchema,
   /** Null for responses without a body, like 204. */
   body: bodySchema.nullable(),
 });
@@ -291,6 +295,28 @@ function addDuplicateIssues(
   });
 }
 
+/** Headers OpenAPI would ignore, and names that differ only in case. */
+function addHeaderIssues(
+  ctx: z.RefinementCtx,
+  schema: JsonSchema,
+  path: (string | number)[],
+  reserved: string[],
+  reservedMessage: (name: string) => string,
+) {
+  const names = Object.keys(objectProperties(schema));
+  for (const name of names) {
+    if (reserved.includes(name.toLowerCase())) {
+      ctx.addIssue({ code: "custom", path, message: reservedMessage(name) });
+    }
+  }
+  addDuplicateIssues(
+    ctx,
+    names.map((name) => name.toLowerCase()),
+    () => path,
+    (name) => `Header names ignore case: ${name} appears twice`,
+  );
+}
+
 function refineEndpoint(endpoint: EndpointFields, ctx: z.RefinementCtx) {
   const parsed = parsePathTemplate(endpoint.path);
   if ("params" in parsed) {
@@ -317,22 +343,23 @@ function refineEndpoint(endpoint: EndpointFields, ctx: z.RefinementCtx) {
     }
   }
 
-  const headerNames = Object.keys(objectProperties(endpoint.parameters.header));
-  for (const name of headerNames) {
-    if (RESERVED_HEADERS.includes(name.toLowerCase())) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["parameters", "header"],
-        message: `${name} is set by the request body or authentication, not as a parameter`,
-      });
-    }
-  }
-  addDuplicateIssues(
+  addHeaderIssues(
     ctx,
-    headerNames.map((name) => name.toLowerCase()),
-    () => ["parameters", "header"],
-    (name) => `Header names ignore case: ${name} appears twice`,
+    endpoint.parameters.header,
+    ["parameters", "header"],
+    RESERVED_REQUEST_HEADERS,
+    (name) =>
+      `${name} is set by the request body or authentication, not as a parameter`,
   );
+  endpoint.responses.forEach((response, index) => {
+    addHeaderIssues(
+      ctx,
+      response.headers,
+      ["responses", index, "headers"],
+      RESERVED_RESPONSE_HEADERS,
+      (name) => `${name} is set by the response body, not as a header`,
+    );
+  });
 
   if (endpoint.requestBody && !methodAllowsBody(endpoint.method)) {
     ctx.addIssue({
@@ -421,6 +448,7 @@ export function schemasOfEndpoint(
     schemas.push(["requestBody.schema", endpoint.requestBody.schema]);
   }
   endpoint.responses.forEach((response, index) => {
+    schemas.push([`responses.${index}.headers`, response.headers]);
     if (response.body) {
       schemas.push([`responses.${index}.body.schema`, response.body.schema]);
     }
@@ -452,6 +480,7 @@ export function newResponse(id: string, status: string): EndpointResponse {
     id,
     status,
     description: RESPONSE_DESCRIPTIONS[status] ?? "",
+    headers: EMPTY_OBJECT_SCHEMA,
     body: status === "204" ? null : newBody(),
   };
 }

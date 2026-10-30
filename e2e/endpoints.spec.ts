@@ -132,6 +132,11 @@ test("describes parameters, the request body, and responses", async ({
     created.getByRole("textbox", { name: "Description" }),
   ).toHaveValue("Created");
   await choose(created, "Root type", "Stock");
+  await addField(created, "response 201 headers", "Location");
+  await created.getByRole("checkbox", { name: "Location is required" }).check();
+  await created
+    .getByRole("textbox", { name: "Description of Location" })
+    .fill("Where the new item lives");
 
   await page.getByRole("button", { name: "Add response" }).click();
   await page.getByRole("menuitem", { name: "409 Conflict" }).click();
@@ -153,9 +158,24 @@ test("describes parameters, the request body, and responses", async ({
       {
         status: "201",
         description: "Created",
+        headers: {
+          type: "object",
+          properties: {
+            Location: {
+              type: "string",
+              description: "Where the new item lives",
+            },
+          },
+          required: ["Location"],
+        },
         body: { schema: { $ref: `model:${stock.id}` } },
       },
-      { status: "409", description: "Conflict", body: null },
+      {
+        status: "409",
+        description: "Conflict",
+        headers: { type: "object", properties: {} },
+        body: null,
+      },
     ],
   });
 });

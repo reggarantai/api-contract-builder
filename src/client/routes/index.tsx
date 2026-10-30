@@ -12,7 +12,7 @@ import {
 import { CreateProjectDialog } from "@/features/projects/create-project-dialog";
 import { CreateSampleButton } from "@/features/projects/create-sample-button";
 import { projectsQueryOptions } from "@/features/projects/queries";
-import { formatRelativeTime } from "@/lib/format";
+import { firstParagraph, formatRelativeTime } from "@/lib/format";
 
 export const Route = createFileRoute("/")({
   loader: ({ context }) =>
@@ -73,7 +73,7 @@ function ProjectCard({ project }: { project: ProjectSummary }) {
         <CardHeader>
           <CardTitle className="truncate">{project.name}</CardTitle>
           <CardDescription className="line-clamp-2">
-            {project.description || "No description"}
+            {firstParagraph(project.description) || "No description"}
           </CardDescription>
         </CardHeader>
         <CardFooter className="mt-auto justify-between gap-2 text-xs text-muted-foreground">

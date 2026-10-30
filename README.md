@@ -9,8 +9,9 @@ hand the contract over as **OpenAPI 3.1** for frontend and backend tools and as
 
 - **Pages**: description and acceptance criteria in Markdown, mockup images, and the
   endpoints the page calls, each with a trigger (on load, on submit, on an action).
-- **Endpoints**: parameters, request bodies, responses per status code, named examples,
-  authentication, a status (draft, in review, agreed), and notes for each side.
+- **Endpoints**: parameters, request bodies, responses per status code with their headers,
+  named examples, authentication, a status (draft, in review, agreed), and notes for each
+  side.
 - **Models**: reusable schemas, edited with a field builder or as JSON Schema.
 - **Export**: OpenAPI 3.1 (YAML or JSON) and a Markdown bundle (.zip), for the whole
   project or one page. Contracts are validated before export, and warnings point at
@@ -31,8 +32,10 @@ docker run -d --name api-contract-builder \
 ```
 
 Open <http://127.0.0.1:3000> and choose **Create sample project** to look around a
-finished contract (Login, Registration, Stock list, and Create schedule pages), or start
-your own with **New project**.
+finished contract, or start your own with **New project**. The sample is an inventory app
+with sign-in, registration, password reset, and stock pages, written the way a production
+API would be: problem details for errors, paged lists, refresh tokens in a cookie, and
+idempotent creates.
 
 The port is published on `127.0.0.1` only, so the app is reachable from your machine and
 nowhere else. With Docker Compose: `docker compose up -d --build`.
@@ -49,9 +52,10 @@ The **Export** tab downloads the contract for the whole project or for one page.
 
   ```bash
   npx @stoplight/prism-cli mock inventory-app.openapi.yaml
-  curl -H "Authorization: Bearer x" http://127.0.0.1:4010/stocks
-  curl -X DELETE -H "Authorization: Bearer x" -H "Prefer: code=404" http://127.0.0.1:4010/stocks/SKU-999
-  curl -H "Authorization: Bearer x" -H "Prefer: example=empty" http://127.0.0.1:4010/stocks
+  curl -H "Authorization: Bearer x" http://127.0.0.1:4010/stock-items
+  curl -H "Authorization: Bearer x" -H "Prefer: example=empty" http://127.0.0.1:4010/stock-items
+  curl -X DELETE -H "Authorization: Bearer x" -H "Prefer: code=409" \
+    http://127.0.0.1:4010/stock-items/1e3a5c7e-9b2d-4f6a-8c0e-3b5d7f9a1c2e
   ```
 
 - Generate types or a client, for example with

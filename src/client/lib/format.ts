@@ -21,3 +21,14 @@ export function formatRelativeTime(isoDate: string, now = Date.now()) {
   }
   return "just now";
 }
+
+/** The first paragraph of Markdown as plain text, for short previews. */
+export function firstParagraph(markdown: string) {
+  const [first = ""] = markdown.trim().split(/\n\s*\n/);
+  return first
+    .replace(/^#+\s+/, "")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\*\*|__|`/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}

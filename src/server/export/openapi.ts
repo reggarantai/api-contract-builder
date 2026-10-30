@@ -3,6 +3,7 @@ import Ajv2020 from "ajv/dist/2020.js";
 import {
   type Endpoint,
   type EndpointBody,
+  type EndpointResponse,
   type EndpointStatus,
   endpointLabel,
   HTTP_METHODS,
@@ -200,30 +201,52 @@ export function buildOpenApi(
     return { [body.contentType]: media };
   }
 
-  function parameters(endpoint: Endpoint) {
-    return PARAMETER_LOCATIONS.flatMap((location: ParameterLocation) => {
-      const schema = endpoint.parameters[location];
-      const properties = isJsonObject(schema.properties)
-        ? schema.properties
-        : {};
-      const required = Array.isArray(schema.required) ? schema.required : [];
-      return Object.entries(properties).map(([name, property]) => {
-        const { description, ...rest } = isJsonObject(property) ? property : {};
-        const parameter: JsonSchema = { name, in: location };
-        if (location === "path" || required.includes(name)) {
-          parameter.required = true;
-        }
-        if (typeof description === "string" && description) {
-          parameter.description = description;
-        }
-        parameter.schema = toRefs(
-          typeof description === "string" || description === undefined
-            ? rest
-            : { ...rest, description },
-        );
-        return parameter;
-      });
+  /**
+   * One parameter or header object per property of an object schema, with
+   * the property's description moved out of its schema.
+   */
+  function fieldObjects(
+    schema: JsonSchema,
+    alwaysRequired = false,
+  ): [string, JsonSchema][] {
+    const properties = isJsonObject(schema.properties) ? schema.properties : {};
+    const required = Array.isArray(schema.required) ? schema.required : [];
+    return Object.entries(properties).map(([name, property]) => {
+      const { description, ...rest } = isJsonObject(property) ? property : {};
+      const field: JsonSchema = {};
+      if (alwaysRequired || required.includes(name)) {
+        field.required = true;
+      }
+      if (typeof description === "string" && description) {
+        field.description = description;
+      }
+      field.schema = toRefs(
+        typeof description === "string" || description === undefined
+          ? rest
+          : { ...rest, description },
+      );
+      return [name, field];
     });
+  }
+
+  function parameters(endpoint: Endpoint) {
+    return PARAMETER_LOCATIONS.flatMap((location: ParameterLocation) =>
+      fieldObjects(endpoint.parameters[location], location === "path").map(
+        ([name, field]) => ({ name, in: location, ...field }),
+      ),
+    );
+  }
+
+  function response(response: EndpointResponse): JsonSchema {
+    const object: JsonSchema = { description: response.description };
+    const headers = fieldObjects(response.headers);
+    if (headers.length > 0) {
+      object.headers = Object.fromEntries(headers);
+    }
+    if (response.body) {
+      object.content = content(response.body);
+    }
+    return object;
   }
 
   function operation(endpoint: Endpoint): Operation {
@@ -262,15 +285,7 @@ export function buildOpenApi(
       };
     }
     op.responses = Object.fromEntries(
-      endpoint.responses.map((response): [string, JsonSchema] => [
-        response.status,
-        response.body
-          ? {
-              description: response.description,
-              content: content(response.body),
-            }
-          : { description: response.description },
-      ]),
+      endpoint.responses.map((item) => [item.status, response(item)]),
     );
     op["x-status"] = endpoint.status;
     if (endpoint.notesFe) op["x-notes-fe"] = endpoint.notesFe;
@@ -452,14 +467,17 @@ function formatErrors(prefix: string, errors: AjvError[], separator = " ") {
 }
 
 function schemaLabel(endpoint: Endpoint, fieldPath: string) {
-  const [first, second] = fieldPath.split(".");
+  const [first, second, third] = fieldPath.split(".");
   if (first === "parameters") {
     return `${second} parameters`;
   }
   if (first === "requestBody") {
     return "request body";
   }
-  return `${endpoint.responses[Number(second)]?.status ?? "?"} response`;
+  const status = endpoint.responses[Number(second)]?.status ?? "?";
+  return third === "headers"
+    ? `${status} response headers`
+    : `${status} response`;
 }
 
 /**

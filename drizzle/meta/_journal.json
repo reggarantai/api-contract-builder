@@ -36,6 +36,13 @@
       "when": 1793340490067,
       "tag": "0004_pages",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1793355042156,
+      "tag": "0005_response_headers",
+      "breakpoints": true
     }
   ]
 }

@@ -65,7 +65,11 @@ git diff test/golden
 ### The sample project
 
 `src/server/samples/inventory.ts` builds the sample through the API, so it doubles as the
-fixture for export tests. Its mockups are rendered from HTML by
+fixture for export tests. It's meant to show a production contract: the conventions in its
+project description are checked on every operation by `src/server/routes/samples.test.ts`,
+so a new endpoint that breaks one fails there, and
+`src/client/features/schema-editor/sample-schemas.test.ts` checks that the builder can edit
+every schema in it. Its mockups are rendered from HTML by
 `scripts/render-sample-mockups.ts` into `samples/mockups/`:
 
 ```bash

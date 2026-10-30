@@ -22,7 +22,17 @@ test("creates the sample project from the empty state", async ({ page }) => {
   await projectTab(page, "Pages").click();
   await expect(
     page.getByRole("list", { name: "Pages" }).getByRole("link"),
-  ).toHaveText(["Login", "Registration", "Stock list", "Create schedule"]);
+  ).toHaveText([
+    "Login",
+    "Registration",
+    "Verify email",
+    "Forgot password",
+    "Reset password",
+    "App shell",
+    "Stock list",
+    "Stock item",
+    "Add or edit stock item",
+  ]);
 });
 
 test("offers the sample next to existing projects too", async ({
@@ -44,9 +54,7 @@ test("the sample exports right away", async ({ page, request }) => {
   await page.goto(`/projects/${project.id}/export`);
 
   await expect(page.getByText("Valid OpenAPI 3.1")).toBeVisible();
-  await expect(
-    page.getByRole("region", { name: "Warnings" }).getByRole("listitem"),
-  ).toHaveCount(2);
+  await expect(page.getByText("No warnings")).toBeVisible();
 
   const started = page.waitForEvent("download");
   await page.getByRole("link", { name: "Download Markdown" }).click();
@@ -59,7 +67,7 @@ test("the sample exports right away", async ({ page, request }) => {
       `${project.slug}/pages/login.md`,
       `${project.slug}/pages/registration.md`,
       `${project.slug}/pages/stock-list.md`,
-      `${project.slug}/pages/create-schedule.md`,
+      `${project.slug}/pages/stock-item.md`,
       `${project.slug}/images/login/01-login-form.png`,
       `${project.slug}/${project.slug}.openapi.yaml`,
     ]),

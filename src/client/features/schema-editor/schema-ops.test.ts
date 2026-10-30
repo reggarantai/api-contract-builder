@@ -206,6 +206,15 @@ describe("summarizeNode", () => {
       summarizeNode({ type: "array", minItems: 1, uniqueItems: true }),
     ).toEqual(["≥ 1 items", "unique"]);
   });
+
+  it("counts allowed values, and shows a single one", () => {
+    expect(summarizeNode({ type: "string", enum: ["a", "b"] })).toEqual([
+      "2 values",
+    ]);
+    expect(summarizeNode({ type: "string", enum: ["no-store"] })).toEqual([
+      "always no-store",
+    ]);
+  });
 });
 
 describe("builder ↔ JSON round trip", () => {

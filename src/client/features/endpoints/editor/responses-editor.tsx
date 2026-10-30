@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { SchemaEditor } from "../../schema-editor/schema-editor";
 import { BodyEditor } from "./body-editor";
 import { EditorSection } from "./editor-section";
 import { bodyErrorsAt, errorAt } from "./form-errors";
@@ -196,6 +197,24 @@ function ResponseItem({
             <Trash2Icon />
           </Button>
         </div>
+      </div>
+      <div className="grid gap-2">
+        <h4 className="text-sm font-medium">Headers</h4>
+        <Controller
+          control={form.control}
+          name={`responses.${index}.headers`}
+          render={({ field }) => (
+            <SchemaEditor
+              variant="fields"
+              value={field.value}
+              onChange={field.onChange}
+              models={models}
+              ownerName={`response ${response.status} headers`}
+              emptyText="No headers."
+            />
+          )}
+        />
+        <FieldError>{errorAt(errors, `responses.${index}.headers`)}</FieldError>
       </div>
       <Controller
         control={form.control}

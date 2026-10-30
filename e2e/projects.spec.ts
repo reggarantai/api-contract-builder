@@ -136,6 +136,31 @@ test("shows servers and authentication on the overview", async ({
   await expect(page.getByText("X-API-Key header")).toBeVisible();
 });
 
+test("renders the description as Markdown, and its first paragraph on the card", async ({
+  page,
+  request,
+}) => {
+  const name = uniqueName("Described");
+  const project = await createProject(request, name, {
+    description:
+      "Stock tracking for the warehouse.\n\n- **Errors** are problem details\n- Times are UTC",
+  });
+
+  await page.goto(`/projects/${project.id}`);
+
+  const description = page.getByRole("region", { name: "Description" });
+  await expect(description.getByRole("listitem")).toHaveText([
+    "Errors are problem details",
+    "Times are UTC",
+  ]);
+  await expect(description.locator("strong")).toHaveText("Errors");
+
+  await page.goto("/");
+  const card = page.getByRole("link", { name: new RegExp(name) });
+  await expect(card).toContainText("Stock tracking for the warehouse.");
+  await expect(card).not.toContainText("Errors");
+});
+
 test("shows a slug conflict from the server on the field", async ({
   page,
   request,

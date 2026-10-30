@@ -4,13 +4,14 @@ Part of [Inventory App](../README.md).
 
 ## Description
 
-Users sign in with their email and password.
+Everyone who works with stock signs in here. Links to Registration and Forgot password.
 
 ## Acceptance criteria
 
-- [ ] A wrong password shows the error from the API above the form
-- [ ] The email stays filled in after an error
-- [ ] A locked account sees when it can try again
+- [ ] A wrong email or password shows the error above the form, and the email stays filled in
+- [ ] An account that isn't verified yet sees a button to send a new verification email
+- [ ] After too many attempts, the button stays disabled until the time from `Retry-After` has passed
+- [ ] After signing in, the user lands on the page they asked for (only paths within this app), or on Stock list
 
 ## Mockups
 
@@ -18,73 +19,26 @@ Users sign in with their email and password.
 
 _Sign-in form_
 
-![Wrong password](../images/login/02-login-error.png)
+![Wrong email or password](../images/login/02-login-error.png)
 
-_Wrong password_
+_Wrong email or password_
 
 ## Endpoints
 
 | When | Method | Path | Summary | Status |
 | --- | --- | --- | --- | --- |
-| When the page loads — Skip the page when already signed in | `GET` | [`/me`](#get-me) | Current user | Agreed |
-| On form submit — Show errors inline | `POST` | [`/auth/login`](#post-authlogin) | Sign in | Agreed |
-
-### GET /me
-
-Current user
-
-- **When:** When the page loads — Skip the page when already signed in
-- **Status:** Agreed
-- **Authentication:** bearerAuth (project default)
-
-#### Responses
-
-##### 200 OK
-
-`application/json` — [User](../models.md#user)
-
-| Field | Type | Required | Description | Rules |
-| --- | --- | --- | --- | --- |
-| `id` | string (uuid) | Yes |  |  |
-| `name` | string | Yes |  |  |
-| `email` | string (email) | Yes |  |  |
-
-Example `ana`:
-
-```json
-{
-  "id": "0b5c2d4e-8f1a-4b3c-9d2e-7a6f5e4d3c2b",
-  "name": "Ana Lima",
-  "email": "ana@example.com"
-}
-```
-
-##### 401 Unauthorized
-
-`application/json` — [Error](../models.md#error)
-
-| Field | Type | Required | Description | Rules |
-| --- | --- | --- | --- | --- |
-| `message` | string | Yes |  |  |
-| `code` | string |  | Stable code to branch on, e.g. ACCOUNT_LOCKED |  |
-
-Example `signed-out`:
-
-```json
-{
-  "message": "Sign in first."
-}
-```
+| On form submit | `POST` | [`/auth/login`](#post-authlogin) | Sign in | Agreed |
+| On a user action — When the email isn't verified yet | `POST` | [`/auth/verify-email/resend`](#post-authverify-emailresend) | Send a new verification email | In review |
 
 ### POST /auth/login
 
 Sign in
 
-- **When:** On form submit — Show errors inline
+- **When:** On form submit
 - **Status:** Agreed
 - **Authentication:** None (public)
 
-After 5 wrong passwords in a row the account is locked for 15 minutes.
+Returns an access token and sets the refresh token cookie. A session lasts 12 hours, or 30 days with `remember`, from sign-in; refreshing doesn't make it longer. Wrong credentials answer 400, not 401: a 401 always means the access token is missing or expired.
 
 #### Request body
 
@@ -94,16 +48,16 @@ Required.
 
 | Field | Type | Required | Description | Rules |
 | --- | --- | --- | --- | --- |
-| `email` | string (email) | Yes |  |  |
-| `password` | string (password) | Yes |  | at least 8 characters |
-| `remember` | boolean |  | Keep the session for 30 days |  |
+| `email` | string (email) | Yes |  | at most 254 characters |
+| `password` | string (password) | Yes |  | at most 128 characters |
+| `remember` | boolean |  | Keep the session for 30 days instead of 12 hours |  |
 
 Example `valid`:
 
 ```json
 {
   "email": "ana@example.com",
-  "password": "correct-horse",
+  "password": "correct-horse-battery",
   "remember": true
 }
 ```
@@ -112,63 +66,227 @@ Example `valid`:
 
 ##### 200 OK
 
-`application/json` — object
+| Header | Type | Required | Description | Rules | Example |
+| --- | --- | --- | --- | --- | --- |
+| `Set-Cookie` | string | Yes | The refresh token. With `remember`, `Max-Age` keeps it for the session's 30 days; without, it's a browser-session cookie. |  | `refresh_token=rt_5Jx2mQ9vL0aR; HttpOnly; Secure; SameSite=Strict; Path=/v1/auth; Max-Age=2592000` |
+| `Cache-Control` | string | Yes | Tokens must never be stored by a cache (RFC 6749) | always `no-store` |  |
+
+`application/json` — [Session](../models.md#session)
 
 | Field | Type | Required | Description | Rules |
 | --- | --- | --- | --- | --- |
-| `token` | string | Yes |  |  |
-| `user` | [User](../models.md#user) | Yes |  |  |
-| `user.id` | string (uuid) | Yes |  |  |
-| `user.name` | string | Yes |  |  |
-| `user.email` | string (email) | Yes |  |  |
+| `accessToken` | string | Yes | Send as `Authorization: Bearer <token>`. Keep it in memory only. |  |
+| `tokenType` | string | Yes |  | always `Bearer` |
+| `expiresIn` | integer | Yes | Seconds until the access token expires | ≥ 1 |
 
 Example `signed-in`:
 
 ```json
 {
-  "token": "eyJhbGciOi...",
-  "user": {
-    "id": "0b5c2d4e-8f1a-4b3c-9d2e-7a6f5e4d3c2b",
-    "name": "Ana Lima",
-    "email": "ana@example.com"
-  }
+  "accessToken": "eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiIwYjVjMmQ0ZSJ9.c2ln",
+  "tokenType": "Bearer",
+  "expiresIn": 900
 }
 ```
 
-##### 401 Unauthorized
+##### 400 Bad Request
 
-`application/json` — [Error](../models.md#error)
+`application/problem+json` — [Problem](../models.md#problem)
 
 | Field | Type | Required | Description | Rules |
 | --- | --- | --- | --- | --- |
-| `message` | string | Yes |  |  |
-| `code` | string |  | Stable code to branch on, e.g. ACCOUNT_LOCKED |  |
+| `type` | string (uri) | Yes | Identifies the kind of problem. It's stable: branch on it. |  |
+| `title` | string | Yes | Short summary of the kind of problem |  |
+| `status` | integer | Yes | The HTTP status code | 400–599 |
+| `detail` | string |  | What went wrong this time, in words for people |  |
+| `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
 Example `wrong-password`:
 
 ```json
 {
-  "message": "Email or password is wrong. 4 attempts left.",
-  "code": "WRONG_PASSWORD"
+  "type": "https://api.inventory.example/problems/invalid-credentials",
+  "title": "Invalid credentials",
+  "status": 400,
+  "detail": "Email or password is wrong."
 }
 ```
 
-##### 423 Account locked
+##### 403 Forbidden
 
-`application/json` — [Error](../models.md#error)
+`application/problem+json` — [Problem](../models.md#problem)
 
 | Field | Type | Required | Description | Rules |
 | --- | --- | --- | --- | --- |
-| `message` | string | Yes |  |  |
-| `code` | string |  | Stable code to branch on, e.g. ACCOUNT_LOCKED |  |
+| `type` | string (uri) | Yes | Identifies the kind of problem. It's stable: branch on it. |  |
+| `title` | string | Yes | Short summary of the kind of problem |  |
+| `status` | integer | Yes | The HTTP status code | 400–599 |
+| `detail` | string |  | What went wrong this time, in words for people |  |
+| `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `locked`:
+Example `not-verified`:
 
 ```json
 {
-  "message": "Too many attempts. Try again in 15 minutes.",
-  "code": "ACCOUNT_LOCKED"
+  "type": "https://api.inventory.example/problems/email-not-verified",
+  "title": "Email not verified",
+  "status": 403,
+  "detail": "Verify your email address first. We sent a link to budi@example.com."
 }
 ```
 
-**Notes for frontend:** Keep the email after an error.
+##### 422 Unprocessable Content
+
+`application/problem+json` — [ValidationProblem](../models.md#validationproblem)
+
+| Field | Type | Required | Description | Rules |
+| --- | --- | --- | --- | --- |
+| `type` | string (uri) | Yes | Identifies the kind of problem. It's stable: branch on it. |  |
+| `title` | string | Yes | Short summary of the kind of problem |  |
+| `status` | integer | Yes | The HTTP status code | 400–599 |
+| `detail` | string |  | What went wrong this time, in words for people |  |
+| `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
+| `errors` | array of object | Yes | One entry per invalid field | at least 1 item |
+| `errors[].pointer` | string | Yes | JSON Pointer (RFC 6901) to the field in the request body, as a URI fragment like `#/email` |  |
+| `errors[].detail` | string | Yes | What's wrong with it |  |
+
+Example `invalid-email`:
+
+```json
+{
+  "type": "https://api.inventory.example/problems/validation-failed",
+  "title": "Validation failed",
+  "status": 422,
+  "detail": "Some fields are invalid.",
+  "errors": [
+    {
+      "pointer": "#/email",
+      "detail": "Enter an email address."
+    }
+  ]
+}
+```
+
+##### 429 Too Many Requests
+
+| Header | Type | Required | Description | Rules | Example |
+| --- | --- | --- | --- | --- | --- |
+| `Retry-After` | integer | Yes | Seconds to wait before trying again | ≥ 1 | `900` |
+
+`application/problem+json` — [Problem](../models.md#problem)
+
+| Field | Type | Required | Description | Rules |
+| --- | --- | --- | --- | --- |
+| `type` | string (uri) | Yes | Identifies the kind of problem. It's stable: branch on it. |  |
+| `title` | string | Yes | Short summary of the kind of problem |  |
+| `status` | integer | Yes | The HTTP status code | 400–599 |
+| `detail` | string |  | What went wrong this time, in words for people |  |
+| `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
+
+Example `too-many-attempts`:
+
+```json
+{
+  "type": "https://api.inventory.example/problems/too-many-attempts",
+  "title": "Too many attempts",
+  "status": 429,
+  "detail": "Too many sign-in attempts. Try again in 15 minutes."
+}
+```
+
+**Notes for frontend:** Keep the access token in memory, not in localStorage. Send API requests with `credentials: 'include'` so the browser keeps the cookie.
+
+**Notes for backend:** Answer 400 for unknown emails too, and hash the password for them as well, so neither the answer nor its timing shows who has an account. Answer 403 only once the password matched. Throttle failed attempts per email and per IP address, unknown emails included, instead of locking accounts: a lock would let anyone lock a colleague out.
+
+### POST /auth/verify-email/resend
+
+Send a new verification email
+
+- **When:** On a user action — When the email isn't verified yet
+- **Status:** In review
+- **Authentication:** None (public)
+
+Always answers 202, so it doesn't show which emails have accounts. An account that's already verified gets an email saying so, with a link to sign in; an unknown email gets nothing.
+
+#### Request body
+
+Required.
+
+`application/json` — object
+
+| Field | Type | Required | Description | Rules |
+| --- | --- | --- | --- | --- |
+| `email` | string (email) | Yes |  | at most 254 characters |
+
+Example `email`:
+
+```json
+{
+  "email": "budi@example.com"
+}
+```
+
+#### Responses
+
+##### 202 Accepted
+
+No body.
+
+##### 422 Unprocessable Content
+
+`application/problem+json` — [ValidationProblem](../models.md#validationproblem)
+
+| Field | Type | Required | Description | Rules |
+| --- | --- | --- | --- | --- |
+| `type` | string (uri) | Yes | Identifies the kind of problem. It's stable: branch on it. |  |
+| `title` | string | Yes | Short summary of the kind of problem |  |
+| `status` | integer | Yes | The HTTP status code | 400–599 |
+| `detail` | string |  | What went wrong this time, in words for people |  |
+| `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
+| `errors` | array of object | Yes | One entry per invalid field | at least 1 item |
+| `errors[].pointer` | string | Yes | JSON Pointer (RFC 6901) to the field in the request body, as a URI fragment like `#/email` |  |
+| `errors[].detail` | string | Yes | What's wrong with it |  |
+
+Example `invalid-email`:
+
+```json
+{
+  "type": "https://api.inventory.example/problems/validation-failed",
+  "title": "Validation failed",
+  "status": 422,
+  "detail": "Some fields are invalid.",
+  "errors": [
+    {
+      "pointer": "#/email",
+      "detail": "Enter an email address."
+    }
+  ]
+}
+```
+
+##### 429 Too Many Requests
+
+| Header | Type | Required | Description | Rules | Example |
+| --- | --- | --- | --- | --- | --- |
+| `Retry-After` | integer | Yes | Seconds to wait before trying again | ≥ 1 | `60` |
+
+`application/problem+json` — [Problem](../models.md#problem)
+
+| Field | Type | Required | Description | Rules |
+| --- | --- | --- | --- | --- |
+| `type` | string (uri) | Yes | Identifies the kind of problem. It's stable: branch on it. |  |
+| `title` | string | Yes | Short summary of the kind of problem |  |
+| `status` | integer | Yes | The HTTP status code | 400–599 |
+| `detail` | string |  | What went wrong this time, in words for people |  |
+| `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
+
+Example `too-many-requests`:
+
+```json
+{
+  "type": "https://api.inventory.example/problems/too-many-requests",
+  "title": "Too many requests",
+  "status": 429,
+  "detail": "Wait a minute before asking for another email."
+}
+```

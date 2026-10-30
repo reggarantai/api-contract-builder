@@ -1,30 +1,123 @@
 openapi: 3.1.0
 info:
   title: Inventory App
-  version: 1.2.0
-  description: Stock and warehouse API.
+  version: 1.0.0
+  description: |-
+    Stock tracking for the warehouse team: accounts and sign-in, stock items, and stock movements.
+
+    Every endpoint follows these conventions:
+
+    - **Errors** are problem details ([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)) in `application/problem+json`; branch on `type`. 400 means invalid query or header parameters, 422 invalid body fields (listed in `errors`), and 404 an unknown or deleted ID. Other errors, like 415 or 500, are problem details too.
+    - **Authentication**: send `Authorization: Bearer <access token>`. A 401 means the token is missing or expired: refresh once with `POST /auth/refresh`, then retry. If refreshing answers 401, sign in again.
+    - **Paged lists** return `{ data, meta }` and take `page` and `pageSize`. Short lists return `{ data }`.
+    - **Creates** take an `Idempotency-Key` header, so a retry never creates something twice.
+    - **Requests** send JSON. PATCH sends a JSON Merge Patch (`application/merge-patch+json`).
+    - **Responses** send `Cache-Control: no-store`.
+    - **CORS** allows only the app's origin, with credentials. It exposes `Location` and `Retry-After` to scripts, and allows the `Idempotency-Key` request header.
+    - **Times** are UTC, in RFC 3339 format.
 servers:
   - url: https://api.inventory.example/v1
     description: Production
-  - url: https://staging.inventory.example/v1
-    description: Staging — Reset every night
+  - url: https://api.inventory-staging.example/v1
+    description: Staging — Reset every night. A separate site, so cookies never cross between staging and production.
 tags:
   - name: Login
-    description: Users sign in with their email and password.
+    description: Everyone who works with stock signs in here. Links to Registration and Forgot password.
   - name: Registration
-    description: New users create an account with their work email.
+    description: New staff create an account with their work email.
+  - name: Verify email
+    description: "Opens from the link in the verification email: `/verify-email?token=…`."
+  - name: Forgot password
+    description: Sends a link to set a new password.
+  - name: Reset password
+    description: "Opens from the link in the reset email: `/reset-password?token=…`."
+  - name: App shell
+    description: "The layout around every signed-in page: navigation, the user menu, and keeping the session alive. It isn't a screen of its own, but its calls happen on every page."
   - name: Stock list
-    description: All items with their quantity. Items with no stock are highlighted.
-  - name: Create schedule
-    description: Plans recurring restock deliveries from a supplier.
+    description: All stock items, with search, filters, and pages. Items low on stock or out of stock stand out.
+  - name: Stock item
+    description: One item, with its movement history. The warehouse records deliveries, issues, and stock counts here.
+  - name: Add or edit stock item
+    description: "One form for both: `/stock-items/new` adds an item and `/stock-items/{id}/edit` changes one. The quantity isn't on the form: new items start at 0, and movements change it."
 security:
   - bearerAuth: []
 paths:
+  /auth/forgot-password:
+    post:
+      operationId: postAuthForgotPassword
+      summary: Email a password reset link
+      description: The link works once, for 1 hour. Always answers 202, so it doesn't show which emails have accounts.
+      tags:
+        - Forgot password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                  maxLength: 254
+              required:
+                - email
+            examples:
+              email:
+                value:
+                  email: ana@example.com
+      responses:
+        "202":
+          description: Accepted
+        "422":
+          description: Unprocessable Content
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ValidationProblem"
+              examples:
+                invalid-email:
+                  value:
+                    type: https://api.inventory.example/problems/validation-failed
+                    title: Validation failed
+                    status: 422
+                    detail: Some fields are invalid.
+                    errors:
+                      - pointer: "#/email"
+                        detail: Enter an email address.
+        "429":
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              required: true
+              description: Seconds to wait before trying again
+              schema:
+                type: integer
+                minimum: 1
+                examples:
+                  - 60
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                too-many-requests:
+                  value:
+                    type: https://api.inventory.example/problems/too-many-requests
+                    title: Too many requests
+                    status: 429
+                    detail: Wait a minute before asking for another email.
+      x-status: draft
+      x-pages:
+        - page: Forgot password
+          slug: forgot-password
+          trigger: on_submit
   /auth/login:
     post:
       operationId: postAuthLogin
       summary: Sign in
-      description: After 5 wrong passwords in a row the account is locked for 15 minutes.
+      description: "Returns an access token and sets the refresh token cookie. A session lasts 12 hours, or 30 days with `remember`, from sign-in; refreshing doesn't make it longer. Wrong credentials answer 400, not 401: a 401 always means the access token is missing or expired."
       tags:
         - Login
       security: []
@@ -34,82 +127,228 @@ paths:
           application/json:
             schema:
               type: object
-              required:
-                - email
-                - password
               properties:
                 email:
                   type: string
                   format: email
+                  maxLength: 254
                 password:
                   type: string
                   format: password
-                  minLength: 8
+                  maxLength: 128
                 remember:
                   type: boolean
-                  description: Keep the session for 30 days
+                  description: Keep the session for 30 days instead of 12 hours
+              required:
+                - email
+                - password
             examples:
               valid:
                 value:
                   email: ana@example.com
-                  password: correct-horse
+                  password: correct-horse-battery
                   remember: true
       responses:
         "200":
           description: OK
+          headers:
+            Set-Cookie:
+              required: true
+              description: The refresh token. With `remember`, `Max-Age` keeps it for the session's 30 days; without, it's a browser-session cookie.
+              schema:
+                type: string
+                examples:
+                  - refresh_token=rt_5Jx2mQ9vL0aR; HttpOnly; Secure; SameSite=Strict; Path=/v1/auth; Max-Age=2592000
+            Cache-Control:
+              required: true
+              description: Tokens must never be stored by a cache (RFC 6749)
+              schema:
+                type: string
+                enum:
+                  - no-store
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - token
-                  - user
-                properties:
-                  token:
-                    type: string
-                  user:
-                    $ref: "#/components/schemas/User"
+                $ref: "#/components/schemas/Session"
               examples:
                 signed-in:
                   value:
-                    token: eyJhbGciOi...
-                    user:
-                      id: 0b5c2d4e-8f1a-4b3c-9d2e-7a6f5e4d3c2b
-                      name: Ana Lima
-                      email: ana@example.com
-        "401":
-          description: Unauthorized
+                    accessToken: eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiIwYjVjMmQ0ZSJ9.c2ln
+                    tokenType: Bearer
+                    expiresIn: 900
+        "400":
+          description: Bad Request
           content:
-            application/json:
+            application/problem+json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: "#/components/schemas/Problem"
               examples:
                 wrong-password:
                   value:
-                    message: Email or password is wrong. 4 attempts left.
-                    code: WRONG_PASSWORD
-        "423":
-          description: Account locked
+                    type: https://api.inventory.example/problems/invalid-credentials
+                    title: Invalid credentials
+                    status: 400
+                    detail: Email or password is wrong.
+        "403":
+          description: Forbidden
           content:
-            application/json:
+            application/problem+json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: "#/components/schemas/Problem"
               examples:
-                locked:
+                not-verified:
                   value:
-                    message: Too many attempts. Try again in 15 minutes.
-                    code: ACCOUNT_LOCKED
+                    type: https://api.inventory.example/problems/email-not-verified
+                    title: Email not verified
+                    status: 403
+                    detail: Verify your email address first. We sent a link to budi@example.com.
+        "422":
+          description: Unprocessable Content
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ValidationProblem"
+              examples:
+                invalid-email:
+                  value:
+                    type: https://api.inventory.example/problems/validation-failed
+                    title: Validation failed
+                    status: 422
+                    detail: Some fields are invalid.
+                    errors:
+                      - pointer: "#/email"
+                        detail: Enter an email address.
+        "429":
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              required: true
+              description: Seconds to wait before trying again
+              schema:
+                type: integer
+                minimum: 1
+                examples:
+                  - 900
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                too-many-attempts:
+                  value:
+                    type: https://api.inventory.example/problems/too-many-attempts
+                    title: Too many attempts
+                    status: 429
+                    detail: Too many sign-in attempts. Try again in 15 minutes.
       x-status: agreed
-      x-notes-fe: Keep the email after an error.
+      x-notes-fe: "Keep the access token in memory, not in localStorage. Send API requests with `credentials: 'include'` so the browser keeps the cookie."
+      x-notes-be: "Answer 400 for unknown emails too, and hash the password for them as well, so neither the answer nor its timing shows who has an account. Answer 403 only once the password matched. Throttle failed attempts per email and per IP address, unknown emails included, instead of locking accounts: a lock would let anyone lock a colleague out."
       x-pages:
         - page: Login
           slug: login
           trigger: on_submit
-          note: Show errors inline
+  /auth/logout:
+    post:
+      operationId: postAuthLogout
+      summary: Sign out
+      description: Revokes the refresh token in the cookie, if there is one, and clears the cookie. Always answers 204, so signing out can't fail.
+      tags:
+        - App shell
+      security: []
+      responses:
+        "204":
+          description: No Content
+          headers:
+            Set-Cookie:
+              required: true
+              description: Clears the refresh token cookie
+              schema:
+                type: string
+                examples:
+                  - refresh_token=; HttpOnly; Secure; SameSite=Strict; Path=/v1/auth; Max-Age=0
+      x-status: agreed
+      x-notes-fe: The access token works until it expires, so drop it from memory, even if this request fails.
+      x-notes-be: Only revoke when the request's `Origin` is the app.
+      x-pages:
+        - page: App shell
+          slug: app-shell
+          trigger: on_action
+          note: Sign out, in the user menu
+  /auth/refresh:
+    post:
+      operationId: postAuthRefresh
+      summary: Get a new access token
+      description: Exchanges the refresh token cookie for a new access token, and replaces the cookie. The session still ends 12 hours, or 30 days, after sign-in.
+      tags:
+        - App shell
+      security:
+        - refreshCookie: []
+      responses:
+        "200":
+          description: OK
+          headers:
+            Set-Cookie:
+              required: true
+              description: The new refresh token, with the same attributes. `Max-Age`, if set, is the time left in the session.
+              schema:
+                type: string
+                examples:
+                  - refresh_token=rt_8Kd3nW1pZ7bT; HttpOnly; Secure; SameSite=Strict; Path=/v1/auth; Max-Age=2505600
+            Cache-Control:
+              required: true
+              description: Tokens must never be stored by a cache (RFC 6749)
+              schema:
+                type: string
+                enum:
+                  - no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+              examples:
+                refreshed:
+                  value:
+                    accessToken: eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiIwYjVjMmQ0ZSJ9.bmV3
+                    tokenType: Bearer
+                    expiresIn: 900
+        "401":
+          description: Unauthorized
+          headers:
+            Set-Cookie:
+              required: true
+              description: Clears the refresh token cookie
+              schema:
+                type: string
+                examples:
+                  - refresh_token=; HttpOnly; Secure; SameSite=Strict; Path=/v1/auth; Max-Age=0
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                session-expired:
+                  value:
+                    type: https://api.inventory.example/problems/session-expired
+                    title: Session expired
+                    status: 401
+                    detail: Sign in again.
+      x-status: agreed
+      x-notes-fe: "Call it directly, not through the code that refreshes on 401. Run one refresh at a time, across tabs too (e.g. with the Web Locks API): requests that get a 401 meanwhile wait for it, then retry once."
+      x-notes-be: Rotate the refresh token on every use. Accept the previous token for 30 seconds after it's replaced, since tabs can refresh at the same moment; after that, a reused token was probably stolen, so revoke every session of the user. Only accept requests whose `Origin` is the app.
+      x-pages:
+        - page: App shell
+          slug: app-shell
+          trigger: on_load
+          note: When there's no access token in memory yet, e.g. after a reload
+        - page: App shell
+          slug: app-shell
+          trigger: other
+          note: A minute before the access token expires, or once after a 401
   /auth/register:
     post:
       operationId: postAuthRegister
       summary: Create an account
+      description: Always answers 202, whether or not the email has an account, so it doesn't show who has one. A new account gets a link to verify the address. An existing account gets an email saying so, with links to sign in and to reset the password; an unverified one gets a new link.
       tags:
         - Registration
       security: []
@@ -119,10 +358,6 @@ paths:
           application/json:
             schema:
               type: object
-              required:
-                - name
-                - email
-                - password
               properties:
                 name:
                   type: string
@@ -131,52 +366,307 @@ paths:
                 email:
                   type: string
                   format: email
+                  maxLength: 254
                 password:
                   type: string
                   format: password
-                  minLength: 8
+                  minLength: 12
+                  maxLength: 128
+                  description: At least 12 characters, and not in known data breaches
+              required:
+                - name
+                - email
+                - password
             examples:
               new-user:
                 value:
-                  name: Ana Lima
-                  email: ana@example.com
-                  password: correct-horse
+                  name: Budi Santoso
+                  email: budi@example.com
+                  password: correct-horse-battery
       responses:
-        "201":
-          description: Created
+        "202":
+          description: Accepted
+        "422":
+          description: Unprocessable Content
           content:
-            application/json:
+            application/problem+json:
               schema:
-                $ref: "#/components/schemas/User"
+                $ref: "#/components/schemas/ValidationProblem"
               examples:
-                created:
+                short-password:
                   value:
-                    id: 0b5c2d4e-8f1a-4b3c-9d2e-7a6f5e4d3c2b
-                    name: Ana Lima
-                    email: ana@example.com
-        "409":
-          description: Conflict
+                    type: https://api.inventory.example/problems/validation-failed
+                    title: Validation failed
+                    status: 422
+                    detail: Some fields are invalid.
+                    errors:
+                      - pointer: "#/password"
+                        detail: Use at least 12 characters.
+                breached-password:
+                  value:
+                    type: https://api.inventory.example/problems/validation-failed
+                    title: Validation failed
+                    status: 422
+                    detail: Some fields are invalid.
+                    errors:
+                      - pointer: "#/password"
+                        detail: This password appeared in a data breach. Choose another.
+        "429":
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              required: true
+              description: Seconds to wait before trying again
+              schema:
+                type: integer
+                minimum: 1
+                examples:
+                  - 60
           content:
-            application/json:
+            application/problem+json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: "#/components/schemas/Problem"
               examples:
-                email-taken:
+                too-many-requests:
                   value:
-                    message: An account with this email already exists.
-                    code: EMAIL_TAKEN
-      x-status: review
-      x-notes-be: Send a welcome email after creating the account.
+                    type: https://api.inventory.example/problems/too-many-requests
+                    title: Too many requests
+                    status: 429
+                    detail: Wait a minute before asking for another email.
+      x-status: agreed
+      x-notes-be: The verification link works for 24 hours. New accounts get the staff role; admins are promoted outside this app. Check passwords against known breached passwords (NIST SP 800-63B).
       x-pages:
         - page: Registration
           slug: registration
           trigger: on_submit
-  /health:
-    get:
-      operationId: getHealth
-      summary: Health check
-      description: For monitoring. No page uses it and it has no example, so the Export tab warns about both.
+  /auth/reset-password:
+    post:
+      operationId: postAuthResetPassword
+      summary: Set a new password
+      description: "The token comes from the link in the reset email: `/reset-password?token=…`. Ends every session of the user: refresh tokens stop working at once, and access tokens already issued expire within 15 minutes."
+      tags:
+        - Reset password
       security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+                  minLength: 1
+                password:
+                  type: string
+                  format: password
+                  minLength: 12
+                  maxLength: 128
+                  description: At least 12 characters, and not in known data breaches
+              required:
+                - token
+                - password
+            examples:
+              new-password:
+                value:
+                  token: pr_7Tb2vX9kM4
+                  password: staple-battery-horse
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                invalid-link:
+                  value:
+                    type: https://api.inventory.example/problems/invalid-link
+                    title: Invalid or expired link
+                    status: 400
+                    detail: This link is invalid or has expired. Ask for a new one.
+        "422":
+          description: Unprocessable Content
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ValidationProblem"
+              examples:
+                short-password:
+                  value:
+                    type: https://api.inventory.example/problems/validation-failed
+                    title: Validation failed
+                    status: 422
+                    detail: Some fields are invalid.
+                    errors:
+                      - pointer: "#/password"
+                        detail: Use at least 12 characters.
+                breached-password:
+                  value:
+                    type: https://api.inventory.example/problems/validation-failed
+                    title: Validation failed
+                    status: 422
+                    detail: Some fields are invalid.
+                    errors:
+                      - pointer: "#/password"
+                        detail: This password appeared in a data breach. Choose another.
+      x-status: draft
+      x-notes-be: Store reset tokens hashed. Revoke every refresh token of the user.
+      x-pages:
+        - page: Reset password
+          slug: reset-password
+          trigger: on_submit
+          note: Token from the `token` query parameter
+  /auth/verify-email:
+    post:
+      operationId: postAuthVerifyEmail
+      summary: Verify an email address
+      description: "The token comes from the link in the verification email: `/verify-email?token=…`. A link that was already used answers 204 again while its account stays verified, so opening it twice, or an email scanner opening it first, isn't an error."
+      tags:
+        - Verify email
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+                  minLength: 1
+              required:
+                - token
+            examples:
+              from-link:
+                value:
+                  token: ev_3Hq8sK2wN6
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                invalid-link:
+                  value:
+                    type: https://api.inventory.example/problems/invalid-link
+                    title: Invalid or expired link
+                    status: 400
+                    detail: This link is invalid or has expired. Ask for a new one.
+        "422":
+          description: Unprocessable Content
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ValidationProblem"
+              examples:
+                missing-token:
+                  value:
+                    type: https://api.inventory.example/problems/validation-failed
+                    title: Validation failed
+                    status: 422
+                    detail: Some fields are invalid.
+                    errors:
+                      - pointer: "#/token"
+                        detail: Send the token from the link.
+      x-status: review
+      x-notes-be: Store link tokens hashed.
+      x-pages:
+        - page: Verify email
+          slug: verify-email
+          trigger: on_load
+          note: Token from the `token` query parameter
+  /auth/verify-email/resend:
+    post:
+      operationId: postAuthVerifyEmailResend
+      summary: Send a new verification email
+      description: Always answers 202, so it doesn't show which emails have accounts. An account that's already verified gets an email saying so, with a link to sign in; an unknown email gets nothing.
+      tags:
+        - Login
+        - Verify email
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                  maxLength: 254
+              required:
+                - email
+            examples:
+              email:
+                value:
+                  email: budi@example.com
+      responses:
+        "202":
+          description: Accepted
+        "422":
+          description: Unprocessable Content
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ValidationProblem"
+              examples:
+                invalid-email:
+                  value:
+                    type: https://api.inventory.example/problems/validation-failed
+                    title: Validation failed
+                    status: 422
+                    detail: Some fields are invalid.
+                    errors:
+                      - pointer: "#/email"
+                        detail: Enter an email address.
+        "429":
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              required: true
+              description: Seconds to wait before trying again
+              schema:
+                type: integer
+                minimum: 1
+                examples:
+                  - 60
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                too-many-requests:
+                  value:
+                    type: https://api.inventory.example/problems/too-many-requests
+                    title: Too many requests
+                    status: 429
+                    detail: Wait a minute before asking for another email.
+      x-status: review
+      x-pages:
+        - page: Login
+          slug: login
+          trigger: on_action
+          note: When the email isn't verified yet
+        - page: Verify email
+          slug: verify-email
+          trigger: on_submit
+          note: When the link is invalid or expired
+  /categories:
+    get:
+      operationId: getCategories
+      summary: List categories
+      description: All categories, by name. There are few, so there are no pages.
+      tags:
+        - Stock list
+        - Add or edit stock item
       responses:
         "200":
           description: OK
@@ -185,15 +675,65 @@ paths:
               schema:
                 type: object
                 properties:
-                  status:
-                    type: string
-      x-status: draft
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Category"
+                required:
+                  - data
+              examples:
+                three:
+                  value:
+                    data:
+                      - id: c8e2a4b6-3d5f-4a7c-9e1b-2f4d6a8c0e3b
+                        name: Cleaning supplies
+                      - id: 6f1c2b9e-0b7a-4c64-9a8e-2f1d3c4b5a69
+                        name: Packaging
+                      - id: a3d5f7b9-1c2e-4f6a-8b0d-9e7c5a3b1d2f
+                        name: Spare parts
+        "401":
+          description: Unauthorized
+          headers:
+            WWW-Authenticate:
+              required: true
+              description: The Bearer challenge (RFC 6750). It adds `error="invalid_token"` when the token sent is expired or invalid.
+              schema:
+                type: string
+                examples:
+                  - Bearer realm="inventory", error="invalid_token", error_description="The access token expired"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                token-expired:
+                  value:
+                    type: https://api.inventory.example/problems/token-expired
+                    title: Access token expired
+                    status: 401
+                    detail: Refresh the access token and try again.
+                unauthenticated:
+                  value:
+                    type: https://api.inventory.example/problems/unauthenticated
+                    title: Not signed in
+                    status: 401
+                    detail: Send an access token in the Authorization header.
+      x-status: agreed
+      x-pages:
+        - page: Stock list
+          slug: stock-list
+          trigger: on_load
+          note: Category filter
+        - page: Add or edit stock item
+          slug: add-or-edit-stock-item
+          trigger: on_load
+          note: Category select
   /me:
     get:
       operationId: getMe
       summary: Current user
       tags:
-        - Login
+        - App shell
       responses:
         "200":
           description: OK
@@ -207,356 +747,1453 @@ paths:
                     id: 0b5c2d4e-8f1a-4b3c-9d2e-7a6f5e4d3c2b
                     name: Ana Lima
                     email: ana@example.com
+                    role: admin
+                    emailVerified: true
+                    createdAt: 2026-03-02T09:00:00Z
         "401":
           description: Unauthorized
-          content:
-            application/json:
+          headers:
+            WWW-Authenticate:
+              required: true
+              description: The Bearer challenge (RFC 6750). It adds `error="invalid_token"` when the token sent is expired or invalid.
               schema:
-                $ref: "#/components/schemas/Error"
+                type: string
+                examples:
+                  - Bearer realm="inventory", error="invalid_token", error_description="The access token expired"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
               examples:
-                signed-out:
+                token-expired:
                   value:
-                    message: Sign in first.
+                    type: https://api.inventory.example/problems/token-expired
+                    title: Access token expired
+                    status: 401
+                    detail: Refresh the access token and try again.
+                unauthenticated:
+                  value:
+                    type: https://api.inventory.example/problems/unauthenticated
+                    title: Not signed in
+                    status: 401
+                    detail: Send an access token in the Authorization header.
       x-status: agreed
       x-pages:
-        - page: Login
-          slug: login
+        - page: App shell
+          slug: app-shell
           trigger: on_load
-          note: Skip the page when already signed in
-  /schedules:
-    post:
-      operationId: postSchedules
-      summary: Create a restock schedule
-      tags:
-        - Create schedule
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - supplierId
-                - sku
-                - quantity
-                - firstDelivery
-                - repeat
-              properties:
-                supplierId:
-                  type: string
-                  format: uuid
-                sku:
-                  type: string
-                quantity:
-                  type: integer
-                  minimum: 1
-                firstDelivery:
-                  type: string
-                  format: date
-                repeat:
-                  type: string
-                  enum:
-                    - once
-                    - weekly
-                    - monthly
-                note:
-                  type:
-                    - string
-                    - "null"
-                  maxLength: 500
-            examples:
-              weekly:
-                value:
-                  supplierId: 9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b
-                  sku: SKU-002
-                  quantity: 50
-                  firstDelivery: 2026-11-15
-                  repeat: weekly
-                  note: null
-      responses:
-        "201":
-          description: Created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Schedule"
-              examples:
-                created:
-                  value:
-                    id: 4d3c2b1a-0f9e-4d8c-b7a6-5f4e3d2c1b0a
-                    supplierId: 9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b
-                    sku: SKU-002
-                    quantity: 50
-                    firstDelivery: 2026-11-15
-                    repeat: weekly
-                    note: null
-        "422":
-          description: Unprocessable Content
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-              examples:
-                past-date:
-                  value:
-                    message: The first delivery must be in the future.
-                    code: DATE_IN_PAST
-      x-status: draft
-      x-notes-fe: Only offer items whose supplier is set.
-      x-pages:
-        - page: Create schedule
-          slug: create-schedule
-          trigger: on_submit
-  /stocks:
+          note: Name and role for the user menu
+  /stock-items:
     get:
-      operationId: getStocks
+      operationId: getStockItems
       summary: List stock items
       tags:
         - Stock list
-        - Create schedule
       parameters:
+        - name: q
+          in: query
+          description: Matches the SKU or name, ignoring case
+          schema:
+            type: string
+            maxLength: 100
+        - name: categoryId
+          in: query
+          description: Only items in this category. An unknown ID gives an empty list.
+          schema:
+            type: string
+            format: uuid
+        - name: stockStatus
+          in: query
+          description: Only items with this stock status
+          schema:
+            type: string
+            enum:
+              - in_stock
+              - low_stock
+              - out_of_stock
+        - name: sort
+          in: query
+          description: Sort by this field; a leading `-` sorts descending. Ties are broken by `id`, so pages don't overlap.
+          schema:
+            type: string
+            enum:
+              - name
+              - -name
+              - sku
+              - -sku
+              - quantityOnHand
+              - -quantityOnHand
+              - updatedAt
+              - -updatedAt
+            default: name
         - name: page
           in: query
           description: Page number, from 1
           schema:
             type: integer
             minimum: 1
-        - name: category
+            default: 1
+        - name: pageSize
           in: query
-          description: Only items in this category
+          description: Items per page
           schema:
-            type: string
-            format: uuid
-        - name: search
-          in: query
-          description: Matches SKU or name
-          schema:
-            type: string
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Stock"
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/StockItem"
+                  meta:
+                    $ref: "#/components/schemas/PageMeta"
+                required:
+                  - data
+                  - meta
               examples:
-                two-items:
-                  summary: Two items
+                first-page:
+                  summary: Three items
                   value:
-                    - sku: SKU-001
-                      name: Widget
-                      quantity: 12
-                      category:
-                        id: 6f1c2b9e-0b7a-4c64-9a8e-2f1d3c4b5a69
-                        name: Parts
-                        parent: null
-                      tags:
-                        - metal
-                    - sku: SKU-002
-                      name: Gadget
-                      quantity: 0
+                    data:
+                      - id: 1e3a5c7e-9b2d-4f6a-8c0e-3b5d7f9a1c2e
+                        sku: BOX-S-001
+                        name: Shipping box, small
+                        description: Single wall, 30 × 20 × 15 cm
+                        category:
+                          id: 6f1c2b9e-0b7a-4c64-9a8e-2f1d3c4b5a69
+                          name: Packaging
+                        unit: piece
+                        quantityOnHand: 340
+                        reorderPoint: 100
+                        stockStatus: in_stock
+                        createdAt: 2026-09-14T08:30:00Z
+                        updatedAt: 2026-10-28T14:05:00Z
+                      - id: 2f4b6d8f-0c3e-4a7b-9d1f-4c6e8a0b2d3f
+                        sku: TAPE-050
+                        name: Packing tape, 50 m
+                        description: null
+                        category:
+                          id: 6f1c2b9e-0b7a-4c64-9a8e-2f1d3c4b5a69
+                          name: Packaging
+                        unit: roll
+                        quantityOnHand: 18
+                        reorderPoint: 24
+                        stockStatus: low_stock
+                        createdAt: 2026-09-14T08:34:00Z
+                        updatedAt: 2026-10-29T10:20:00Z
+                      - id: 3a5c7e9a-1d4f-4b8c-8e2a-5d7f9b1c3e4a
+                        sku: FILM-500
+                        name: Stretch film, 500 mm
+                        description: 23 µm, for wrapping pallets by hand
+                        category:
+                          id: 6f1c2b9e-0b7a-4c64-9a8e-2f1d3c4b5a69
+                          name: Packaging
+                        unit: roll
+                        quantityOnHand: 0
+                        reorderPoint: 10
+                        stockStatus: out_of_stock
+                        createdAt: 2026-09-20T13:00:00Z
+                        updatedAt: 2026-10-27T17:45:00Z
+                    meta:
+                      page: 1
+                      pageSize: 20
+                      totalItems: 3
+                      totalPages: 1
                 empty:
-                  summary: No items yet
-                  value: []
+                  summary: Nothing matches
+                  value:
+                    data: []
+                    meta:
+                      page: 1
+                      pageSize: 20
+                      totalItems: 0
+                      totalPages: 0
+        "400":
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                invalid-page-size:
+                  value:
+                    type: https://api.inventory.example/problems/invalid-parameters
+                    title: Invalid parameters
+                    status: 400
+                    detail: pageSize must be between 1 and 100.
+        "401":
+          description: Unauthorized
+          headers:
+            WWW-Authenticate:
+              required: true
+              description: The Bearer challenge (RFC 6750). It adds `error="invalid_token"` when the token sent is expired or invalid.
+              schema:
+                type: string
+                examples:
+                  - Bearer realm="inventory", error="invalid_token", error_description="The access token expired"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                token-expired:
+                  value:
+                    type: https://api.inventory.example/problems/token-expired
+                    title: Access token expired
+                    status: 401
+                    detail: Refresh the access token and try again.
+                unauthenticated:
+                  value:
+                    type: https://api.inventory.example/problems/unauthenticated
+                    title: Not signed in
+                    status: 401
+                    detail: Send an access token in the Authorization header.
       x-status: agreed
       x-pages:
         - page: Stock list
           slug: stock-list
           trigger: on_load
-        - page: Create schedule
-          slug: create-schedule
-          trigger: on_load
-          note: Fill the item list
-  /stocks/{sku}:
-    delete:
-      operationId: deleteStocksBySku
-      summary: Remove a stock item
+          note: Again when search, filters, sort, or page change, and after a delete
+    post:
+      operationId: postStockItems
+      summary: Add a stock item
+      description: The new item starts with 0 on hand. The response holds the item, and `Location` its URL.
       tags:
-        - Stock list
+        - Add or edit stock item
       parameters:
-        - name: sku
-          in: path
+        - name: Idempotency-Key
+          in: header
           required: true
-          description: Stock keeping unit
+          description: A random value, like a UUID, for each thing to create. Resending with the same key gets the first success back (for 24 hours) instead of creating again. Failures aren't remembered, so a fixed request can reuse the key. The key with a different body after a success answers 400; a resend while the first request runs answers 409 `request-in-progress`.
           schema:
             type: string
+            minLength: 1
+            maxLength: 64
+            examples:
+              - 3f1d8a52-6b0e-4c1a-9d7e-2b4c6a8e0f13
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StockItemInput"
+            examples:
+              new-item:
+                value:
+                  sku: LBL-100
+                  name: Shipping labels, 100 × 150 mm
+                  description: null
+                  categoryId: 6f1c2b9e-0b7a-4c64-9a8e-2f1d3c4b5a69
+                  unit: box
+                  reorderPoint: 5
       responses:
-        "204":
-          description: No Content
-        "404":
-          description: Not Found
+        "201":
+          description: Created
+          headers:
+            Location:
+              required: true
+              description: Where the new item lives
+              schema:
+                type: string
+                format: uri-reference
+                examples:
+                  - /v1/stock-items/7d9f1b3d-5a8c-4f2a-8c6e-9b1d3f5a7c8e
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: "#/components/schemas/StockItem"
               examples:
-                not-found:
+                created:
                   value:
-                    message: No item SKU-999
-      x-status: review
+                    id: 7d9f1b3d-5a8c-4f2a-8c6e-9b1d3f5a7c8e
+                    sku: LBL-100
+                    name: Shipping labels, 100 × 150 mm
+                    description: null
+                    category:
+                      id: 6f1c2b9e-0b7a-4c64-9a8e-2f1d3c4b5a69
+                      name: Packaging
+                    unit: box
+                    quantityOnHand: 0
+                    reorderPoint: 5
+                    stockStatus: out_of_stock
+                    createdAt: 2026-10-30T09:00:00Z
+                    updatedAt: 2026-10-30T09:00:00Z
+        "400":
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                missing-key:
+                  value:
+                    type: https://api.inventory.example/problems/idempotency-key-missing
+                    title: Idempotency-Key missing
+                    status: 400
+                    detail: Send an Idempotency-Key header with each create.
+                key-reused:
+                  value:
+                    type: https://api.inventory.example/problems/idempotency-key-reused
+                    title: Idempotency-Key reused
+                    status: 400
+                    detail: This key was already used for a different request. Make a new one.
+        "401":
+          description: Unauthorized
+          headers:
+            WWW-Authenticate:
+              required: true
+              description: The Bearer challenge (RFC 6750). It adds `error="invalid_token"` when the token sent is expired or invalid.
+              schema:
+                type: string
+                examples:
+                  - Bearer realm="inventory", error="invalid_token", error_description="The access token expired"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                token-expired:
+                  value:
+                    type: https://api.inventory.example/problems/token-expired
+                    title: Access token expired
+                    status: 401
+                    detail: Refresh the access token and try again.
+                unauthenticated:
+                  value:
+                    type: https://api.inventory.example/problems/unauthenticated
+                    title: Not signed in
+                    status: 401
+                    detail: Send an access token in the Authorization header.
+        "409":
+          description: Conflict
+          headers:
+            Retry-After:
+              description: "Only with `request-in-progress`: seconds before resending"
+              schema:
+                type: integer
+                minimum: 1
+                examples:
+                  - 2
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                sku-taken:
+                  value:
+                    type: https://api.inventory.example/problems/sku-taken
+                    title: SKU already used
+                    status: 409
+                    detail: TAPE-050 is already used by Packing tape, 50 m.
+                in-progress:
+                  value:
+                    type: https://api.inventory.example/problems/request-in-progress
+                    title: Request in progress
+                    status: 409
+                    detail: A request with this Idempotency-Key is still running. Resend it later.
+        "422":
+          description: Unprocessable Content
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ValidationProblem"
+              examples:
+                unknown-category:
+                  value:
+                    type: https://api.inventory.example/problems/validation-failed
+                    title: Validation failed
+                    status: 422
+                    detail: Some fields are invalid.
+                    errors:
+                      - pointer: "#/categoryId"
+                        detail: There's no category with this ID.
+      x-status: agreed
       x-pages:
-        - page: Stock list
-          slug: stock-list
-          trigger: on_action
-          note: Delete button in each row
-  /suppliers:
+        - page: Add or edit stock item
+          slug: add-or-edit-stock-item
+          trigger: on_submit
+          note: When adding. One `Idempotency-Key` per form, until it saves
+  /stock-items/{itemId}:
     get:
-      operationId: getSuppliers
-      summary: List suppliers
+      operationId: getStockItemsByItemId
+      summary: Get a stock item
       tags:
-        - Create schedule
+        - Stock item
+        - Add or edit stock item
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          description: The stock item's ID. Unknown, malformed, and deleted IDs answer 404.
+          schema:
+            type: string
+            format: uuid
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Supplier"
+                $ref: "#/components/schemas/StockItem"
               examples:
-                one-supplier:
+                box:
                   value:
-                    - id: 9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b
-                      name: Acme Supplies
-                      email: orders@acme.example
-      x-status: draft
+                    id: 1e3a5c7e-9b2d-4f6a-8c0e-3b5d7f9a1c2e
+                    sku: BOX-S-001
+                    name: Shipping box, small
+                    description: Single wall, 30 × 20 × 15 cm
+                    category:
+                      id: 6f1c2b9e-0b7a-4c64-9a8e-2f1d3c4b5a69
+                      name: Packaging
+                    unit: piece
+                    quantityOnHand: 340
+                    reorderPoint: 100
+                    stockStatus: in_stock
+                    createdAt: 2026-09-14T08:30:00Z
+                    updatedAt: 2026-10-28T14:05:00Z
+        "401":
+          description: Unauthorized
+          headers:
+            WWW-Authenticate:
+              required: true
+              description: The Bearer challenge (RFC 6750). It adds `error="invalid_token"` when the token sent is expired or invalid.
+              schema:
+                type: string
+                examples:
+                  - Bearer realm="inventory", error="invalid_token", error_description="The access token expired"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                token-expired:
+                  value:
+                    type: https://api.inventory.example/problems/token-expired
+                    title: Access token expired
+                    status: 401
+                    detail: Refresh the access token and try again.
+                unauthenticated:
+                  value:
+                    type: https://api.inventory.example/problems/unauthenticated
+                    title: Not signed in
+                    status: 401
+                    detail: Send an access token in the Authorization header.
+        "404":
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                not-found:
+                  value:
+                    type: https://api.inventory.example/problems/not-found
+                    title: Not found
+                    status: 404
+                    detail: There's no stock item with ID 9d0c8b7a-6f5e-4d3c-8b2a-1f0e9d8c7b6a.
+      x-status: agreed
       x-pages:
-        - page: Create schedule
-          slug: create-schedule
+        - page: Stock item
+          slug: stock-item
           trigger: on_load
-          note: Fill the supplier list
+          note: Again after a movement is recorded, for the new quantity and stock status
+        - page: Add or edit stock item
+          slug: add-or-edit-stock-item
+          trigger: on_load
+          note: When editing
+    patch:
+      operationId: patchStockItemsByItemId
+      summary: Update a stock item
+      description: "A JSON Merge Patch (RFC 7396): fields left out don't change, and `null` clears the description."
+      tags:
+        - Add or edit stock item
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          description: The stock item's ID. Unknown, malformed, and deleted IDs answer 404.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/StockItemUpdate"
+            examples:
+              reorder-point:
+                value:
+                  reorderPoint: 150
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockItem"
+              examples:
+                updated:
+                  value:
+                    id: 1e3a5c7e-9b2d-4f6a-8c0e-3b5d7f9a1c2e
+                    sku: BOX-S-001
+                    name: Shipping box, small
+                    description: Single wall, 30 × 20 × 15 cm
+                    category:
+                      id: 6f1c2b9e-0b7a-4c64-9a8e-2f1d3c4b5a69
+                      name: Packaging
+                    unit: piece
+                    quantityOnHand: 340
+                    reorderPoint: 150
+                    stockStatus: in_stock
+                    createdAt: 2026-09-14T08:30:00Z
+                    updatedAt: 2026-10-30T09:10:00Z
+        "401":
+          description: Unauthorized
+          headers:
+            WWW-Authenticate:
+              required: true
+              description: The Bearer challenge (RFC 6750). It adds `error="invalid_token"` when the token sent is expired or invalid.
+              schema:
+                type: string
+                examples:
+                  - Bearer realm="inventory", error="invalid_token", error_description="The access token expired"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                token-expired:
+                  value:
+                    type: https://api.inventory.example/problems/token-expired
+                    title: Access token expired
+                    status: 401
+                    detail: Refresh the access token and try again.
+                unauthenticated:
+                  value:
+                    type: https://api.inventory.example/problems/unauthenticated
+                    title: Not signed in
+                    status: 401
+                    detail: Send an access token in the Authorization header.
+        "404":
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                not-found:
+                  value:
+                    type: https://api.inventory.example/problems/not-found
+                    title: Not found
+                    status: 404
+                    detail: There's no stock item with ID 9d0c8b7a-6f5e-4d3c-8b2a-1f0e9d8c7b6a.
+        "409":
+          description: Conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                sku-taken:
+                  value:
+                    type: https://api.inventory.example/problems/sku-taken
+                    title: SKU already used
+                    status: 409
+                    detail: TAPE-050 is already used by Packing tape, 50 m.
+                unit-locked:
+                  value:
+                    type: https://api.inventory.example/problems/unit-locked
+                    title: Unit can't change
+                    status: 409
+                    detail: Shipping box, small already has stock movements, so its unit can't change.
+        "415":
+          description: Unsupported Media Type
+          headers:
+            Accept-Patch:
+              required: true
+              description: The patch format this endpoint takes (RFC 5789)
+              schema:
+                type: string
+                enum:
+                  - application/merge-patch+json
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                not-merge-patch:
+                  value:
+                    type: https://api.inventory.example/problems/unsupported-media-type
+                    title: Unsupported media type
+                    status: 415
+                    detail: Send the changes as application/merge-patch+json.
+        "422":
+          description: Unprocessable Content
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ValidationProblem"
+              examples:
+                negative-reorder-point:
+                  value:
+                    type: https://api.inventory.example/problems/validation-failed
+                    title: Validation failed
+                    status: 422
+                    detail: Some fields are invalid.
+                    errors:
+                      - pointer: "#/reorderPoint"
+                        detail: Use 0 or more.
+      x-status: agreed
+      x-pages:
+        - page: Add or edit stock item
+          slug: add-or-edit-stock-item
+          trigger: on_submit
+          note: When editing. Only the changed fields
+    delete:
+      operationId: deleteStockItemsByItemId
+      summary: Delete a stock item
+      description: For admins. Only items with nothing on hand can be deleted. Deleted items answer 404 everywhere and leave lists, and their SKU can be used again.
+      tags:
+        - Stock list
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          description: The stock item's ID. Unknown, malformed, and deleted IDs answer 404.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          headers:
+            WWW-Authenticate:
+              required: true
+              description: The Bearer challenge (RFC 6750). It adds `error="invalid_token"` when the token sent is expired or invalid.
+              schema:
+                type: string
+                examples:
+                  - Bearer realm="inventory", error="invalid_token", error_description="The access token expired"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                token-expired:
+                  value:
+                    type: https://api.inventory.example/problems/token-expired
+                    title: Access token expired
+                    status: 401
+                    detail: Refresh the access token and try again.
+                unauthenticated:
+                  value:
+                    type: https://api.inventory.example/problems/unauthenticated
+                    title: Not signed in
+                    status: 401
+                    detail: Send an access token in the Authorization header.
+        "403":
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                admins-only:
+                  value:
+                    type: https://api.inventory.example/problems/admins-only
+                    title: Admins only
+                    status: 403
+                    detail: Only admins can delete stock items.
+        "404":
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                not-found:
+                  value:
+                    type: https://api.inventory.example/problems/not-found
+                    title: Not found
+                    status: 404
+                    detail: There's no stock item with ID 9d0c8b7a-6f5e-4d3c-8b2a-1f0e9d8c7b6a.
+        "409":
+          description: Conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                has-stock:
+                  value:
+                    type: https://api.inventory.example/problems/item-has-stock
+                    title: Item still in stock
+                    status: 409
+                    detail: Shipping box, small still has 340 on hand. Issue or count them to 0 first.
+      x-status: review
+      x-notes-be: "Soft delete: keep the item and its movements for reports."
+      x-pages:
+        - page: Stock list
+          slug: stock-list
+          trigger: on_action
+          note: Delete in a row's menu, for admins
+  /stock-items/{itemId}/movements:
+    get:
+      operationId: getStockItemsByItemIdMovements
+      summary: List an item's stock movements
+      description: Newest first.
+      tags:
+        - Stock item
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          description: The stock item's ID. Unknown, malformed, and deleted IDs answer 404.
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          description: Page number, from 1
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          description: Items per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/StockMovement"
+                  meta:
+                    $ref: "#/components/schemas/PageMeta"
+                required:
+                  - data
+                  - meta
+              examples:
+                history:
+                  value:
+                    data:
+                      - id: 4b6d8f0b-2e5a-4c9d-9f3b-6e8a0c2d4f5b
+                        type: receipt
+                        quantity: 200
+                        quantityChange: 200
+                        quantityAfter: 340
+                        reference: DN-2026-1042
+                        note: null
+                        createdBy:
+                          id: 0b5c2d4e-8f1a-4b3c-9d2e-7a6f5e4d3c2b
+                          name: Ana Lima
+                        createdAt: 2026-10-28T14:05:00Z
+                      - id: 5c7e9a1c-3f6b-4d0e-8a4c-7f9b1d3e5a6c
+                        type: issue
+                        quantity: 25
+                        quantityChange: -25
+                        quantityAfter: 140
+                        reference: SO-88213
+                        note: null
+                        createdBy:
+                          id: 0b5c2d4e-8f1a-4b3c-9d2e-7a6f5e4d3c2b
+                          name: Ana Lima
+                        createdAt: 2026-10-15T11:30:00Z
+                      - id: 6d8f0b2d-4a7c-4e1f-9b5d-8a0c2e4f6b7d
+                        type: count
+                        quantity: 165
+                        quantityChange: -3
+                        quantityAfter: 165
+                        reference: null
+                        note: Monthly stock take
+                        createdBy:
+                          id: 0b5c2d4e-8f1a-4b3c-9d2e-7a6f5e4d3c2b
+                          name: Ana Lima
+                        createdAt: 2026-10-01T16:00:00Z
+                    meta:
+                      page: 1
+                      pageSize: 20
+                      totalItems: 3
+                      totalPages: 1
+        "400":
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                invalid-page-size:
+                  value:
+                    type: https://api.inventory.example/problems/invalid-parameters
+                    title: Invalid parameters
+                    status: 400
+                    detail: pageSize must be between 1 and 100.
+        "401":
+          description: Unauthorized
+          headers:
+            WWW-Authenticate:
+              required: true
+              description: The Bearer challenge (RFC 6750). It adds `error="invalid_token"` when the token sent is expired or invalid.
+              schema:
+                type: string
+                examples:
+                  - Bearer realm="inventory", error="invalid_token", error_description="The access token expired"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                token-expired:
+                  value:
+                    type: https://api.inventory.example/problems/token-expired
+                    title: Access token expired
+                    status: 401
+                    detail: Refresh the access token and try again.
+                unauthenticated:
+                  value:
+                    type: https://api.inventory.example/problems/unauthenticated
+                    title: Not signed in
+                    status: 401
+                    detail: Send an access token in the Authorization header.
+        "404":
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                not-found:
+                  value:
+                    type: https://api.inventory.example/problems/not-found
+                    title: Not found
+                    status: 404
+                    detail: There's no stock item with ID 9d0c8b7a-6f5e-4d3c-8b2a-1f0e9d8c7b6a.
+      x-status: agreed
+      x-pages:
+        - page: Stock item
+          slug: stock-item
+          trigger: on_load
+          note: Again after a movement is recorded
+    post:
+      operationId: postStockItemsByItemIdMovements
+      summary: Record a stock movement
+      description: Changes the item's quantity on hand; `quantityAfter` is the new quantity. Fetch the item again for its new stock status.
+      tags:
+        - Stock item
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          description: The stock item's ID. Unknown, malformed, and deleted IDs answer 404.
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: A random value, like a UUID, for each thing to create. Resending with the same key gets the first success back (for 24 hours) instead of creating again. Failures aren't remembered, so a fixed request can reuse the key. The key with a different body after a success answers 400; a resend while the first request runs answers 409 `request-in-progress`.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 64
+            examples:
+              - 3f1d8a52-6b0e-4c1a-9d7e-2b4c6a8e0f13
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StockMovementInput"
+            examples:
+              receipt:
+                summary: A delivery arrived
+                value:
+                  type: receipt
+                  quantity: 200
+                  reference: DN-2026-1042
+                  note: null
+              issue:
+                summary: Taken out for an order
+                value:
+                  type: issue
+                  quantity: 25
+                  reference: SO-88213
+                  note: null
+              count:
+                summary: Counted on the shelf
+                value:
+                  type: count
+                  quantity: 165
+                  reference: null
+                  note: Monthly stock take
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockMovement"
+              examples:
+                receipt:
+                  value:
+                    id: 4b6d8f0b-2e5a-4c9d-9f3b-6e8a0c2d4f5b
+                    type: receipt
+                    quantity: 200
+                    quantityChange: 200
+                    quantityAfter: 340
+                    reference: DN-2026-1042
+                    note: null
+                    createdBy:
+                      id: 0b5c2d4e-8f1a-4b3c-9d2e-7a6f5e4d3c2b
+                      name: Ana Lima
+                    createdAt: 2026-10-28T14:05:00Z
+        "400":
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                missing-key:
+                  value:
+                    type: https://api.inventory.example/problems/idempotency-key-missing
+                    title: Idempotency-Key missing
+                    status: 400
+                    detail: Send an Idempotency-Key header with each create.
+                key-reused:
+                  value:
+                    type: https://api.inventory.example/problems/idempotency-key-reused
+                    title: Idempotency-Key reused
+                    status: 400
+                    detail: This key was already used for a different request. Make a new one.
+        "401":
+          description: Unauthorized
+          headers:
+            WWW-Authenticate:
+              required: true
+              description: The Bearer challenge (RFC 6750). It adds `error="invalid_token"` when the token sent is expired or invalid.
+              schema:
+                type: string
+                examples:
+                  - Bearer realm="inventory", error="invalid_token", error_description="The access token expired"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                token-expired:
+                  value:
+                    type: https://api.inventory.example/problems/token-expired
+                    title: Access token expired
+                    status: 401
+                    detail: Refresh the access token and try again.
+                unauthenticated:
+                  value:
+                    type: https://api.inventory.example/problems/unauthenticated
+                    title: Not signed in
+                    status: 401
+                    detail: Send an access token in the Authorization header.
+        "404":
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                not-found:
+                  value:
+                    type: https://api.inventory.example/problems/not-found
+                    title: Not found
+                    status: 404
+                    detail: There's no stock item with ID 9d0c8b7a-6f5e-4d3c-8b2a-1f0e9d8c7b6a.
+        "409":
+          description: Conflict
+          headers:
+            Retry-After:
+              description: "Only with `request-in-progress`: seconds before resending"
+              schema:
+                type: integer
+                minimum: 1
+                examples:
+                  - 2
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                not-enough-stock:
+                  value:
+                    type: https://api.inventory.example/problems/insufficient-stock
+                    title: Not enough stock
+                    status: 409
+                    detail: Only 18 on hand, so 30 can't be issued.
+                in-progress:
+                  value:
+                    type: https://api.inventory.example/problems/request-in-progress
+                    title: Request in progress
+                    status: 409
+                    detail: A request with this Idempotency-Key is still running. Resend it later.
+        "422":
+          description: Unprocessable Content
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ValidationProblem"
+              examples:
+                zero-receipt:
+                  value:
+                    type: https://api.inventory.example/problems/validation-failed
+                    title: Validation failed
+                    status: 422
+                    detail: Some fields are invalid.
+                    errors:
+                      - pointer: "#/quantity"
+                        detail: Receive at least 1.
+      x-status: review
+      x-notes-be: Lock the item while recording, so two issues at the same time can't take the quantity below 0.
+      x-pages:
+        - page: Stock item
+          slug: stock-item
+          trigger: on_submit
+          note: Record movement dialog. One `Idempotency-Key` per dialog, until it saves
 components:
   schemas:
     Category:
-      description: A group of stock items.
+      description: A group of stock items, like Packaging.
       type: object
-      required:
-        - id
-        - name
       properties:
         id:
           type: string
           format: uuid
         name:
           type: string
-        parent:
-          anyOf:
-            - $ref: "#/components/schemas/Category"
-            - type: "null"
-    Error:
-      type: object
-      required:
-        - message
-      properties:
-        message:
-          type: string
-        code:
-          type: string
-          description: Stable code to branch on, e.g. ACCOUNT_LOCKED
-    Schedule:
-      description: Recurring deliveries of one item from one supplier.
-      type: object
+          minLength: 1
+          maxLength: 60
       required:
         - id
-        - supplierId
-        - sku
-        - quantity
-        - firstDelivery
-        - repeat
+        - name
+    PageMeta:
+      description: Where a page of results sits in the whole list.
+      type: object
+      properties:
+        page:
+          type: integer
+          minimum: 1
+          description: The page number
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: Items per page
+        totalItems:
+          type: integer
+          minimum: 0
+          description: Items in the whole list
+        totalPages:
+          type: integer
+          minimum: 0
+          description: 0 when the list is empty
+      required:
+        - page
+        - pageSize
+        - totalItems
+        - totalPages
+    Problem:
+      description: An error, as RFC 9457 problem details. Branch on `type`, not on `title` or `detail`.
+      type: object
+      properties:
+        type:
+          type: string
+          format: uri
+          description: "Identifies the kind of problem. It's stable: branch on it."
+          examples:
+            - https://api.inventory.example/problems/not-found
+        title:
+          type: string
+          description: Short summary of the kind of problem
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+          description: The HTTP status code
+        detail:
+          type: string
+          description: What went wrong this time, in words for people
+        instance:
+          type: string
+          format: uri-reference
+          description: Identifies this occurrence. Quote it when reporting a problem.
+      required:
+        - type
+        - title
+        - status
+    Session:
+      description: "An access token. The refresh token isn't in the body: it's in the `refresh_token` cookie, which scripts can't read."
+      type: object
+      properties:
+        accessToken:
+          type: string
+          description: "Send as `Authorization: Bearer <token>`. Keep it in memory only."
+        tokenType:
+          type: string
+          enum:
+            - Bearer
+        expiresIn:
+          type: integer
+          minimum: 1
+          description: Seconds until the access token expires
+          examples:
+            - 900
+      required:
+        - accessToken
+        - tokenType
+        - expiresIn
+    StockItem:
+      description: Something the warehouse keeps in stock. Its quantity only changes through stock movements.
+      type: object
       properties:
         id:
           type: string
           format: uuid
-        supplierId:
-          type: string
-          format: uuid
         sku:
           type: string
-        quantity:
-          type: integer
-          minimum: 1
-        firstDelivery:
+          pattern: ^[A-Z0-9-]{3,32}$
+          description: "Stock keeping unit: upper-case letters, digits, and hyphens. Unique among items that aren't deleted."
+          examples:
+            - BOX-S-001
+        name:
           type: string
-          format: date
-        repeat:
+          minLength: 1
+          maxLength: 120
+        description:
+          type:
+            - string
+            - "null"
+          maxLength: 2000
+        category:
+          $ref: "#/components/schemas/Category"
+        unit:
           type: string
           enum:
-            - once
-            - weekly
-            - monthly
+            - piece
+            - box
+            - roll
+            - pack
+          description: What quantities count. It can't change once the item has stock movements.
+        quantityOnHand:
+          type: integer
+          minimum: 0
+        reorderPoint:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+          description: At or below this quantity, the item is low on stock
+        stockStatus:
+          type: string
+          enum:
+            - in_stock
+            - low_stock
+            - out_of_stock
+          description: "`out_of_stock` at 0; `low_stock` at or below `reorderPoint`"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - sku
+        - name
+        - description
+        - category
+        - unit
+        - quantityOnHand
+        - reorderPoint
+        - stockStatus
+        - createdAt
+        - updatedAt
+    StockItemInput:
+      description: "A new stock item. It starts with 0 on hand: record a receipt to add stock."
+      type: object
+      properties:
+        sku:
+          type: string
+          pattern: ^[A-Z0-9-]{3,32}$
+          description: "Stock keeping unit: upper-case letters, digits, and hyphens. Unique among items that aren't deleted."
+          examples:
+            - BOX-S-001
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type:
+            - string
+            - "null"
+          maxLength: 2000
+        categoryId:
+          type: string
+          format: uuid
+        unit:
+          type: string
+          enum:
+            - piece
+            - box
+            - roll
+            - pack
+          description: What quantities count. It can't change once the item has stock movements.
+        reorderPoint:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+          description: At or below this quantity, the item is low on stock
+          default: 0
+      required:
+        - sku
+        - name
+        - categoryId
+        - unit
+    StockItemUpdate:
+      description: "Changes to a stock item, as a JSON Merge Patch: send only the fields that change. The quantity isn't here; record a stock movement instead."
+      type: object
+      properties:
+        sku:
+          type: string
+          pattern: ^[A-Z0-9-]{3,32}$
+          description: "Stock keeping unit: upper-case letters, digits, and hyphens. Unique among items that aren't deleted."
+          examples:
+            - BOX-S-001
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type:
+            - string
+            - "null"
+          maxLength: 2000
+        categoryId:
+          type: string
+          format: uuid
+        unit:
+          type: string
+          enum:
+            - piece
+            - box
+            - roll
+            - pack
+          description: What quantities count. It can't change once the item has stock movements.
+        reorderPoint:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+          description: At or below this quantity, the item is low on stock
+      minProperties: 1
+    StockMovement:
+      description: One change to an item's quantity on hand. Movements can't be changed or deleted; record a count to correct a mistake.
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum:
+            - receipt
+            - issue
+            - count
+          description: "`receipt` adds stock, `issue` takes it out, `count` sets it to what was counted"
+        quantity:
+          type: integer
+          minimum: 0
+          description: "As entered: the amount received or issued, or the counted quantity"
+        quantityChange:
+          type: integer
+          description: "How the quantity on hand changed: positive or negative"
+        quantityAfter:
+          type: integer
+          minimum: 0
+          description: Quantity on hand after this movement
+        reference:
+          type:
+            - string
+            - "null"
+          maxLength: 64
+          description: Delivery note, order, or ticket number
         note:
           type:
             - string
             - "null"
           maxLength: 500
-    Stock:
-      description: An item in stock.
-      type: object
+        createdBy:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+          required:
+            - id
+            - name
+          description: Who recorded it
+        createdAt:
+          type: string
+          format: date-time
       required:
-        - sku
-        - name
+        - id
+        - type
         - quantity
+        - quantityChange
+        - quantityAfter
+        - reference
+        - note
+        - createdBy
+        - createdAt
+    StockMovementInput:
+      description: A stock movement to record.
+      type: object
       properties:
-        sku:
+        type:
           type: string
-          pattern: ^[A-Z0-9-]+$
-          examples:
-            - SKU-001
-        name:
-          type: string
-          maxLength: 120
+          enum:
+            - receipt
+            - issue
+            - count
+          description: "`receipt` adds stock, `issue` takes it out, `count` sets it to what was counted"
         quantity:
           type: integer
           minimum: 0
-        category:
-          $ref: "#/components/schemas/Category"
-        tags:
-          type: array
-          items:
-            type: string
-          uniqueItems: true
-    Supplier:
-      description: A company that delivers stock.
-      type: object
+          maximum: 1000000
+          description: At least 1 for receipts and issues
+        reference:
+          type:
+            - string
+            - "null"
+          maxLength: 64
+          description: Delivery note, order, or ticket number
+        note:
+          type:
+            - string
+            - "null"
+          maxLength: 500
       required:
-        - id
-        - name
+        - type
+        - quantity
+    User:
+      description: A person who can sign in.
+      type: object
       properties:
         id:
           type: string
           format: uuid
         name:
           type: string
+          minLength: 1
+          maxLength: 80
         email:
           type: string
           format: email
-    User:
-      description: A person who can sign in.
-      type: object
+          maxLength: 254
+          description: Unique, ignoring case
+        role:
+          type: string
+          enum:
+            - admin
+            - staff
+          description: Admins can also delete stock items
+        emailVerified:
+          type: boolean
+          description: Users can sign in once their email is verified
+        createdAt:
+          type: string
+          format: date-time
       required:
         - id
         - name
         - email
+        - role
+        - emailVerified
+        - createdAt
+    ValidationProblem:
+      description: "A 422 problem: some fields of the request body are invalid."
+      type: object
       properties:
-        id:
+        type:
           type: string
-          format: uuid
-        name:
+          format: uri
+          description: "Identifies the kind of problem. It's stable: branch on it."
+          examples:
+            - https://api.inventory.example/problems/validation-failed
+        title:
           type: string
-        email:
+          description: Short summary of the kind of problem
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+          description: The HTTP status code
+        detail:
           type: string
-          format: email
+          description: What went wrong this time, in words for people
+        instance:
+          type: string
+          format: uri-reference
+          description: Identifies this occurrence. Quote it when reporting a problem.
+        errors:
+          type: array
+          minItems: 1
+          description: One entry per invalid field
+          items:
+            type: object
+            properties:
+              pointer:
+                type: string
+                description: JSON Pointer (RFC 6901) to the field in the request body, as a URI fragment like `#/email`
+                examples:
+                  - "#/email"
+              detail:
+                type: string
+                description: What's wrong with it
+            required:
+              - pointer
+              - detail
+      required:
+        - type
+        - title
+        - status
+        - errors
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: Token from POST /auth/login
-    apiKeyAuth:
+      description: Access token from POST /auth/login or POST /auth/refresh. It expires after 15 minutes.
+    refreshCookie:
       type: apiKey
-      in: header
-      name: X-API-Key
-      description: For server-to-server calls
+      in: cookie
+      name: refresh_token
+      description: HttpOnly cookie set by POST /auth/login and replaced by POST /auth/refresh.
