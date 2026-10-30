@@ -1,5 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { HTTP_METHODS, pathSchema } from "@shared/endpoints";
+import { type Endpoint, HTTP_METHODS, pathSchema } from "@shared/endpoints";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
@@ -47,9 +47,12 @@ const defaultValues: FormValues = { method: "GET", path: "/", summary: "" };
 export function CreateEndpointDialog({
   projectId,
   trigger,
+  onCreated,
 }: {
   projectId: string;
   trigger: React.ReactNode;
+  /** Called instead of opening the new endpoint (e.g. to link it to a page). */
+  onCreated?: (endpoint: Endpoint) => void;
 }) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
@@ -72,6 +75,10 @@ export function CreateEndpointDialog({
       const endpoint = await createEndpoint.mutateAsync(values);
       onOpenChange(false);
       toast.success(`Created ${endpoint.method} ${endpoint.path}`);
+      if (onCreated) {
+        onCreated(endpoint);
+        return;
+      }
       await navigate({
         to: "/projects/$projectId/endpoints/$endpointId",
         params: { projectId, endpointId: endpoint.id },
@@ -85,7 +92,15 @@ export function CreateEndpointDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent>
-        <form onSubmit={onSubmit} className="grid gap-6">
+        <form
+          // React bubbles submit through the portal; keep it from reaching a
+          // surrounding form (like the page editor).
+          onSubmit={(event) => {
+            event.stopPropagation();
+            void onSubmit(event);
+          }}
+          className="grid gap-6"
+        >
           <DialogHeader>
             <DialogTitle>New endpoint</DialogTitle>
             <DialogDescription>

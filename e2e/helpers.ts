@@ -101,3 +101,34 @@ export async function getEndpoint(
   expect(response.status()).toBe(200);
   return (await response.json()) as Record<string, unknown>;
 }
+
+export type CreatedPage = { id: string; name: string; slug: string };
+
+export async function createPage(
+  request: APIRequestContext,
+  projectId: string,
+  name: string,
+): Promise<CreatedPage> {
+  const response = await request.post(`/api/projects/${projectId}/pages`, {
+    data: { name },
+  });
+  expect(response.status()).toBe(201);
+  return (await response.json()) as CreatedPage;
+}
+
+export async function getPage(
+  request: APIRequestContext,
+  projectId: string,
+  pageId: string,
+) {
+  const response = await request.get(
+    `/api/projects/${projectId}/pages/${pageId}`,
+  );
+  expect(response.status()).toBe(200);
+  return (await response.json()) as {
+    description: string;
+    acceptanceCriteria: string;
+    endpoints: { endpointId: string; trigger: string; note: string }[];
+    mockups: { originalName: string; caption: string }[];
+  };
+}

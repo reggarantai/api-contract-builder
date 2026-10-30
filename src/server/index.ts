@@ -10,6 +10,8 @@ const app = createApp({
   db: database.db,
   version: pkg.version,
   clientDir: config.clientDir,
+  uploadsDir: config.uploadsDir,
+  maxUploadBytes: config.maxUploadBytes,
 });
 
 const server = serve(

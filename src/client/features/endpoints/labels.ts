@@ -1,4 +1,8 @@
-import type { EndpointStatus, HttpMethod } from "@shared/endpoints";
+import type {
+  EndpointStatus,
+  EndpointSummary,
+  HttpMethod,
+} from "@shared/endpoints";
 
 export const METHOD_CLASS_NAMES: Record<HttpMethod, string> = {
   GET: "bg-emerald-100 text-emerald-800",
@@ -21,3 +25,9 @@ export const STATUS_DOT_CLASS_NAMES: Record<EndpointStatus, string> = {
   review: "bg-amber-500",
   agreed: "bg-emerald-500",
 };
+
+/** "POST /auth/login — Sign in" */
+export function endpointOptionLabel(endpoint: EndpointSummary) {
+  const label = `${endpoint.method} ${endpoint.path}`;
+  return endpoint.summary ? `${label} — ${endpoint.summary}` : label;
+}

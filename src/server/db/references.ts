@@ -1,4 +1,4 @@
-import { and, eq, ne } from "drizzle-orm";
+import { and, asc, eq, ne } from "drizzle-orm";
 import type { ApiIssue } from "../../shared/api-error";
 import { endpointLabel, schemasOfEndpoint } from "../../shared/endpoints";
 import {
@@ -9,7 +9,7 @@ import {
   modelRef,
 } from "../../shared/json-schema";
 import type { Db } from "./client";
-import { endpoints, models } from "./schema";
+import { endpoints, models, pageEndpoints, pages } from "./schema";
 
 function byName(a: string, b: string) {
   return a.localeCompare(b, undefined, { sensitivity: "base" });
@@ -99,4 +99,27 @@ export function endpointsUsingScheme(
     )
     .map(endpointLabel)
     .sort(byName);
+}
+
+/** The pages that call each endpoint of a project, in page order. */
+export function pageIdsByEndpoint(db: Db, projectId: string) {
+  const rows = db
+    .select({
+      endpointId: pageEndpoints.endpointId,
+      pageId: pageEndpoints.pageId,
+    })
+    .from(pageEndpoints)
+    .innerJoin(pages, eq(pages.id, pageEndpoints.pageId))
+    .where(eq(pages.projectId, projectId))
+    .orderBy(asc(pages.sortOrder))
+    .all();
+  const byEndpoint = new Map<string, string[]>();
+  for (const { endpointId, pageId } of rows) {
+    const pageIds = byEndpoint.get(endpointId) ?? [];
+    if (!pageIds.includes(pageId)) {
+      pageIds.push(pageId);
+    }
+    byEndpoint.set(endpointId, pageIds);
+  }
+  return byEndpoint;
 }

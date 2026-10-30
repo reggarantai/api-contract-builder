@@ -29,6 +29,7 @@ import { MethodBadge, StatusLabel } from "@/features/endpoints/badges";
 import { CreateEndpointDialog } from "@/features/endpoints/create-endpoint-dialog";
 import { STATUS_LABELS } from "@/features/endpoints/labels";
 import { endpointsQueryOptions } from "@/features/endpoints/queries";
+import { pagesQueryOptions } from "@/features/pages/queries";
 
 export const Route = createFileRoute("/projects/$projectId/endpoints/")({
   component: EndpointList,
@@ -44,6 +45,8 @@ function EndpointList() {
   const [method, setMethod] = useState<HttpMethod | typeof ALL>(ALL);
   const [status, setStatus] = useState<EndpointStatus | typeof ALL>(ALL);
   const [search, setSearch] = useState("");
+  const { data: pages } = useSuspenseQuery(pagesQueryOptions(projectId));
+  const [pageId, setPageId] = useState<string>(ALL);
 
   if (endpoints.length === 0) {
     return (
@@ -75,6 +78,7 @@ function EndpointList() {
     (endpoint) =>
       (method === ALL || endpoint.method === method) &&
       (status === ALL || endpoint.status === status) &&
+      (pageId === ALL || endpoint.pageIds.includes(pageId)) &&
       (query === "" ||
         endpoint.path.toLowerCase().includes(query) ||
         endpoint.summary.toLowerCase().includes(query)),
@@ -125,6 +129,21 @@ function EndpointList() {
             ))}
           </SelectContent>
         </Select>
+        {pages.length > 0 && (
+          <Select value={pageId} onValueChange={setPageId}>
+            <SelectTrigger aria-label="Page filter" className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>All pages</SelectItem>
+              {pages.map((page) => (
+                <SelectItem key={page.id} value={page.id}>
+                  {page.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <div className="ml-auto">
           <CreateEndpointDialog
             projectId={projectId}

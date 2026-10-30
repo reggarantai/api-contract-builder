@@ -43,6 +43,14 @@ function ProjectLayout() {
             Overview
           </Link>
           <Link
+            to="/projects/$projectId/pages"
+            params={{ projectId }}
+            className={tabClassName}
+            activeProps={{ className: activeTabClassName }}
+          >
+            Pages
+          </Link>
+          <Link
             to="/projects/$projectId/endpoints"
             params={{ projectId }}
             className={tabClassName}

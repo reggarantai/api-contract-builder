@@ -93,10 +93,18 @@ export function useUpdateEndpoint(projectId: string, endpointId: string) {
 
 /** Like `useDeleteProject`: remove the endpoint's details after navigating away. */
 export function useDeleteEndpoint(projectId: string) {
+  const queryClient = useQueryClient();
   const invalidateLists = useInvalidateLists(projectId);
   return useMutation({
     mutationFn: (endpointId: string) =>
       apiDelete(endpointsPath(projectId, endpointId)),
-    onSuccess: invalidateLists,
+    onSuccess: () =>
+      Promise.all([
+        invalidateLists(),
+        // Pages drop their links to the deleted endpoint.
+        queryClient.invalidateQueries({
+          queryKey: [...projectKeys.detail(projectId), "pages"],
+        }),
+      ]),
   });
 }

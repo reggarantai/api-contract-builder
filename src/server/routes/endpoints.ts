@@ -18,7 +18,7 @@ import {
 } from "../../shared/endpoints";
 import type { Db } from "../db/client";
 import { findProject, touchProject } from "../db/projects";
-import { checkModelRefs } from "../db/references";
+import { checkModelRefs, pageIdsByEndpoint } from "../db/references";
 import { type EndpointRow, endpoints, type ProjectRow } from "../db/schema";
 import { jsonBody, toApiIssues, validationFailed } from "../validation";
 
@@ -50,8 +50,9 @@ function toEndpoint(row: EndpointRow): Endpoint {
   };
 }
 
-function toSummary(row: EndpointRow): EndpointSummary {
+function toSummary(row: EndpointRow, pageIds: string[]): EndpointSummary {
   return {
+    pageIds,
     id: row.id,
     projectId: row.projectId,
     method: row.method,
@@ -173,7 +174,10 @@ export function endpointRoutes(db: Db) {
         .where(eq(endpoints.projectId, project.id))
         .all()
         .sort(compareEndpoints);
-      return c.json(rows.map(toSummary));
+      const pageIds = pageIdsByEndpoint(db, project.id);
+      return c.json(
+        rows.map((row) => toSummary(row, pageIds.get(row.id) ?? [])),
+      );
     })
     .post("/:projectId/endpoints", jsonBody(createEndpointInputSchema), (c) => {
       const project = findProject(db, c.req.param("projectId"));

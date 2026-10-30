@@ -1,8 +1,15 @@
 {
   "files": [],
   "references": [
-    { "path": "./tsconfig.client.json" },
-    { "path": "./tsconfig.server.json" }
+    {
+      "path": "./tsconfig.client.json"
+    },
+    {
+      "path": "./tsconfig.server.json"
+    },
+    {
+      "path": "./tsconfig.e2e.json"
+    }
   ],
   "compilerOptions": {
     "paths": {

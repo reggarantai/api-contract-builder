@@ -77,11 +77,12 @@ project's lint and format rules.
 
 ### Configuration
 
-| Variable   | Default                           | Description                         |
-| ---------- | --------------------------------- | ----------------------------------- |
-| `HOST`     | `127.0.0.1` (`0.0.0.0` in Docker) | Interface the server listens on     |
-| `PORT`     | `3000`                            | Port the server listens on          |
-| `DATA_DIR` | `./data` (`/data` in Docker)      | SQLite database and uploaded images |
+| Variable        | Default                           | Description                             |
+| --------------- | --------------------------------- | --------------------------------------- |
+| `HOST`          | `127.0.0.1` (`0.0.0.0` in Docker) | Interface the server listens on         |
+| `PORT`          | `3000`                            | Port the server listens on              |
+| `DATA_DIR`      | `./data` (`/data` in Docker)      | SQLite database and uploaded images     |
+| `MAX_UPLOAD_MB` | `10`                              | Largest mockup image accepted, per file |
 
 ### Project layout
 

@@ -6,6 +6,7 @@ const envSchema = z.object({
   HOST: z.string().min(1).default("127.0.0.1"),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   DATA_DIR: z.string().min(1).default("./data"),
+  MAX_UPLOAD_MB: z.coerce.number().positive().max(100).default(10),
 });
 
 export type Config = {
@@ -13,6 +14,10 @@ export type Config = {
   port: number;
   dataDir: string;
   databasePath: string;
+  /** Uploaded mockups, one folder per project. */
+  uploadsDir: string;
+  /** Largest mockup file accepted. */
+  maxUploadBytes: number;
   migrationsDir: string;
   /** Built SPA directory, or null when the client has not been built. */
   clientDir: string | null;
@@ -30,7 +35,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       `Invalid environment variables:\n${z.prettifyError(result.error)}`,
     );
   }
-  const { HOST, PORT, DATA_DIR } = result.data;
+  const { HOST, PORT, DATA_DIR, MAX_UPLOAD_MB } = result.data;
   const dataDir = path.resolve(DATA_DIR);
   const clientDir = path.resolve(CLIENT_DIR);
 
@@ -39,6 +44,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     port: PORT,
     dataDir,
     databasePath: path.join(dataDir, "app.db"),
+    uploadsDir: path.join(dataDir, "uploads"),
+    maxUploadBytes: Math.round(MAX_UPLOAD_MB * 1024 * 1024),
     migrationsDir: path.resolve(MIGRATIONS_DIR),
     clientDir: fs.existsSync(path.join(clientDir, "index.html"))
       ? clientDir

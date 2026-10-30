@@ -14,11 +14,12 @@ export class ApiError extends Error {
 }
 
 async function request(method: string, path: string, body?: unknown) {
+  // FormData sets its own multipart Content-Type.
+  const isJson = body !== undefined && !(body instanceof FormData);
   const response = await fetch(`/api${path}`, {
     method,
-    headers:
-      body === undefined ? undefined : { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    headers: isJson ? { "Content-Type": "application/json" } : undefined,
+    body: isJson ? JSON.stringify(body) : (body as FormData | undefined),
   });
 
   if (!response.ok) {
@@ -49,6 +50,25 @@ export async function apiPost<T extends z.ZodType>(
   schema: T,
 ): Promise<z.infer<T>> {
   const response = await request("POST", path, body);
+  return schema.parse(await response.json());
+}
+
+export async function apiPut<T extends z.ZodType>(
+  path: string,
+  body: unknown,
+  schema: T,
+): Promise<z.infer<T>> {
+  const response = await request("PUT", path, body);
+  return schema.parse(await response.json());
+}
+
+/** Posts files as multipart form data. */
+export async function apiUpload<T extends z.ZodType>(
+  path: string,
+  form: FormData,
+  schema: T,
+): Promise<z.infer<T>> {
+  const response = await request("POST", path, form);
   return schema.parse(await response.json());
 }
 

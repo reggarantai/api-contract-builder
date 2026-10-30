@@ -12,3 +12,14 @@ export function slugify(value: string): string {
     .slice(0, SLUG_MAX_LENGTH)
     .replace(/-+$/, "");
 }
+
+/** Returns `base`, or the first free `base-2`, `base-3`, … within the length limit. */
+export function uniqueSlug(base: string, isTaken: (slug: string) => boolean) {
+  for (let n = 1; ; n++) {
+    const suffix = n === 1 ? "" : `-${n}`;
+    const candidate = `${base.slice(0, SLUG_MAX_LENGTH - suffix.length).replace(/-+$/, "")}${suffix}`;
+    if (!isTaken(candidate)) {
+      return candidate;
+    }
+  }
+}

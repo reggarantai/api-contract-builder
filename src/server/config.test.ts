@@ -10,6 +10,8 @@ describe("loadConfig", () => {
     expect(config.port).toBe(3000);
     expect(config.dataDir).toBe(path.resolve("data"));
     expect(config.databasePath).toBe(path.resolve("data", "app.db"));
+    expect(config.uploadsDir).toBe(path.resolve("data", "uploads"));
+    expect(config.maxUploadBytes).toBe(10 * 1024 * 1024);
   });
 
   it("reads overrides from the environment", () => {
@@ -17,11 +19,13 @@ describe("loadConfig", () => {
       HOST: "0.0.0.0",
       PORT: "8080",
       DATA_DIR: "/data",
+      MAX_UPLOAD_MB: "2",
     });
 
     expect(config.host).toBe("0.0.0.0");
     expect(config.port).toBe(8080);
     expect(config.databasePath).toBe(path.join("/data", "app.db"));
+    expect(config.maxUploadBytes).toBe(2 * 1024 * 1024);
   });
 
   it("rejects an invalid port", () => {

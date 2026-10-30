@@ -10,11 +10,12 @@ import {
   projectSettingsSchema,
   updateProjectInputSchema,
 } from "../../shared/projects";
-import { SLUG_MAX_LENGTH, slugify } from "../../shared/slug";
+import { slugify, uniqueSlug } from "../../shared/slug";
 import type { Db } from "../db/client";
 import { findProject } from "../db/projects";
 import { endpointsUsingScheme } from "../db/references";
 import { type ProjectRow, projects } from "../db/schema";
+import type { UploadStorage } from "../storage/uploads";
 import { jsonBody, toApiIssues, validationFailed } from "../validation";
 
 function toSummary(row: ProjectRow): ProjectSummary {
@@ -75,18 +76,7 @@ function isSlugTaken(db: Db, slug: string, exceptProjectId?: string) {
   return row !== undefined && row.id !== exceptProjectId;
 }
 
-/** Returns `base`, or the first free `base-2`, `base-3`, … */
-function uniqueSlug(db: Db, base: string) {
-  for (let n = 1; ; n++) {
-    const suffix = n === 1 ? "" : `-${n}`;
-    const candidate = `${base.slice(0, SLUG_MAX_LENGTH - suffix.length).replace(/-+$/, "")}${suffix}`;
-    if (!isSlugTaken(db, candidate)) {
-      return candidate;
-    }
-  }
-}
-
-export function projectRoutes(db: Db) {
+export function projectRoutes(db: Db, storage: UploadStorage) {
   return new Hono()
     .get("/", (c) => {
       const rows = db
@@ -106,7 +96,9 @@ export function projectRoutes(db: Db) {
         }
         slug = input.slug;
       } else {
-        slug = uniqueSlug(db, slugify(input.name) || "project");
+        slug = uniqueSlug(slugify(input.name) || "project", (candidate) =>
+          isSlugTaken(db, candidate),
+        );
       }
 
       const now = new Date();
@@ -197,6 +189,10 @@ export function projectRoutes(db: Db) {
         .where(eq(projects.id, c.req.param("id")))
         .returning({ id: projects.id })
         .get();
-      return deleted ? c.body(null, 204) : projectNotFound(c);
+      if (!deleted) {
+        return projectNotFound(c);
+      }
+      storage.removeProject(deleted.id);
+      return c.body(null, 204);
     });
 }

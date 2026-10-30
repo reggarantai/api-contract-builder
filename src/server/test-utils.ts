@@ -15,15 +15,23 @@ export function createTempDir(prefix: string) {
   };
 }
 
-/** An app backed by a fresh database in a temporary directory. */
-export function createTestApp() {
+/** An app backed by a fresh database and uploads folder in a temporary directory. */
+export function createTestApp({ maxUploadBytes = 1024 * 1024 } = {}) {
   const temp = createTempDir("app");
   const database = openDatabase(path.join(temp.dir, "app.db"), migrationsDir);
-  const app = createApp({ db: database.db, version: "1.2.3", clientDir: null });
+  const uploadsDir = path.join(temp.dir, "uploads");
+  const app = createApp({
+    db: database.db,
+    version: "1.2.3",
+    clientDir: null,
+    uploadsDir,
+    maxUploadBytes,
+  });
 
   return {
     app,
     db: database.db,
+    uploadsDir,
     request(method: string, url: string, body?: unknown) {
       return app.request(url, {
         method,
@@ -33,6 +41,16 @@ export function createTestApp() {
             : { "Content-Type": "application/json" },
         body: body === undefined ? undefined : JSON.stringify(body),
       });
+    },
+    upload(url: string, files: { name: string; type: string; data: Buffer }[]) {
+      const form = new FormData();
+      for (const file of files) {
+        form.append(
+          "files",
+          new File([file.data], file.name, { type: file.type }),
+        );
+      }
+      return app.request(url, { method: "POST", body: form });
     },
     close() {
       database.close();

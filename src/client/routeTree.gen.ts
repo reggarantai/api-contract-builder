@@ -14,11 +14,15 @@ import { Route as ProjectsProjectIdRouteRouteImport } from './routes/projects/$p
 import { Route as ProjectsProjectIdIndexRouteImport } from './routes/projects/$projectId/index'
 import { Route as ProjectsProjectIdEndpointsRouteRouteImport } from './routes/projects/$projectId/endpoints/route'
 import { Route as ProjectsProjectIdModelsRouteRouteImport } from './routes/projects/$projectId/models/route'
+import { Route as ProjectsProjectIdPagesRouteRouteImport } from './routes/projects/$projectId/pages/route'
 import { Route as ProjectsProjectIdSettingsRouteImport } from './routes/projects/$projectId/settings'
 import { Route as ProjectsProjectIdEndpointsIndexRouteImport } from './routes/projects/$projectId/endpoints/index'
 import { Route as ProjectsProjectIdEndpointsEndpointIdRouteImport } from './routes/projects/$projectId/endpoints/$endpointId'
 import { Route as ProjectsProjectIdModelsIndexRouteImport } from './routes/projects/$projectId/models/index'
 import { Route as ProjectsProjectIdModelsModelIdRouteImport } from './routes/projects/$projectId/models/$modelId'
+import { Route as ProjectsProjectIdPagesIndexRouteImport } from './routes/projects/$projectId/pages/index'
+import { Route as ProjectsProjectIdPagesPageIdIndexRouteImport } from './routes/projects/$projectId/pages/$pageId/index'
+import { Route as ProjectsProjectIdPagesPageIdEditRouteImport } from './routes/projects/$projectId/pages/$pageId/edit'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -45,6 +49,12 @@ const ProjectsProjectIdModelsRouteRoute =
   ProjectsProjectIdModelsRouteRouteImport.update({
     id: '/models',
     path: '/models',
+    getParentRoute: () => ProjectsProjectIdRouteRoute,
+  } as any)
+const ProjectsProjectIdPagesRouteRoute =
+  ProjectsProjectIdPagesRouteRouteImport.update({
+    id: '/pages',
+    path: '/pages',
     getParentRoute: () => ProjectsProjectIdRouteRoute,
   } as any)
 const ProjectsProjectIdSettingsRoute =
@@ -77,18 +87,40 @@ const ProjectsProjectIdModelsModelIdRoute =
     path: '/$modelId',
     getParentRoute: () => ProjectsProjectIdModelsRouteRoute,
   } as any)
+const ProjectsProjectIdPagesIndexRoute =
+  ProjectsProjectIdPagesIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => ProjectsProjectIdPagesRouteRoute,
+  } as any)
+const ProjectsProjectIdPagesPageIdIndexRoute =
+  ProjectsProjectIdPagesPageIdIndexRouteImport.update({
+    id: '/$pageId/',
+    path: '/$pageId/',
+    getParentRoute: () => ProjectsProjectIdPagesRouteRoute,
+  } as any)
+const ProjectsProjectIdPagesPageIdEditRoute =
+  ProjectsProjectIdPagesPageIdEditRouteImport.update({
+    id: '/$pageId/edit',
+    path: '/$pageId/edit',
+    getParentRoute: () => ProjectsProjectIdPagesRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/projects/$projectId': typeof ProjectsProjectIdRouteRouteWithChildren
   '/projects/$projectId/endpoints': typeof ProjectsProjectIdEndpointsRouteRouteWithChildren
   '/projects/$projectId/models': typeof ProjectsProjectIdModelsRouteRouteWithChildren
+  '/projects/$projectId/pages': typeof ProjectsProjectIdPagesRouteRouteWithChildren
   '/projects/$projectId/settings': typeof ProjectsProjectIdSettingsRoute
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
   '/projects/$projectId/endpoints/$endpointId': typeof ProjectsProjectIdEndpointsEndpointIdRoute
   '/projects/$projectId/models/$modelId': typeof ProjectsProjectIdModelsModelIdRoute
   '/projects/$projectId/endpoints/': typeof ProjectsProjectIdEndpointsIndexRoute
   '/projects/$projectId/models/': typeof ProjectsProjectIdModelsIndexRoute
+  '/projects/$projectId/pages/': typeof ProjectsProjectIdPagesIndexRoute
+  '/projects/$projectId/pages/$pageId/edit': typeof ProjectsProjectIdPagesPageIdEditRoute
+  '/projects/$projectId/pages/$pageId/': typeof ProjectsProjectIdPagesPageIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -98,6 +130,9 @@ export interface FileRoutesByTo {
   '/projects/$projectId/models/$modelId': typeof ProjectsProjectIdModelsModelIdRoute
   '/projects/$projectId/endpoints': typeof ProjectsProjectIdEndpointsIndexRoute
   '/projects/$projectId/models': typeof ProjectsProjectIdModelsIndexRoute
+  '/projects/$projectId/pages': typeof ProjectsProjectIdPagesIndexRoute
+  '/projects/$projectId/pages/$pageId/edit': typeof ProjectsProjectIdPagesPageIdEditRoute
+  '/projects/$projectId/pages/$pageId': typeof ProjectsProjectIdPagesPageIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -105,12 +140,16 @@ export interface FileRoutesById {
   '/projects/$projectId': typeof ProjectsProjectIdRouteRouteWithChildren
   '/projects/$projectId/endpoints': typeof ProjectsProjectIdEndpointsRouteRouteWithChildren
   '/projects/$projectId/models': typeof ProjectsProjectIdModelsRouteRouteWithChildren
+  '/projects/$projectId/pages': typeof ProjectsProjectIdPagesRouteRouteWithChildren
   '/projects/$projectId/settings': typeof ProjectsProjectIdSettingsRoute
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
   '/projects/$projectId/endpoints/$endpointId': typeof ProjectsProjectIdEndpointsEndpointIdRoute
   '/projects/$projectId/models/$modelId': typeof ProjectsProjectIdModelsModelIdRoute
   '/projects/$projectId/endpoints/': typeof ProjectsProjectIdEndpointsIndexRoute
   '/projects/$projectId/models/': typeof ProjectsProjectIdModelsIndexRoute
+  '/projects/$projectId/pages/': typeof ProjectsProjectIdPagesIndexRoute
+  '/projects/$projectId/pages/$pageId/edit': typeof ProjectsProjectIdPagesPageIdEditRoute
+  '/projects/$projectId/pages/$pageId/': typeof ProjectsProjectIdPagesPageIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -119,12 +158,16 @@ export interface FileRouteTypes {
     | '/projects/$projectId'
     | '/projects/$projectId/endpoints'
     | '/projects/$projectId/models'
+    | '/projects/$projectId/pages'
     | '/projects/$projectId/settings'
     | '/projects/$projectId/'
     | '/projects/$projectId/endpoints/$endpointId'
     | '/projects/$projectId/models/$modelId'
     | '/projects/$projectId/endpoints/'
     | '/projects/$projectId/models/'
+    | '/projects/$projectId/pages/'
+    | '/projects/$projectId/pages/$pageId/edit'
+    | '/projects/$projectId/pages/$pageId/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -134,18 +177,25 @@ export interface FileRouteTypes {
     | '/projects/$projectId/models/$modelId'
     | '/projects/$projectId/endpoints'
     | '/projects/$projectId/models'
+    | '/projects/$projectId/pages'
+    | '/projects/$projectId/pages/$pageId/edit'
+    | '/projects/$projectId/pages/$pageId'
   id:
     | '__root__'
     | '/'
     | '/projects/$projectId'
     | '/projects/$projectId/endpoints'
     | '/projects/$projectId/models'
+    | '/projects/$projectId/pages'
     | '/projects/$projectId/settings'
     | '/projects/$projectId/'
     | '/projects/$projectId/endpoints/$endpointId'
     | '/projects/$projectId/models/$modelId'
     | '/projects/$projectId/endpoints/'
     | '/projects/$projectId/models/'
+    | '/projects/$projectId/pages/'
+    | '/projects/$projectId/pages/$pageId/edit'
+    | '/projects/$projectId/pages/$pageId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -190,6 +240,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectIdModelsRouteRouteImport
       parentRoute: typeof ProjectsProjectIdRouteRoute
     }
+    '/projects/$projectId/pages': {
+      id: '/projects/$projectId/pages'
+      path: '/pages'
+      fullPath: '/projects/$projectId/pages'
+      preLoaderRoute: typeof ProjectsProjectIdPagesRouteRouteImport
+      parentRoute: typeof ProjectsProjectIdRouteRoute
+    }
     '/projects/$projectId/settings': {
       id: '/projects/$projectId/settings'
       path: '/settings'
@@ -224,6 +281,27 @@ declare module '@tanstack/react-router' {
       fullPath: '/projects/$projectId/models/$modelId'
       preLoaderRoute: typeof ProjectsProjectIdModelsModelIdRouteImport
       parentRoute: typeof ProjectsProjectIdModelsRouteRoute
+    }
+    '/projects/$projectId/pages/': {
+      id: '/projects/$projectId/pages/'
+      path: '/'
+      fullPath: '/projects/$projectId/pages/'
+      preLoaderRoute: typeof ProjectsProjectIdPagesIndexRouteImport
+      parentRoute: typeof ProjectsProjectIdPagesRouteRoute
+    }
+    '/projects/$projectId/pages/$pageId/': {
+      id: '/projects/$projectId/pages/$pageId/'
+      path: '/$pageId'
+      fullPath: '/projects/$projectId/pages/$pageId/'
+      preLoaderRoute: typeof ProjectsProjectIdPagesPageIdIndexRouteImport
+      parentRoute: typeof ProjectsProjectIdPagesRouteRoute
+    }
+    '/projects/$projectId/pages/$pageId/edit': {
+      id: '/projects/$projectId/pages/$pageId/edit'
+      path: '/$pageId/edit'
+      fullPath: '/projects/$projectId/pages/$pageId/edit'
+      preLoaderRoute: typeof ProjectsProjectIdPagesPageIdEditRouteImport
+      parentRoute: typeof ProjectsProjectIdPagesRouteRoute
     }
   }
 }
@@ -261,9 +339,30 @@ const ProjectsProjectIdModelsRouteRouteWithChildren =
     ProjectsProjectIdModelsRouteRouteChildren,
   )
 
+interface ProjectsProjectIdPagesRouteRouteChildren {
+  ProjectsProjectIdPagesIndexRoute: typeof ProjectsProjectIdPagesIndexRoute
+  ProjectsProjectIdPagesPageIdEditRoute: typeof ProjectsProjectIdPagesPageIdEditRoute
+  ProjectsProjectIdPagesPageIdIndexRoute: typeof ProjectsProjectIdPagesPageIdIndexRoute
+}
+
+const ProjectsProjectIdPagesRouteRouteChildren: ProjectsProjectIdPagesRouteRouteChildren =
+  {
+    ProjectsProjectIdPagesIndexRoute: ProjectsProjectIdPagesIndexRoute,
+    ProjectsProjectIdPagesPageIdEditRoute:
+      ProjectsProjectIdPagesPageIdEditRoute,
+    ProjectsProjectIdPagesPageIdIndexRoute:
+      ProjectsProjectIdPagesPageIdIndexRoute,
+  }
+
+const ProjectsProjectIdPagesRouteRouteWithChildren =
+  ProjectsProjectIdPagesRouteRoute._addFileChildren(
+    ProjectsProjectIdPagesRouteRouteChildren,
+  )
+
 interface ProjectsProjectIdRouteRouteChildren {
   ProjectsProjectIdEndpointsRouteRoute: typeof ProjectsProjectIdEndpointsRouteRouteWithChildren
   ProjectsProjectIdModelsRouteRoute: typeof ProjectsProjectIdModelsRouteRouteWithChildren
+  ProjectsProjectIdPagesRouteRoute: typeof ProjectsProjectIdPagesRouteRouteWithChildren
   ProjectsProjectIdSettingsRoute: typeof ProjectsProjectIdSettingsRoute
   ProjectsProjectIdIndexRoute: typeof ProjectsProjectIdIndexRoute
 }
@@ -274,6 +373,8 @@ const ProjectsProjectIdRouteRouteChildren: ProjectsProjectIdRouteRouteChildren =
       ProjectsProjectIdEndpointsRouteRouteWithChildren,
     ProjectsProjectIdModelsRouteRoute:
       ProjectsProjectIdModelsRouteRouteWithChildren,
+    ProjectsProjectIdPagesRouteRoute:
+      ProjectsProjectIdPagesRouteRouteWithChildren,
     ProjectsProjectIdSettingsRoute: ProjectsProjectIdSettingsRoute,
     ProjectsProjectIdIndexRoute: ProjectsProjectIdIndexRoute,
   }

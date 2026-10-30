@@ -1,5 +1,6 @@
 import {
   integer,
+  primaryKey,
   sqliteTable,
   text,
   uniqueIndex,
@@ -12,6 +13,7 @@ import type {
   HttpMethod,
 } from "../../shared/endpoints";
 import type { JsonSchema } from "../../shared/json-schema";
+import type { MOCKUP_MIME_TYPES, PageTrigger } from "../../shared/pages";
 import type { SecurityScheme, Server } from "../../shared/projects";
 
 /** Instance-level key/value metadata, e.g. when the data directory was created. */
@@ -104,3 +106,64 @@ export const endpoints = sqliteTable(
 );
 
 export type EndpointRow = typeof endpoints.$inferSelect;
+
+export const pages = sqliteTable(
+  "pages",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+    description: text("description").notNull(),
+    acceptanceCriteria: text("acceptance_criteria").notNull(),
+    sortOrder: integer("sort_order").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("pages_project_id_slug_unique").on(table.projectId, table.slug),
+  ],
+);
+
+export type PageRow = typeof pages.$inferSelect;
+
+/** Which endpoints a page calls, and when. */
+export const pageEndpoints = sqliteTable(
+  "page_endpoints",
+  {
+    /** Client-generated; unique within the page. */
+    id: text("id").notNull(),
+    pageId: text("page_id")
+      .notNull()
+      .references(() => pages.id, { onDelete: "cascade" }),
+    endpointId: text("endpoint_id")
+      .notNull()
+      .references(() => endpoints.id, { onDelete: "cascade" }),
+    trigger: text("trigger").$type<PageTrigger>().notNull(),
+    note: text("note").notNull(),
+    sortOrder: integer("sort_order").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.pageId, table.id] })],
+);
+
+export const pageMockups = sqliteTable("page_mockups", {
+  id: text("id").primaryKey(),
+  pageId: text("page_id")
+    .notNull()
+    .references(() => pages.id, { onDelete: "cascade" }),
+  /** Name of the file in the project's uploads folder. */
+  fileName: text("file_name").notNull(),
+  originalName: text("original_name").notNull(),
+  mimeType: text("mime_type")
+    .$type<(typeof MOCKUP_MIME_TYPES)[keyof typeof MOCKUP_MIME_TYPES]>()
+    .notNull(),
+  width: integer("width").notNull(),
+  height: integer("height").notNull(),
+  caption: text("caption").notNull(),
+  sortOrder: integer("sort_order").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+});
+
+export type PageMockupRow = typeof pageMockups.$inferSelect;

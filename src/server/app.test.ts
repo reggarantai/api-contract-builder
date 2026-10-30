@@ -25,6 +25,8 @@ describe("app", () => {
       db: database.db,
       version: "1.2.3",
       clientDir: null,
+      uploadsDir: path.join(temp.dir, "uploads"),
+      maxUploadBytes: 1024,
     });
 
     const response = await app.request("/api/health");
@@ -39,6 +41,8 @@ describe("app", () => {
       db: database.db,
       version: "1.2.3",
       clientDir: null,
+      uploadsDir: path.join(temp.dir, "uploads"),
+      maxUploadBytes: 1024,
     });
 
     const response = await app.request("/api/does-not-exist");
@@ -58,7 +62,13 @@ describe("app", () => {
     });
 
     it("serves static assets", async () => {
-      const app = createApp({ db: database.db, version: "1.2.3", clientDir });
+      const app = createApp({
+        db: database.db,
+        version: "1.2.3",
+        clientDir,
+        uploadsDir: path.join(temp.dir, "uploads"),
+        maxUploadBytes: 1024,
+      });
 
       const response = await app.request("/assets/app.js");
 
@@ -67,7 +77,13 @@ describe("app", () => {
     });
 
     it("serves the SPA shell for client-side routes", async () => {
-      const app = createApp({ db: database.db, version: "1.2.3", clientDir });
+      const app = createApp({
+        db: database.db,
+        version: "1.2.3",
+        clientDir,
+        uploadsDir: path.join(temp.dir, "uploads"),
+        maxUploadBytes: 1024,
+      });
 
       const response = await app.request("/projects/some-project");
 
@@ -76,7 +92,13 @@ describe("app", () => {
     });
 
     it("keeps unknown API routes as JSON 404", async () => {
-      const app = createApp({ db: database.db, version: "1.2.3", clientDir });
+      const app = createApp({
+        db: database.db,
+        version: "1.2.3",
+        clientDir,
+        uploadsDir: path.join(temp.dir, "uploads"),
+        maxUploadBytes: 1024,
+      });
 
       const response = await app.request("/api/does-not-exist");
 

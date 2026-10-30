@@ -279,6 +279,16 @@ Progress:
   - Models and security schemes that endpoints use can't be deleted or removed.
   - Filtering the endpoint list by page waits for M5.
   - Toasts moved to the bottom left; at the bottom right they covered the Save button.
+- **M5 — done (2026-10-30), built test-first.** Notes:
+  - Mockups are saved right away (upload, caption, order, delete), separately from the
+    page's Save button, because uploaded files exist as soon as they're sent.
+  - Uploads are checked by content (PNG, JPEG, GIF, WebP via `image-size`, which also
+    reads the dimensions); SVG is refused because it can carry scripts. Files are served
+    from `/uploads` with `immutable` caching and `nosniff`, and are removed with their
+    mockup, page, or project. `MAX_UPLOAD_MB` sets the per-file limit (default 10).
+  - Mockups are reordered with move buttons; drag and drop is for uploading files.
+  - One endpoint can be linked to a page more than once with different triggers.
+  - The endpoint list can now be filtered by page.
 - Note for M8: the image is ~430 MB uncompressed, mostly the Node base image (~340 MB).
   `better-sqlite3` ships prebuilt binaries for every platform (~27 MB); the ones for other
   platforms could be pruned.

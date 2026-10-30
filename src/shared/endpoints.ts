@@ -382,17 +382,22 @@ export const endpointResponseFieldsSchema = endpointFieldsSchema.extend({
   updatedAt: z.iso.datetime(),
 });
 
-export const endpointSummarySchema = endpointResponseFieldsSchema.pick({
-  id: true,
-  projectId: true,
-  method: true,
-  path: true,
-  summary: true,
-  status: true,
-  deprecated: true,
-  createdAt: true,
-  updatedAt: true,
-});
+export const endpointSummarySchema = endpointResponseFieldsSchema
+  .pick({
+    id: true,
+    projectId: true,
+    method: true,
+    path: true,
+    summary: true,
+    status: true,
+    deprecated: true,
+    createdAt: true,
+    updatedAt: true,
+  })
+  .extend({
+    /** Pages that call the endpoint. */
+    pageIds: z.array(z.string()),
+  });
 
 export type Endpoint = z.infer<typeof endpointResponseFieldsSchema>;
 export type EndpointSummary = z.infer<typeof endpointSummarySchema>;
