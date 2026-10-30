@@ -12,6 +12,10 @@ export function createUploadStorage(uploadsDir: string) {
       fs.mkdirSync(projectDir(projectId), { recursive: true });
       fs.writeFileSync(path.join(projectDir(projectId), fileName), data);
     },
+    read(projectId: string, fileName: string): Uint8Array | undefined {
+      const file = path.join(projectDir(projectId), fileName);
+      return fs.existsSync(file) ? fs.readFileSync(file) : undefined;
+    },
     remove(projectId: string, fileName: string) {
       fs.rmSync(path.join(projectDir(projectId), fileName), { force: true });
     },

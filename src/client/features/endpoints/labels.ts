@@ -14,11 +14,7 @@ export const METHOD_CLASS_NAMES: Record<HttpMethod, string> = {
   OPTIONS: "bg-zinc-100 text-zinc-700",
 };
 
-export const STATUS_LABELS: Record<EndpointStatus, string> = {
-  draft: "Draft",
-  review: "In review",
-  agreed: "Agreed",
-};
+export { ENDPOINT_STATUS_LABELS as STATUS_LABELS } from "@shared/endpoints";
 
 export const STATUS_DOT_CLASS_NAMES: Record<EndpointStatus, string> = {
   draft: "bg-zinc-400",

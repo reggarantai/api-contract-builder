@@ -11,7 +11,8 @@
       "!drizzle",
       "!src/client/routeTree.gen.ts",
       "!pnpm-lock.yaml",
-      "!pnpm-workspace.yaml"
+      "!pnpm-workspace.yaml",
+      "!test/golden"
     ]
   },
   "formatter": {

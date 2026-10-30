@@ -23,6 +23,12 @@ export function methodAllowsBody(method: HttpMethod) {
 export const ENDPOINT_STATUSES = ["draft", "review", "agreed"] as const;
 export type EndpointStatus = (typeof ENDPOINT_STATUSES)[number];
 
+export const ENDPOINT_STATUS_LABELS: Record<EndpointStatus, string> = {
+  draft: "Draft",
+  review: "In review",
+  agreed: "Agreed",
+};
+
 export const PARAMETER_LOCATIONS = ["path", "query", "header"] as const;
 export type ParameterLocation = (typeof PARAMETER_LOCATIONS)[number];
 

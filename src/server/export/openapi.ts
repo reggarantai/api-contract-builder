@@ -87,7 +87,7 @@ function modelRefsIn(schema: JsonSchema) {
 }
 
 /** The pages, endpoints, and models an export includes. */
-function scopeOf(input: ExportInput, { pageId }: ExportOptions) {
+export function scopeOf(input: ExportInput, { pageId }: ExportOptions) {
   if (pageId === undefined) {
     return {
       page: undefined,

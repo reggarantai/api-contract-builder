@@ -1,3 +1,5 @@
+import path from "node:path";
+import { strToU8, zipSync } from "fflate";
 import { type Context, Hono } from "hono";
 import { stringify } from "yaml";
 import { z } from "zod";
@@ -5,6 +7,7 @@ import type { ApiErrorBody } from "../../shared/api-error";
 import { EXPORT_FORMATS, type ExportReport } from "../../shared/export";
 import type { Db } from "../db/client";
 import { loadExportInput } from "../export/load";
+import { buildMarkdownFiles } from "../export/markdown-files";
 import {
   buildOpenApi,
   type ExportInput,
@@ -15,6 +18,11 @@ import type { UploadStorage } from "../storage/uploads";
 import { toApiIssues, validationFailed } from "../validation";
 
 const formatSchema = z.enum(EXPORT_FORMATS).default("yaml");
+
+function openApiYaml(doc: unknown) {
+  // No anchors/aliases: many OpenAPI tools don't handle them.
+  return stringify(doc, { lineWidth: 0, aliasDuplicateObjects: false });
+}
 
 export function exportRoutes(db: Db, storage: UploadStorage) {
   /** The project and the page to export, or the error response. */
@@ -76,13 +84,61 @@ export function exportRoutes(db: Db, storage: UploadStorage) {
       const fileName = [input.project.slug, pageSlug, "openapi", format.data]
         .filter(Boolean)
         .join(".");
-      // No anchors/aliases: many OpenAPI tools don't handle them.
       const body =
         format.data === "yaml"
-          ? stringify(doc, { lineWidth: 0, aliasDuplicateObjects: false })
+          ? openApiYaml(doc)
           : `${JSON.stringify(doc, null, 2)}\n`;
       return c.body(body, 200, {
         "Content-Type": `application/${format.data}; charset=utf-8`,
+        "Content-Disposition": `attachment; filename="${fileName}"`,
+      });
+    })
+    .get("/:projectId/export/markdown", async (c) => {
+      const scope = scopeOf(c);
+      if ("response" in scope) {
+        return scope.response;
+      }
+      const { input, pageId, pageSlug } = scope;
+      const projectSlug = input.project.slug;
+      const doc = buildOpenApi(input, { pageId });
+      const valid =
+        (await validateContract(input, doc, { pageId })).length === 0;
+
+      const openApi = valid
+        ? {
+            fileName: [projectSlug, pageSlug, "openapi", "yaml"]
+              .filter(Boolean)
+              .join("."),
+            content: openApiYaml(doc),
+          }
+        : null;
+      const files = buildMarkdownFiles(
+        input,
+        { pageId },
+        {
+          readImage: (mockup) =>
+            storage.read(input.project.id, path.posix.basename(mockup.url)),
+          openApi,
+        },
+      );
+      if (openApi) {
+        files[openApi.fileName] = openApi.content;
+      }
+
+      // Everything sits in one folder, so unzipping doesn't scatter files.
+      const zip = zipSync(
+        Object.fromEntries(
+          Object.entries(files).map(([name, content]) => [
+            `${projectSlug}/${name}`,
+            typeof content === "string" ? strToU8(content) : content,
+          ]),
+        ),
+      );
+      const fileName = [projectSlug, pageSlug, "contract", "zip"]
+        .filter(Boolean)
+        .join(".");
+      return c.body(zip, 200, {
+        "Content-Type": "application/zip",
         "Content-Disposition": `attachment; filename="${fileName}"`,
       });
     })

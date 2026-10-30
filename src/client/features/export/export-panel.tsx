@@ -13,7 +13,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { exportDownloadUrl, exportReportQueryOptions } from "./queries";
+import {
+  exportDownloadUrl,
+  exportReportQueryOptions,
+  markdownDownloadUrl,
+} from "./queries";
 
 const WHOLE_PROJECT = "all";
 
@@ -37,82 +41,111 @@ export function ExportPanel({
 
   return (
     <div className="grid gap-6">
-      <section
-        aria-label="OpenAPI"
-        className="grid gap-4 rounded-xl border p-4"
-      >
-        <div className="grid gap-0.5">
-          <h3 className="font-heading font-medium">OpenAPI 3.1</h3>
-          <p className="text-sm text-muted-foreground">
-            For frontend and backend tools: code generators, API docs, and mock
-            servers.
-          </p>
-        </div>
+      <Field className="max-w-xs">
+        <FieldLabel htmlFor="export-scope">Scope</FieldLabel>
+        <Select
+          value={pageId ?? WHOLE_PROJECT}
+          onValueChange={(value) =>
+            void navigate({
+              to: "/projects/$projectId/export",
+              params: { projectId: project.id },
+              search: value === WHOLE_PROJECT ? {} : { page: value },
+            })
+          }
+        >
+          <SelectTrigger id="export-scope" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={WHOLE_PROJECT}>Whole project</SelectItem>
+            {pages.map((item) => (
+              <SelectItem key={item.id} value={item.id}>
+                {item.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
 
-        <Field className="max-w-xs">
-          <FieldLabel htmlFor="export-scope">Scope</FieldLabel>
-          <Select
-            value={pageId ?? WHOLE_PROJECT}
-            onValueChange={(value) =>
-              void navigate({
-                to: "/projects/$projectId/export",
-                params: { projectId: project.id },
-                search: value === WHOLE_PROJECT ? {} : { page: value },
-              })
-            }
-          >
-            <SelectTrigger id="export-scope" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={WHOLE_PROJECT}>Whole project</SelectItem>
-              {pages.map((item) => (
-                <SelectItem key={item.id} value={item.id}>
-                  {item.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section
+          aria-label="OpenAPI"
+          className="grid content-start gap-4 rounded-xl border p-4"
+        >
+          <div className="grid gap-0.5">
+            <h3 className="font-heading font-medium">OpenAPI 3.1</h3>
+            <p className="text-sm text-muted-foreground">
+              For frontend and backend tools: code generators, API docs, and
+              mock servers.
+            </p>
+          </div>
 
-        <ValidityStatus isPending={report.isPending} valid={valid} />
+          <ValidityStatus isPending={report.isPending} valid={valid} />
 
-        <div className="flex flex-wrap gap-2">
-          {(["yaml", "json"] as const).map((format) =>
-            valid ? (
-              <Button
-                key={format}
-                asChild
-                variant={format === "yaml" ? "default" : "outline"}
-              >
-                <a
-                  href={exportDownloadUrl(project.id, format, pageId)}
-                  download
+          <div className="flex flex-wrap gap-2">
+            {(["yaml", "json"] as const).map((format) =>
+              valid ? (
+                <Button
+                  key={format}
+                  asChild
+                  variant={format === "yaml" ? "default" : "outline"}
+                >
+                  <a
+                    href={exportDownloadUrl(project.id, format, pageId)}
+                    download
+                  >
+                    <DownloadIcon />
+                    Download {format.toUpperCase()}
+                  </a>
+                </Button>
+              ) : (
+                <Button
+                  key={format}
+                  disabled
+                  variant={format === "yaml" ? "default" : "outline"}
                 >
                   <DownloadIcon />
                   Download {format.toUpperCase()}
-                </a>
-              </Button>
-            ) : (
-              <Button
-                key={format}
-                disabled
-                variant={format === "yaml" ? "default" : "outline"}
-              >
-                <DownloadIcon />
-                Download {format.toUpperCase()}
-              </Button>
-            ),
-          )}
-        </div>
+                </Button>
+              ),
+            )}
+          </div>
 
-        <p className="text-sm text-muted-foreground">
-          The frontend can run a mock server from it:{" "}
-          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
-            npx @stoplight/prism-cli mock {fileBase}.yaml
-          </code>
-        </p>
-      </section>
+          <p className="text-sm text-muted-foreground">
+            The frontend can run a mock server from it:{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
+              npx @stoplight/prism-cli mock {fileBase}.yaml
+            </code>
+          </p>
+        </section>
+
+        <section
+          aria-label="Markdown"
+          className="grid content-start gap-4 rounded-xl border p-4"
+        >
+          <div className="grid gap-0.5">
+            <h3 className="font-heading font-medium">Markdown</h3>
+            <p className="text-sm text-muted-foreground">
+              For people: a README, one file per page with its mockups and
+              endpoints, and the models. Reads well on GitHub or in any Markdown
+              viewer.
+            </p>
+          </div>
+          <div>
+            <Button asChild variant="outline">
+              <a href={markdownDownloadUrl(project.id, pageId)} download>
+                <DownloadIcon />
+                Download Markdown (.zip)
+              </a>
+            </Button>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {report.data && !valid
+              ? "The OpenAPI file is left out until the problems below are fixed."
+              : "Includes the OpenAPI file, so the bundle has everything."}
+          </p>
+        </section>
+      </div>
 
       {report.data && report.data.errors.length > 0 && (
         <section

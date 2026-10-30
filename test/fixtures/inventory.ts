@@ -1,3 +1,5 @@
+import { makePng } from "../images";
+
 /**
  * A small but complete contract, built through the API: two servers, two
  * security schemes, models that reference each other (and themselves),
@@ -26,7 +28,21 @@ async function send<T = { id: string }>(
   return (await response.json()) as T;
 }
 
-export async function buildInventoryProject(request: Request) {
+type Upload = (
+  url: string,
+  files: { name: string; type: string; data: Buffer }[],
+) => Promise<Response> | Response;
+
+/** Mockup images the fixture uploads when given an `upload` function. */
+export const INVENTORY_MOCKUPS = {
+  login: [
+    { name: "form.png", caption: "Sign-in form", data: makePng(40, 30) },
+    { name: "error.png", caption: "Wrong password", data: makePng(40, 32) },
+  ],
+  stockList: [{ name: "table.png", caption: "", data: makePng(60, 30) }],
+};
+
+export async function buildInventoryProject(request: Request, upload?: Upload) {
   const project = await send<{ id: string; slug: string }>(
     request,
     "POST",
@@ -385,9 +401,11 @@ export async function buildInventoryProject(request: Request) {
     note,
   });
 
-  await page("Login", "Users sign in with email and password.", [
-    link("l1", login.id, "on_submit", "Show errors inline"),
-  ]);
+  const loginPage = await page(
+    "Login",
+    "Users sign in with email and password.",
+    [link("l1", login.id, "on_submit", "Show errors inline")],
+  );
   const stockList = await page("Stock list", "All items, newest first.", [
     link("l1", list.id, "on_load"),
     link("l2", remove.id, "on_action", "Delete button in each row"),
@@ -395,5 +413,35 @@ export async function buildInventoryProject(request: Request) {
   await page("Stock detail", "", [link("l1", detail.id, "on_load")]);
   await page("Add stock", "", [link("l1", add.id, "on_submit")]);
 
-  return { projectId: project.id, stockListPageId: stockList.id, items };
+  if (upload) {
+    for (const [pageId, mockups] of [
+      [loginPage.id, INVENTORY_MOCKUPS.login],
+      [stockList.id, INVENTORY_MOCKUPS.stockList],
+    ] as const) {
+      const url = `${base}/pages/${pageId}/mockups`;
+      const response = await upload(
+        url,
+        mockups.map((mockup) => ({
+          name: mockup.name,
+          type: "image/png",
+          data: mockup.data,
+        })),
+      );
+      const created = (await response.json()) as { id: string }[];
+      for (const [index, mockup] of mockups.entries()) {
+        if (mockup.caption) {
+          await send(request, "PATCH", `${url}/${created[index]?.id}`, {
+            caption: mockup.caption,
+          });
+        }
+      }
+    }
+  }
+
+  return {
+    projectId: project.id,
+    loginPageId: loginPage.id,
+    stockListPageId: stockList.id,
+    items,
+  };
 }

@@ -303,6 +303,17 @@ Progress:
     the parameter. Repeated page names get the page slug in their tag. Suggested operation
     IDs that collide get a numeric suffix.
   - Exports live in a new Export tab (scope: whole project or one page); pages link to it.
+- **M7 — done (2026-10-30), built test-first.** Notes:
+  - The zip (`<project>.contract.zip`, or `<project>.<page>.contract.zip`) holds one folder
+    with `README.md`, `models.md`, `pages/<slug>.md`, `images/<page>/NN-<name>.<ext>`, and
+    the OpenAPI file when the contract is valid. Markdown can be downloaded even when the
+    OpenAPI isn't valid yet; the README then says why the OpenAPI file is missing.
+  - Page files stand alone: referenced models are expanded in place (`[].category.name`)
+    with a link to `models.md`, stopping where a model contains itself. `models.md` links
+    other models instead of repeating them.
+  - Golden files in `test/golden/inventory-markdown/` pin the output; a test checks every
+    image and file link resolves inside the zip. `test/golden` is excluded from Biome,
+    which had reformatted the golden tables.
 - Note for M8: the image is ~430 MB uncompressed, mostly the Node base image (~340 MB).
   `better-sqlite3` ships prebuilt binaries for every platform (~27 MB); the ones for other
   platforms could be pruned.

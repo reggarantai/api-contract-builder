@@ -41,3 +41,9 @@ export function exportDownloadUrl(
     .join("&");
   return `/api${exportPath(projectId, "openapi")}?${query}`;
 }
+
+/** Where the browser downloads the Markdown bundle (.zip) from. */
+export function markdownDownloadUrl(projectId: string, pageId?: string) {
+  const query = pageQuery(pageId);
+  return `/api/projects/${encodeURIComponent(projectId)}/export/markdown${query ? `?${query}` : ""}`;
+}

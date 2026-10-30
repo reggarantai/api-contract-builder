@@ -1,5 +1,7 @@
 import fs from "node:fs";
 import { type Download, expect, type Page, test } from "@playwright/test";
+import { strFromU8, unzipSync } from "fflate";
+import { makePng } from "../test/images";
 import {
   createEndpoint,
   createModel,
@@ -39,6 +41,19 @@ async function setUp(request: Parameters<typeof createProject>[0]) {
       ],
     },
   });
+  const uploaded = await request.post(
+    `/api/projects/${project.id}/pages/${loginPage.id}/mockups`,
+    {
+      multipart: {
+        files: {
+          name: "form.png",
+          mimeType: "image/png",
+          buffer: makePng(8, 6),
+        },
+      },
+    },
+  );
+  expect(uploaded.status()).toBe(201);
   return { project, login, health, loginPage };
 }
 
@@ -132,4 +147,62 @@ test("blocks downloads while the contract isn't valid", async ({
   await expect(
     page.getByRole("button", { name: "Download YAML" }),
   ).toBeDisabled();
+});
+
+async function unzip(download: Download) {
+  return unzipSync(new Uint8Array(fs.readFileSync(await download.path())));
+}
+
+test("downloads the Markdown bundle", async ({ page, request }) => {
+  const { project } = await setUp(request);
+  await page.goto(`/projects/${project.id}/export`);
+
+  const zip = await download(page, "Download Markdown");
+  expect(zip.suggestedFilename()).toBe(`${project.slug}.contract.zip`);
+  const files = await unzip(zip);
+  const root = project.slug;
+  expect(Object.keys(files)).toEqual(
+    expect.arrayContaining([
+      `${root}/README.md`,
+      `${root}/models.md`,
+      `${root}/pages/login.md`,
+      `${root}/images/login/01-form.png`,
+      `${root}/${root}.openapi.yaml`,
+    ]),
+  );
+  expect(
+    strFromU8(files[`${root}/pages/login.md`] ?? new Uint8Array()),
+  ).toContain("![form.png](../images/login/01-form.png)");
+});
+
+test("downloads one page's Markdown bundle", async ({ page, request }) => {
+  const { project, loginPage } = await setUp(request);
+  await page.goto(`/projects/${project.id}/export?page=${loginPage.id}`);
+
+  const zip = await download(page, "Download Markdown");
+
+  expect(zip.suggestedFilename()).toBe(`${project.slug}.login.contract.zip`);
+  expect(Object.keys(await unzip(zip))).toContain(
+    `${project.slug}/pages/login.md`,
+  );
+});
+
+test("still offers Markdown while the OpenAPI isn't valid", async ({
+  page,
+  request,
+}) => {
+  const { project } = await setUp(request);
+  await createModel(request, project.id, {
+    name: "Broken",
+    schema: { type: "strng" },
+  });
+  await page.goto(`/projects/${project.id}/export`);
+
+  await expect(
+    page.getByRole("button", { name: "Download YAML" }),
+  ).toBeDisabled();
+  const zip = await download(page, "Download Markdown");
+  expect(Object.keys(await unzip(zip))).not.toContain(
+    `${project.slug}/${project.slug}.openapi.yaml`,
+  );
 });
