@@ -260,6 +260,8 @@ Progress:
 
 - **M1 — done (2026-10-30).** Tooling then switched from ESLint + Prettier to Biome, which
   unblocked TypeScript 7 (typescript-eslint only supports TypeScript < 6.1).
+- **M2 — done (2026-10-30).** Servers and security schemes carry client-generated IDs, so
+  endpoints (M4) can reference a scheme by ID and survive key renames.
 - Note for M8: the image is ~430 MB uncompressed, mostly the Node base image (~340 MB).
   `better-sqlite3` ships prebuilt binaries for every platform (~27 MB); the ones for other
   platforms could be pruned.

@@ -68,6 +68,20 @@
           }
         }
       }
+    },
+    {
+      "includes": ["src/client/components/ui/**"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "useSemanticElements": "off"
+          },
+          "suspicious": {
+            "noArrayIndexKey": "off",
+            "noDoubleEquals": "off"
+          }
+        }
+      }
     }
   ]
 }

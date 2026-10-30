@@ -1,8 +1,11 @@
 import path from "node:path";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
+import type { ApiErrorBody } from "../shared/api-error";
 import type { Db } from "./db/client";
 import { healthRoutes } from "./routes/health";
+import { projectRoutes } from "./routes/projects";
 
 export type AppOptions = {
   db: Db;
@@ -15,7 +18,16 @@ export function createApp({ db, version, clientDir }: AppOptions) {
   const app = new Hono();
 
   app.route("/api", healthRoutes(db, version));
-  app.all("/api/*", (c) => c.json({ error: "Not found" }, 404));
+  app.route("/api/projects", projectRoutes(db));
+  app.all("/api/*", (c) => c.json<ApiErrorBody>({ error: "Not found" }, 404));
+
+  app.onError((error, c) => {
+    if (error instanceof HTTPException) {
+      return c.json<ApiErrorBody>({ error: error.message }, error.status);
+    }
+    console.error(error);
+    return c.json<ApiErrorBody>({ error: "Internal server error" }, 500);
+  });
 
   if (clientDir) {
     app.use("*", serveStatic({ root: clientDir }));
