@@ -1,0 +1,13 @@
+services:
+  app:
+    build: .
+    image: api-contract-builder:local
+    ports:
+      # Bound to 127.0.0.1 so the app is only reachable from this machine.
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - data:/data
+    restart: unless-stopped
+
+volumes:
+  data:
