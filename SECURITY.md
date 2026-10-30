@@ -14,8 +14,8 @@ Please don't open a public issue. Report it privately instead:
 - on GitHub: the repository's **Security** tab, then **Report a vulnerability**;
 - or by email to coding@reggarantai.com.
 
-Say what's affected, how to reproduce it, and what an attacker could do with it. You'll
-get a reply within a week, and credit in the release notes if you'd like.
+Say what's affected, how to reproduce it, and what an attacker could do with it. If you'd
+like, you'll be credited in the release notes.
 
 ## How the image is kept clean
 
