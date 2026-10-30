@@ -41,13 +41,18 @@ pnpm dev
 | `pnpm dev`         | Start the API server (watch mode) and the Vite dev server       |
 | `pnpm build`       | Build the client (`dist/client`) and the server (`dist/server`) |
 | `pnpm start`       | Run the production build (app and API on one port)              |
-| `pnpm test`        | Run tests                                                       |
+| `pnpm test`        | Run unit and API tests (Vitest)                                 |
+| `pnpm test:e2e`    | Build, then run browser tests (Playwright)                      |
 | `pnpm typecheck`   | Type-check client and server (TypeScript 7)                     |
 | `pnpm check`       | Lint, check formatting, and check import order with Biome       |
 | `pnpm check:fix`   | Apply safe Biome fixes and format                               |
 | `pnpm lint`        | Lint only                                                       |
 | `pnpm format`      | Format only                                                     |
 | `pnpm db:generate` | Generate a migration after changing `src/server/db/schema.ts`   |
+
+Before the first `pnpm test:e2e`, install the test browser with
+`pnpm exec playwright install chromium`. Browser tests run against the production build on
+port 4100 with a throwaway data directory.
 
 ### Editor setup
 

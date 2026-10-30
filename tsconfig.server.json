@@ -19,5 +19,12 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src/server", "src/shared", "vite.config.ts", "drizzle.config.ts"]
+  "include": [
+    "src/server",
+    "src/shared",
+    "e2e",
+    "vite.config.ts",
+    "drizzle.config.ts",
+    "playwright.config.ts"
+  ]
 }
