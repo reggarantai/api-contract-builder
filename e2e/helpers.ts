@@ -38,5 +38,33 @@ export function settingsSection(page: Page, title: string): Locator {
 }
 
 export function projectTab(page: Page, name: string): Locator {
-  return page.getByRole("navigation").getByRole("link", { name });
+  return page
+    .getByRole("navigation", { name: "Project" })
+    .getByRole("link", { name });
+}
+
+export type CreatedModel = { id: string; name: string };
+
+export async function createModel(
+  request: APIRequestContext,
+  projectId: string,
+  body: { name: string; schema?: Record<string, unknown> },
+): Promise<CreatedModel> {
+  const response = await request.post(`/api/projects/${projectId}/models`, {
+    data: body,
+  });
+  expect(response.status()).toBe(201);
+  return (await response.json()) as CreatedModel;
+}
+
+export async function getModelSchema(
+  request: APIRequestContext,
+  projectId: string,
+  modelId: string,
+) {
+  const response = await request.get(
+    `/api/projects/${projectId}/models/${modelId}`,
+  );
+  expect(response.status()).toBe(200);
+  return ((await response.json()) as { schema: unknown }).schema;
 }

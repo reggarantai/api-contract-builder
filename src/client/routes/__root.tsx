@@ -9,6 +9,7 @@ import {
 } from "@tanstack/react-router";
 import { Badge } from "@/components/ui/badge";
 import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { ProjectSwitcher } from "@/features/projects/project-switcher";
 import { apiGet } from "@/lib/api";
 
@@ -22,28 +23,30 @@ function RootLayout() {
   const { projectId } = useParams({ strict: false });
 
   return (
-    <div className="flex min-h-svh flex-col">
-      <header className="border-b">
-        <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-6">
-          <Link to="/" className="font-heading font-semibold">
-            API Contract Builder
-          </Link>
-          {projectId && (
-            <>
-              <span className="text-muted-foreground">/</span>
-              <ProjectSwitcher projectId={projectId} />
-            </>
-          )}
-          <div className="ml-auto">
-            <ServerStatus />
+    <TooltipProvider>
+      <div className="flex min-h-svh flex-col">
+        <header className="border-b">
+          <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-6">
+            <Link to="/" className="font-heading font-semibold">
+              API Contract Builder
+            </Link>
+            {projectId && (
+              <>
+                <span className="text-muted-foreground">/</span>
+                <ProjectSwitcher projectId={projectId} />
+              </>
+            )}
+            <div className="ml-auto">
+              <ServerStatus />
+            </div>
           </div>
-        </div>
-      </header>
-      <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">
-        <Outlet />
-      </main>
-      <Toaster position="bottom-right" />
-    </div>
+        </header>
+        <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">
+          <Outlet />
+        </main>
+        <Toaster position="bottom-right" />
+      </div>
+    </TooltipProvider>
   );
 }
 

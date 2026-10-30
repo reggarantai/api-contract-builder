@@ -12,7 +12,10 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProjectsProjectIdRouteRouteImport } from './routes/projects/$projectId/route'
 import { Route as ProjectsProjectIdIndexRouteImport } from './routes/projects/$projectId/index'
+import { Route as ProjectsProjectIdModelsRouteRouteImport } from './routes/projects/$projectId/models/route'
 import { Route as ProjectsProjectIdSettingsRouteImport } from './routes/projects/$projectId/settings'
+import { Route as ProjectsProjectIdModelsIndexRouteImport } from './routes/projects/$projectId/models/index'
+import { Route as ProjectsProjectIdModelsModelIdRouteImport } from './routes/projects/$projectId/models/$modelId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -29,46 +32,83 @@ const ProjectsProjectIdIndexRoute = ProjectsProjectIdIndexRouteImport.update({
   path: '/',
   getParentRoute: () => ProjectsProjectIdRouteRoute,
 } as any)
+const ProjectsProjectIdModelsRouteRoute =
+  ProjectsProjectIdModelsRouteRouteImport.update({
+    id: '/models',
+    path: '/models',
+    getParentRoute: () => ProjectsProjectIdRouteRoute,
+  } as any)
 const ProjectsProjectIdSettingsRoute =
   ProjectsProjectIdSettingsRouteImport.update({
     id: '/settings',
     path: '/settings',
     getParentRoute: () => ProjectsProjectIdRouteRoute,
   } as any)
+const ProjectsProjectIdModelsIndexRoute =
+  ProjectsProjectIdModelsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => ProjectsProjectIdModelsRouteRoute,
+  } as any)
+const ProjectsProjectIdModelsModelIdRoute =
+  ProjectsProjectIdModelsModelIdRouteImport.update({
+    id: '/$modelId',
+    path: '/$modelId',
+    getParentRoute: () => ProjectsProjectIdModelsRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/projects/$projectId': typeof ProjectsProjectIdRouteRouteWithChildren
+  '/projects/$projectId/models': typeof ProjectsProjectIdModelsRouteRouteWithChildren
   '/projects/$projectId/settings': typeof ProjectsProjectIdSettingsRoute
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
+  '/projects/$projectId/models/$modelId': typeof ProjectsProjectIdModelsModelIdRoute
+  '/projects/$projectId/models/': typeof ProjectsProjectIdModelsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/projects/$projectId/settings': typeof ProjectsProjectIdSettingsRoute
   '/projects/$projectId': typeof ProjectsProjectIdIndexRoute
+  '/projects/$projectId/models/$modelId': typeof ProjectsProjectIdModelsModelIdRoute
+  '/projects/$projectId/models': typeof ProjectsProjectIdModelsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/projects/$projectId': typeof ProjectsProjectIdRouteRouteWithChildren
+  '/projects/$projectId/models': typeof ProjectsProjectIdModelsRouteRouteWithChildren
   '/projects/$projectId/settings': typeof ProjectsProjectIdSettingsRoute
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
+  '/projects/$projectId/models/$modelId': typeof ProjectsProjectIdModelsModelIdRoute
+  '/projects/$projectId/models/': typeof ProjectsProjectIdModelsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/projects/$projectId'
+    | '/projects/$projectId/models'
     | '/projects/$projectId/settings'
     | '/projects/$projectId/'
+    | '/projects/$projectId/models/$modelId'
+    | '/projects/$projectId/models/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/projects/$projectId/settings' | '/projects/$projectId'
+  to:
+    | '/'
+    | '/projects/$projectId/settings'
+    | '/projects/$projectId'
+    | '/projects/$projectId/models/$modelId'
+    | '/projects/$projectId/models'
   id:
     | '__root__'
     | '/'
     | '/projects/$projectId'
+    | '/projects/$projectId/models'
     | '/projects/$projectId/settings'
     | '/projects/$projectId/'
+    | '/projects/$projectId/models/$modelId'
+    | '/projects/$projectId/models/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -99,6 +139,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectIdIndexRouteImport
       parentRoute: typeof ProjectsProjectIdRouteRoute
     }
+    '/projects/$projectId/models': {
+      id: '/projects/$projectId/models'
+      path: '/models'
+      fullPath: '/projects/$projectId/models'
+      preLoaderRoute: typeof ProjectsProjectIdModelsRouteRouteImport
+      parentRoute: typeof ProjectsProjectIdRouteRoute
+    }
     '/projects/$projectId/settings': {
       id: '/projects/$projectId/settings'
       path: '/settings'
@@ -106,16 +153,49 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectIdSettingsRouteImport
       parentRoute: typeof ProjectsProjectIdRouteRoute
     }
+    '/projects/$projectId/models/': {
+      id: '/projects/$projectId/models/'
+      path: '/'
+      fullPath: '/projects/$projectId/models/'
+      preLoaderRoute: typeof ProjectsProjectIdModelsIndexRouteImport
+      parentRoute: typeof ProjectsProjectIdModelsRouteRoute
+    }
+    '/projects/$projectId/models/$modelId': {
+      id: '/projects/$projectId/models/$modelId'
+      path: '/$modelId'
+      fullPath: '/projects/$projectId/models/$modelId'
+      preLoaderRoute: typeof ProjectsProjectIdModelsModelIdRouteImport
+      parentRoute: typeof ProjectsProjectIdModelsRouteRoute
+    }
   }
 }
 
+interface ProjectsProjectIdModelsRouteRouteChildren {
+  ProjectsProjectIdModelsModelIdRoute: typeof ProjectsProjectIdModelsModelIdRoute
+  ProjectsProjectIdModelsIndexRoute: typeof ProjectsProjectIdModelsIndexRoute
+}
+
+const ProjectsProjectIdModelsRouteRouteChildren: ProjectsProjectIdModelsRouteRouteChildren =
+  {
+    ProjectsProjectIdModelsModelIdRoute: ProjectsProjectIdModelsModelIdRoute,
+    ProjectsProjectIdModelsIndexRoute: ProjectsProjectIdModelsIndexRoute,
+  }
+
+const ProjectsProjectIdModelsRouteRouteWithChildren =
+  ProjectsProjectIdModelsRouteRoute._addFileChildren(
+    ProjectsProjectIdModelsRouteRouteChildren,
+  )
+
 interface ProjectsProjectIdRouteRouteChildren {
+  ProjectsProjectIdModelsRouteRoute: typeof ProjectsProjectIdModelsRouteRouteWithChildren
   ProjectsProjectIdSettingsRoute: typeof ProjectsProjectIdSettingsRoute
   ProjectsProjectIdIndexRoute: typeof ProjectsProjectIdIndexRoute
 }
 
 const ProjectsProjectIdRouteRouteChildren: ProjectsProjectIdRouteRouteChildren =
   {
+    ProjectsProjectIdModelsRouteRoute:
+      ProjectsProjectIdModelsRouteRouteWithChildren,
     ProjectsProjectIdSettingsRoute: ProjectsProjectIdSettingsRoute,
     ProjectsProjectIdIndexRoute: ProjectsProjectIdIndexRoute,
   }

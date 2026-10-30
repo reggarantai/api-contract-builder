@@ -23,6 +23,7 @@ export function createTestApp() {
 
   return {
     app,
+    db: database.db,
     request(method: string, url: string, body?: unknown) {
       return app.request(url, {
         method,

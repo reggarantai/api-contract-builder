@@ -32,19 +32,20 @@ export function DeleteProject({ project }: { project: Project }) {
     setConfirmation("");
   }
 
-  function onDelete(event: React.FormEvent) {
+  async function onDelete(event: React.FormEvent) {
     event.preventDefault();
     if (!confirmed) {
       return;
     }
-    deleteProject.mutate(project.id, {
-      onSuccess: async () => {
-        await navigate({ to: "/" });
-        queryClient.removeQueries({ queryKey: projectKeys.detail(project.id) });
-        toast.success(`Deleted ${project.name}`);
-      },
-      onError: (error) => toast.error(error.message),
-    });
+    try {
+      await deleteProject.mutateAsync(project.id);
+    } catch (error) {
+      toast.error((error as Error).message);
+      return;
+    }
+    await navigate({ to: "/" });
+    queryClient.removeQueries({ queryKey: projectKeys.detail(project.id) });
+    toast.success(`Deleted ${project.name}`);
   }
 
   return (

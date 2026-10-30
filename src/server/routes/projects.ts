@@ -12,6 +12,7 @@ import {
 } from "../../shared/projects";
 import { SLUG_MAX_LENGTH, slugify } from "../../shared/slug";
 import type { Db } from "../db/client";
+import { findProject } from "../db/projects";
 import { type ProjectRow, projects } from "../db/schema";
 import { jsonBody, toApiIssues, validationFailed } from "../validation";
 
@@ -82,10 +83,6 @@ function uniqueSlug(db: Db, base: string) {
       return candidate;
     }
   }
-}
-
-function findProject(db: Db, id: string) {
-  return db.select().from(projects).where(eq(projects.id, id)).get();
 }
 
 export function projectRoutes(db: Db) {

@@ -85,22 +85,24 @@ export function CreateProjectDialog({
     }
   }
 
-  const onSubmit = form.handleSubmit((values) =>
-    createProject.mutate(
-      { ...values, slug: values.slug || undefined },
-      {
-        onSuccess: (project) => {
-          onOpenChange(false);
-          toast.success(`Created ${project.name}`);
-          void navigate({
-            to: "/projects/$projectId",
-            params: { projectId: project.id },
-          });
-        },
-        onError: (error) => showRequestError(error, form.setError),
-      },
-    ),
-  );
+  // mutateAsync rather than mutate callbacks: creating the first project
+  // replaces the empty state that holds this dialog, unmounting it.
+  const onSubmit = form.handleSubmit(async (values) => {
+    try {
+      const project = await createProject.mutateAsync({
+        ...values,
+        slug: values.slug || undefined,
+      });
+      onOpenChange(false);
+      toast.success(`Created ${project.name}`);
+      await navigate({
+        to: "/projects/$projectId",
+        params: { projectId: project.id },
+      });
+    } catch (error) {
+      showRequestError(error as Error, form.setError);
+    }
+  });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

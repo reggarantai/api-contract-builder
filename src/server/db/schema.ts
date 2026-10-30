@@ -1,4 +1,10 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+  integer,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
+import type { JsonSchema } from "../../shared/json-schema";
 import type { SecurityScheme, Server } from "../../shared/projects";
 
 /** Instance-level key/value metadata, e.g. when the data directory was created. */
@@ -23,3 +29,27 @@ export const projects = sqliteTable("projects", {
 });
 
 export type ProjectRow = typeof projects.$inferSelect;
+
+export const models = sqliteTable(
+  "models",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description").notNull(),
+    /** JSON Schema; references to other models are stored as `model:<id>`. */
+    schema: text("schema", { mode: "json" }).$type<JsonSchema>().notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("models_project_id_name_unique").on(
+      table.projectId,
+      table.name,
+    ),
+  ],
+);
+
+export type ModelRow = typeof models.$inferSelect;

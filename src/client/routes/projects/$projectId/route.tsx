@@ -1,26 +1,15 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
-import {
-  createFileRoute,
-  Link,
-  notFound,
-  Outlet,
-} from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
 import { projectQueryOptions } from "@/features/projects/queries";
-import { ApiError } from "@/lib/api";
+import { ensureFound } from "@/lib/router";
 
 export const Route = createFileRoute("/projects/$projectId")({
-  loader: async ({ context, params }) => {
-    try {
-      await context.queryClient.ensureQueryData(
+  loader: ({ context, params }) =>
+    ensureFound(
+      context.queryClient.ensureQueryData(
         projectQueryOptions(params.projectId),
-      );
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 404) {
-        throw notFound();
-      }
-      throw error;
-    }
-  },
+      ),
+    ),
   component: ProjectLayout,
 });
 
@@ -43,7 +32,7 @@ function ProjectLayout() {
             v{project.apiVersion}
           </span>
         </div>
-        <nav className="flex gap-1 border-b">
+        <nav aria-label="Project" className="flex gap-1 border-b">
           <Link
             to="/projects/$projectId"
             params={{ projectId }}
@@ -52,6 +41,14 @@ function ProjectLayout() {
             activeProps={{ className: activeTabClassName }}
           >
             Overview
+          </Link>
+          <Link
+            to="/projects/$projectId/models"
+            params={{ projectId }}
+            className={tabClassName}
+            activeProps={{ className: activeTabClassName }}
+          >
+            Models
           </Link>
           <Link
             to="/projects/$projectId/settings"

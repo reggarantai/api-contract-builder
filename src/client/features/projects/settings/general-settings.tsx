@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import type { z } from "zod";
+import { SaveButtons } from "@/components/save-buttons";
 import {
   Field,
   FieldDescription,
@@ -15,7 +16,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { showRequestError } from "@/lib/forms";
 import { useUpdateProject } from "../queries";
-import { SaveButtons } from "./save-buttons";
 import { SettingsSection } from "./settings-section";
 
 const formSchema = projectSettingsFieldsSchema.pick({

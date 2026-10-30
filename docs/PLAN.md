@@ -182,7 +182,7 @@ These instructions are generated into the Markdown export's `README.md`.
 | Backend         | Hono on Node.js                                                                     |
 | Database        | SQLite via Drizzle ORM (better-sqlite3); migrations run on startup                  |
 | Exports         | `yaml` for serialization, an OpenAPI 3.1 validator, a zip library for Markdown      |
-| Tests           | Vitest (unit + golden-file tests for exports); Playwright later                     |
+| Tests           | Vitest (unit + golden-file tests for exports); Playwright for browser tests         |
 | Type checking   | TypeScript 7 (`tsc -b`)                                                             |
 | Lint & format   | Biome (version pinned)                                                              |
 | Package manager | pnpm                                                                                |
@@ -262,6 +262,12 @@ Progress:
   unblocked TypeScript 7 (typescript-eslint only supports TypeScript < 6.1).
 - **M2 — done (2026-10-30).** Servers and security schemes carry client-generated IDs, so
   endpoints (M4) can reference a scheme by ID and survive key renames.
+- **M3 — done (2026-10-30).** The builder edits the JSON Schema document directly instead
+  of converting to and from its own model, so switching between builder and JSON can't
+  lose anything, and keywords the builder doesn't know are kept. Subschemas it can't
+  edit (e.g. `oneOf`) show as "Custom" and are edited in JSON mode. Model names are unique
+  per project, ignoring case. A model that other models reference can't be deleted.
+  Playwright browser tests were added (`pnpm test:e2e`).
 - Note for M8: the image is ~430 MB uncompressed, mostly the Node base image (~340 MB).
   `better-sqlite3` ships prebuilt binaries for every platform (~27 MB); the ones for other
   platforms could be pruned.

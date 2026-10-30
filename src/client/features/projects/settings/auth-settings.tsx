@@ -11,6 +11,7 @@ import { useMemo } from "react";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import type { z } from "zod";
+import { SaveButtons } from "@/components/save-buttons";
 import { Button } from "@/components/ui/button";
 import {
   Field,
@@ -33,7 +34,6 @@ import {
   newSecurityScheme,
   SECURITY_SCHEME_LABELS,
 } from "../security-schemes";
-import { SaveButtons } from "./save-buttons";
 import { SettingsSection } from "./settings-section";
 
 type FormValues = z.input<typeof securitySettingsSchema>;
