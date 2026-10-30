@@ -4,6 +4,14 @@ All notable changes to this project are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- `SECURITY.md`: how to report a vulnerability, and how the image is kept clean.
+- A weekly rebuild: when a base image has a new build, the latest release's image is
+  rebuilt, tested, and published again as `X.Y` and `latest`.
+
 ## [0.1.1] - 2026-10-30
 
 ### Security
@@ -47,5 +55,6 @@ The first release.
 - **Docker image** `reggarantai/api-contract-builder` for `linux/amd64` and `linux/arm64`:
   runs as a non-root user, keeps everything in the `/data` volume, and has a healthcheck.
 
+[Unreleased]: https://github.com/reggarantai/api-contract-builder/compare/v0.1.1...HEAD
 [0.1.1]: https://github.com/reggarantai/api-contract-builder/releases/tag/v0.1.1
 [0.1.0]: https://github.com/reggarantai/api-contract-builder/releases/tag/v0.1.0

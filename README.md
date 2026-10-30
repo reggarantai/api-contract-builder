@@ -118,8 +118,9 @@ docker run -d --name api-contract-builder \
 ```
 
 To stay on one minor version, use a tag like `0.1` instead of `latest`; each release is
-also tagged with its full version, like `0.1.0`. [CHANGELOG.md](CHANGELOG.md) lists what
-changed.
+also tagged with its full version, like `0.1.0`. `latest` and `0.1` also get the base
+images' security fixes every week, while `0.1.0` stays exactly as released.
+[CHANGELOG.md](CHANGELOG.md) lists what changed.
 
 ## Configuration
 
@@ -129,6 +130,11 @@ changed.
 | `PORT`          | `3000`                            | Port the server listens on              |
 | `DATA_DIR`      | `./data` (`/data` in Docker)      | SQLite database and uploaded images     |
 | `MAX_UPLOAD_MB` | `10`                              | Largest mockup image accepted, per file |
+
+## Security
+
+The app has no login, because it's meant for one person on their own machine: keep its
+port on `127.0.0.1`. To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## Contributing
 

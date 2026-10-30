@@ -1,0 +1,66 @@
+{
+  "linux/amd64": {
+    "SLSA": {
+      "buildDefinition": {
+        "resolvedDependencies": [
+          {
+            "digest": {
+              "sha256": "873a7458c3c8ac8e32c7b796c10e1600b07b963d2aa000a72a2d97aaaa2d6315"
+            },
+            "uri": "pkg:docker/docker/buildkit-syft-scanner@stable-1?platform=linux%2Famd64"
+          },
+          {
+            "digest": {
+              "sha256": "4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e"
+            },
+            "uri": "pkg:docker/docker/dockerfile@1"
+          },
+          {
+            "digest": {
+              "sha256": "54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446"
+            },
+            "uri": "pkg:docker/node@24-trixie-slim?platform=linux%2Famd64"
+          },
+          {
+            "digest": {
+              "sha256": "51eee69b25037942014428da85f5b436a4d88f283e545981d03f25b7db72469a"
+            },
+            "uri": "pkg:docker/gcr.io/distroless/nodejs24-debian13@latest?platform=linux%2Famd64"
+          }
+        ]
+      }
+    }
+  },
+  "linux/arm64": {
+    "SLSA": {
+      "buildDefinition": {
+        "resolvedDependencies": [
+          {
+            "digest": {
+              "sha256": "873a7458c3c8ac8e32c7b796c10e1600b07b963d2aa000a72a2d97aaaa2d6315"
+            },
+            "uri": "pkg:docker/docker/buildkit-syft-scanner@stable-1?platform=linux%2Famd64"
+          },
+          {
+            "digest": {
+              "sha256": "4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e"
+            },
+            "uri": "pkg:docker/docker/dockerfile@1"
+          },
+          {
+            "digest": {
+              "sha256": "54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446"
+            },
+            "uri": "pkg:docker/node@24-trixie-slim?platform=linux%2Famd64"
+          },
+          {
+            "digest": {
+              "sha256": "51eee69b25037942014428da85f5b436a4d88f283e545981d03f25b7db72469a"
+            },
+            "uri": "pkg:docker/gcr.io/distroless/nodejs24-debian13@latest?platform=linux%2Farm64"
+          }
+        ]
+      }
+    }
+  }
+}

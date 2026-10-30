@@ -130,8 +130,18 @@ The Release workflow (`.github/workflows/release.yml`) then:
 
 It needs a Docker Hub access token with Read & Write access, saved as the
 `DOCKERHUB_TOKEN` secret of the `DOCKERHUB_TOKEN` environment (Settings → Environments),
-so only the publishing job can read it. Allowing only `v*` tags to deploy to that
-environment keeps every other run away from the token.
+so only the publishing jobs can read it. The environment allows `v*` tags (releases) and
+the `main` branch (scheduled rebuilds), which keeps every other run away from the token.
+
+### Weekly rebuilds
+
+The Rebuild workflow (`.github/workflows/rebuild.yml`) runs every Monday. It compares the
+base images recorded in the provenance of the published `X.Y` image with what their tags
+point to now (`scripts/base-images.ts`). If one has moved, it rebuilds the latest release
+from its tag, tests both platforms (smoke test and Trivy) before pushing, and publishes
+`X.Y` and `latest` again; `X.Y.Z` stays as released. It never publishes over a newer
+release. Run it by hand with `gh workflow run rebuild.yml`, adding `-f force=true` to
+rebuild even when nothing has moved.
 
 The image's build stages run on the build machine's own platform, because no dependency is
 compiled; only the last stage is assembled per platform, so building for arm64 on an amd64
@@ -153,8 +163,9 @@ e2e/            Playwright browser tests
 test/           fixtures shared by tests (images) and golden files
 drizzle/        SQL migrations
 samples/        sample project assets (mockup images)
-scripts/        maintenance scripts (mockups, screenshots, image smoke test, release notes)
-.github/        CI and release workflows, Dependabot for the workflows' actions
+scripts/        maintenance scripts (mockups, screenshots, image smoke test, release notes,
+                base-image check)
+.github/        CI, release, and weekly rebuild workflows; Dependabot for their actions
 ```
 
 ## Editor setup

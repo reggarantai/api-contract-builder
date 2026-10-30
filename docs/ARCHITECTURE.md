@@ -136,8 +136,9 @@ The Docker image (`reggarantai/api-contract-builder`, for `linux/amd64` and
   `/api/health`.
 
 CI runs on every push and pull request and fails on high or critical vulnerabilities that
-already have a fix; pushing a `v*` tag publishes the image. See "Releasing" in
-[CONTRIBUTING.md](../CONTRIBUTING.md#releasing).
+already have a fix; pushing a `v*` tag publishes the image. Every Monday, if a base image
+has moved, the latest release is rebuilt and published again as `X.Y` and `latest`. See
+"Releasing" in [CONTRIBUTING.md](../CONTRIBUTING.md#releasing).
 
 ## Tests
 
@@ -186,6 +187,10 @@ The calls that shape the code, and why. Earlier plans and their history are in g
   platform, and what the SQLite binary is built for), and has no shell for an attacker to
   use. Alpine would have fewer packages still, but Node treats musl as experimental. The
   user ID stays 1000, so data volumes from earlier images keep working.
+- **`X.Y.Z` tags never change; `X.Y` and `latest` are rebuilt.** Someone who pins a version
+  gets exactly what was released, and everyone else gets the base images' security fixes
+  within a week, without a release for each. The rebuild only runs when a base image's
+  digest differs from the one in the published image's provenance.
 - **Pinned GitHub Actions** (full commit SHAs, updated by Dependabot); npm packages are
   updated by hand, because TypeScript must stay in step with the `tsgo` version in the Zed
   settings.

@@ -29,6 +29,10 @@ jobs:
     environment:
       name: DOCKERHUB_TOKEN
       url: https://hub.docker.com/r/reggarantai/api-contract-builder
+    # Never at the same time as a rebuild: both publish latest.
+    concurrency:
+      group: docker-hub
+      cancel-in-progress: false
     permissions:
       # For the GitHub release.
       contents: write
