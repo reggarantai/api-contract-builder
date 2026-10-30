@@ -1,6 +1,6 @@
 {
   "name": "api-contract-builder",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Write API contracts page by page and export them to OpenAPI 3.1 and Markdown.",
   "license": "MIT",

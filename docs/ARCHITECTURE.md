@@ -124,18 +124,20 @@ it can't edit (`oneOf`, `if`/`then`, `const`, …) show as Custom and are edited
 ## Running and releasing
 
 The Docker image (`reggarantai/api-contract-builder`, for `linux/amd64` and
-`linux/arm64`) is a multi-stage build on `node:24-trixie-slim` (Debian, for glibc):
+`linux/arm64`) is a multi-stage build:
 
-- the stages that install and build run on the build machine's own platform, because no
-  dependency is compiled, so building for the other architecture needs almost no
-  emulation;
-- the final stage has only the runtime dependencies, and only the target platform's
-  prebuilt SQLite binary;
-- it runs as the `node` user, keeps everything in the `/data` volume, and has a
-  healthcheck on `/api/health`.
+- the stages that install and build use `node:24-trixie-slim` and run on the build
+  machine's own platform, because no dependency is compiled, so building for the other
+  architecture needs almost no emulation;
+- the final stage is distroless (`gcr.io/distroless/nodejs24-debian13`): Node, glibc, and
+  certificates, with no shell or package manager, plus the runtime dependencies and only
+  the target platform's prebuilt SQLite binary;
+- it runs as user 1000, keeps everything in the `/data` volume, and has a healthcheck on
+  `/api/health`.
 
-CI runs on every push and pull request; pushing a `v*` tag publishes the image. See
-"Releasing" in [CONTRIBUTING.md](../CONTRIBUTING.md#releasing).
+CI runs on every push and pull request and fails on high or critical vulnerabilities that
+already have a fix; pushing a `v*` tag publishes the image. See "Releasing" in
+[CONTRIBUTING.md](../CONTRIBUTING.md#releasing).
 
 ## Tests
 
@@ -143,7 +145,8 @@ CI runs on every push and pull request; pushing a `v*` tag publishes the image. 
   exports against golden files in `test/golden`; the OpenAPI export through Prism's mock
   engine (examples, errors, request validation, security); the data migrations.
 - **Playwright**: everything a person does in the browser, against the production build.
-- **The image**: `scripts/smoke-test-image.sh` runs a built image the way users do.
+- **The image**: `scripts/smoke-test-image.sh` runs a built image the way users do, and
+  Trivy scans it for vulnerabilities that already have a fix.
 
 ## Decisions
 
@@ -177,6 +180,12 @@ The calls that shape the code, and why. Earlier plans and their history are in g
   words instead of `if`/`then`).
 - **Biome instead of ESLint and Prettier**, because typescript-eslint doesn't support
   TypeScript 7, which type-checks the project.
+- **A distroless runtime image.** The Debian slim base brought high-severity findings in
+  packages the app never runs (mount helpers, ncurses, Perl) and in the npm it ships, which
+  the app doesn't use either. Distroless leaves those out, keeps glibc (Node's main
+  platform, and what the SQLite binary is built for), and has no shell for an attacker to
+  use. Alpine would have fewer packages still, but Node treats musl as experimental. The
+  user ID stays 1000, so data volumes from earlier images keep working.
 - **Pinned GitHub Actions** (full commit SHAs, updated by Dependabot); npm packages are
   updated by hand, because TypeScript must stay in step with the `tsgo` version in the Zed
   settings.

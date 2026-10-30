@@ -52,8 +52,10 @@ pnpm check && pnpm typecheck && pnpm test && pnpm test:e2e
 CI (`.github/workflows/ci.yml`) runs the same on every push to `main` and every pull
 request, and also builds the Docker image and runs `scripts/smoke-test-image.sh` on it:
 the container must turn healthy, run as a non-root user, export the sample project
-cleanly, keep its data across a restart, and ship only the SQLite binary for its platform.
-To check an image locally, including one built for the other architecture:
+cleanly, keep its data across a restart, ship only the SQLite binary for its platform,
+and have no shell or package manager. Then Trivy scans the image, and CI fails on any high
+or critical vulnerability that already has a fix. To check an image locally, including
+one built for the other architecture:
 
 ```bash
 docker build -t api-contract-builder:dev .
@@ -61,6 +63,10 @@ scripts/smoke-test-image.sh api-contract-builder:dev
 docker build --platform linux/amd64 -t api-contract-builder:dev-amd64 .
 scripts/smoke-test-image.sh api-contract-builder:dev-amd64 linux/amd64
 ```
+
+The runtime image is distroless, so there's no shell to `docker exec` into: read
+`docker logs`, or run Node in it, like
+`docker exec <container> node -e "console.log(process.versions)"`.
 
 ### Golden files
 

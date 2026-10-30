@@ -57,7 +57,7 @@ fi
 [[ "$expected_arch" == amd64 ]] && expected_arch=x64
 actual_arch=$(docker exec "$name" node -p 'process.arch')
 [[ "$actual_arch" == "$expected_arch" ]] || fail "runs as ${actual_arch}, expected ${expected_arch}"
-[[ "$(docker exec "$name" id -u)" != "0" ]] || fail "runs as root"
+[[ "$(docker exec "$name" node -p 'process.getuid()')" != "0" ]] || fail "runs as root"
 echo "ok: runs as ${actual_arch}, not as root"
 
 # The sample project exports with no warnings, as OpenAPI and as Markdown.
@@ -93,13 +93,35 @@ source_label=$(docker inspect "$name" --format '{{index .Config.Labels "org.open
 echo "ok: labeled with its source"
 
 # The only native binary is SQLite's for this platform; its C sources and the
-# binaries for other platforms are left out.
-natives=$(docker exec "$name" find node_modules/.pnpm -name '*.node' -type f)
+# binaries for other platforms are left out. The image has no shell, so Node
+# looks.
+natives=$(docker exec "$name" node -e '
+  const fs = require("fs");
+  const path = require("path");
+  const found = [];
+  (function walk(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const file = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(file);
+      else if (entry.name.endsWith(".node")) found.push(file);
+    }
+  })("node_modules/.pnpm");
+  const sqlite = fs.readdirSync("node_modules/.pnpm").find((d) => d.startsWith("better-sqlite3@"));
+  if (fs.existsSync(`node_modules/.pnpm/${sqlite}/node_modules/better-sqlite3/deps`)) found.push("C sources");
+  console.log(found.join("\n"));
+')
 [[ "$natives" == */better-sqlite3/prebuilds/linux-${actual_arch}.node && "$natives" != *$'\n'* ]] ||
   fail "native binaries in node_modules: ${natives//$'\n'/ }"
-if docker exec "$name" sh -c 'ls -d node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3/deps' >/dev/null 2>&1; then
-  fail "better-sqlite3 still ships its C sources"
-fi
 echo "ok: the only native binary is better-sqlite3's linux-${actual_arch}.node"
+
+# Nothing to run but Node: no shell and no package manager.
+extras=$(docker exec "$name" node -e '
+  const fs = require("fs");
+  const tools = ["sh", "bash", "dash", "apt", "apt-get", "dpkg", "apk", "npm", "npx", "yarn", "corepack"];
+  const dirs = (process.env.PATH ?? "").split(":");
+  console.log(tools.filter((tool) => dirs.some((dir) => fs.existsSync(`${dir}/${tool}`))).join(" "));
+')
+[[ -z "$extras" ]] || fail "the image ships: ${extras}"
+echo "ok: no shell or package manager"
 
 echo "PASS: ${image}${platform:+ (${platform})}"

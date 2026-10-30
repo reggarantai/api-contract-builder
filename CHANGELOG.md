@@ -4,6 +4,21 @@ All notable changes to this project are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [0.1.1] - 2026-10-30
+
+### Security
+
+- The image now runs on distroless (`gcr.io/distroless/nodejs24-debian13`) instead of
+  Debian slim: no shell, package manager, or npm. At release it has no known high or
+  critical vulnerabilities, down from 14, and it's about a third smaller (401 to 270 MB on
+  arm64).
+- CI fails when the image has a high or critical vulnerability that already has a fix.
+
+### Changed
+
+- There's no shell in the container anymore; use `docker logs` to see what the app is
+  doing. Data volumes from 0.1.0 work as they are.
+
 ## [0.1.0] - 2026-10-30
 
 The first release.
@@ -32,4 +47,5 @@ The first release.
 - **Docker image** `reggarantai/api-contract-builder` for `linux/amd64` and `linux/arm64`:
   runs as a non-root user, keeps everything in the `/data` volume, and has a healthcheck.
 
+[0.1.1]: https://github.com/reggarantai/api-contract-builder/releases/tag/v0.1.1
 [0.1.0]: https://github.com/reggarantai/api-contract-builder/releases/tag/v0.1.0
