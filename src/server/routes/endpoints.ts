@@ -40,7 +40,7 @@ function fieldsOf(row: EndpointRow): EndpointFields {
   };
 }
 
-function toEndpoint(row: EndpointRow): Endpoint {
+export function toEndpoint(row: EndpointRow): Endpoint {
   return {
     ...fieldsOf(row),
     id: row.id,

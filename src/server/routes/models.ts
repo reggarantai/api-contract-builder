@@ -26,7 +26,7 @@ function toSummary(row: ModelRow): ModelSummary {
   };
 }
 
-function toModel(row: ModelRow): Model {
+export function toModel(row: ModelRow): Model {
   return { ...toSummary(row), schema: row.schema };
 }
 

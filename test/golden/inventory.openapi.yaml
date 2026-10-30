@@ -1,0 +1,332 @@
+openapi: 3.1.0
+info:
+  title: Inventory App
+  version: 1.2.0
+  description: Stock and warehouse API.
+servers:
+  - url: https://api.inventory.example/v1
+    description: Production
+  - url: https://staging.inventory.example/v1
+    description: Staging — Reset every night
+tags:
+  - name: Login
+    description: Users sign in with email and password.
+  - name: Stock list
+    description: All items, newest first.
+  - name: Stock detail
+  - name: Add stock
+security:
+  - bearerAuth: []
+paths:
+  /auth/login:
+    post:
+      operationId: postAuthLogin
+      summary: Sign in
+      tags:
+        - Login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+            examples:
+              valid:
+                value:
+                  email: ana@example.com
+                  password: correct-horse
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - token
+                properties:
+                  token:
+                    type: string
+              examples:
+                signed-in:
+                  value:
+                    token: eyJhbGciOi...
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                wrong-password:
+                  value:
+                    message: Email or password is wrong
+      x-status: agreed
+      x-notes-fe: Keep the email after an error.
+      x-pages:
+        - page: Login
+          slug: login
+          trigger: on_submit
+          note: Show errors inline
+  /health:
+    get:
+      operationId: getHealth
+      summary: Health check
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+      x-status: draft
+  /stocks:
+    get:
+      operationId: getStocks
+      summary: List stock items
+      tags:
+        - Stock list
+      parameters:
+        - name: page
+          in: query
+          description: Page number, from 1
+          schema:
+            type: integer
+            minimum: 1
+        - name: category
+          in: query
+          description: Only items in this category
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Stock"
+              examples:
+                two-items:
+                  summary: Two items
+                  value:
+                    - sku: SKU-001
+                      name: Widget
+                      quantity: 12
+                      category:
+                        id: 6f1c2b9e-0b7a-4c64-9a8e-2f1d3c4b5a69
+                        name: Parts
+                        parent: null
+                      tags:
+                        - metal
+                    - sku: SKU-002
+                      name: Gadget
+                      quantity: 0
+                empty:
+                  summary: No items yet
+                  value: []
+      x-status: agreed
+      x-pages:
+        - page: Stock list
+          slug: stock-list
+          trigger: on_load
+    post:
+      operationId: postStocks
+      summary: Add a stock item
+      tags:
+        - Add stock
+      requestBody:
+        description: The new item
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Stock"
+            examples:
+              new-item:
+                value:
+                  sku: SKU-002
+                  name: Gadget
+                  quantity: 0
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Stock"
+              examples:
+                created:
+                  value:
+                    sku: SKU-002
+                    name: Gadget
+                    quantity: 0
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                duplicate-sku:
+                  value:
+                    message: SKU-002 already exists
+      x-status: review
+      x-notes-be: Reject duplicate SKUs with 409.
+      x-pages:
+        - page: Add stock
+          slug: add-stock
+          trigger: on_submit
+  /stocks/{sku}:
+    get:
+      operationId: getStocksBySku
+      summary: Get a stock item
+      tags:
+        - Stock detail
+      parameters:
+        - name: sku
+          in: path
+          required: true
+          description: Stock keeping unit
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Stock"
+              examples:
+                found:
+                  value:
+                    sku: SKU-001
+                    name: Widget
+                    quantity: 12
+                    category:
+                      id: 6f1c2b9e-0b7a-4c64-9a8e-2f1d3c4b5a69
+                      name: Parts
+                      parent: null
+                    tags:
+                      - metal
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                not-found:
+                  value:
+                    message: No item SKU-999
+      x-status: draft
+      x-pages:
+        - page: Stock detail
+          slug: stock-detail
+          trigger: on_load
+    delete:
+      operationId: deleteStocksBySku
+      summary: Remove a stock item
+      tags:
+        - Stock list
+      deprecated: true
+      security:
+        - apiKeyAuth: []
+      parameters:
+        - name: sku
+          in: path
+          required: true
+          description: Stock keeping unit
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+      x-status: draft
+      x-pages:
+        - page: Stock list
+          slug: stock-list
+          trigger: on_action
+          note: Delete button in each row
+components:
+  schemas:
+    Category:
+      description: A group of stock items.
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        parent:
+          anyOf:
+            - $ref: "#/components/schemas/Category"
+            - type: "null"
+    Error:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+        code:
+          type: string
+    Stock:
+      description: An item in stock.
+      type: object
+      required:
+        - sku
+        - name
+        - quantity
+      properties:
+        sku:
+          type: string
+          pattern: ^[A-Z0-9-]+$
+          examples:
+            - SKU-001
+        name:
+          type: string
+          maxLength: 120
+        quantity:
+          type: integer
+          minimum: 0
+        category:
+          $ref: "#/components/schemas/Category"
+        tags:
+          type: array
+          items:
+            type: string
+          uniqueItems: true
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token from POST /auth/login
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: For server-to-server calls

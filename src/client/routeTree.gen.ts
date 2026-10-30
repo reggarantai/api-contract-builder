@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProjectsProjectIdRouteRouteImport } from './routes/projects/$projectId/route'
 import { Route as ProjectsProjectIdIndexRouteImport } from './routes/projects/$projectId/index'
 import { Route as ProjectsProjectIdEndpointsRouteRouteImport } from './routes/projects/$projectId/endpoints/route'
+import { Route as ProjectsProjectIdExportRouteImport } from './routes/projects/$projectId/export'
 import { Route as ProjectsProjectIdModelsRouteRouteImport } from './routes/projects/$projectId/models/route'
 import { Route as ProjectsProjectIdPagesRouteRouteImport } from './routes/projects/$projectId/pages/route'
 import { Route as ProjectsProjectIdSettingsRouteImport } from './routes/projects/$projectId/settings'
@@ -45,6 +46,11 @@ const ProjectsProjectIdEndpointsRouteRoute =
     path: '/endpoints',
     getParentRoute: () => ProjectsProjectIdRouteRoute,
   } as any)
+const ProjectsProjectIdExportRoute = ProjectsProjectIdExportRouteImport.update({
+  id: '/export',
+  path: '/export',
+  getParentRoute: () => ProjectsProjectIdRouteRoute,
+} as any)
 const ProjectsProjectIdModelsRouteRoute =
   ProjectsProjectIdModelsRouteRouteImport.update({
     id: '/models',
@@ -112,6 +118,7 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId/endpoints': typeof ProjectsProjectIdEndpointsRouteRouteWithChildren
   '/projects/$projectId/models': typeof ProjectsProjectIdModelsRouteRouteWithChildren
   '/projects/$projectId/pages': typeof ProjectsProjectIdPagesRouteRouteWithChildren
+  '/projects/$projectId/export': typeof ProjectsProjectIdExportRoute
   '/projects/$projectId/settings': typeof ProjectsProjectIdSettingsRoute
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
   '/projects/$projectId/endpoints/$endpointId': typeof ProjectsProjectIdEndpointsEndpointIdRoute
@@ -124,6 +131,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/projects/$projectId/export': typeof ProjectsProjectIdExportRoute
   '/projects/$projectId/settings': typeof ProjectsProjectIdSettingsRoute
   '/projects/$projectId': typeof ProjectsProjectIdIndexRoute
   '/projects/$projectId/endpoints/$endpointId': typeof ProjectsProjectIdEndpointsEndpointIdRoute
@@ -141,6 +149,7 @@ export interface FileRoutesById {
   '/projects/$projectId/endpoints': typeof ProjectsProjectIdEndpointsRouteRouteWithChildren
   '/projects/$projectId/models': typeof ProjectsProjectIdModelsRouteRouteWithChildren
   '/projects/$projectId/pages': typeof ProjectsProjectIdPagesRouteRouteWithChildren
+  '/projects/$projectId/export': typeof ProjectsProjectIdExportRoute
   '/projects/$projectId/settings': typeof ProjectsProjectIdSettingsRoute
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
   '/projects/$projectId/endpoints/$endpointId': typeof ProjectsProjectIdEndpointsEndpointIdRoute
@@ -159,6 +168,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/endpoints'
     | '/projects/$projectId/models'
     | '/projects/$projectId/pages'
+    | '/projects/$projectId/export'
     | '/projects/$projectId/settings'
     | '/projects/$projectId/'
     | '/projects/$projectId/endpoints/$endpointId'
@@ -171,6 +181,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/projects/$projectId/export'
     | '/projects/$projectId/settings'
     | '/projects/$projectId'
     | '/projects/$projectId/endpoints/$endpointId'
@@ -187,6 +198,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/endpoints'
     | '/projects/$projectId/models'
     | '/projects/$projectId/pages'
+    | '/projects/$projectId/export'
     | '/projects/$projectId/settings'
     | '/projects/$projectId/'
     | '/projects/$projectId/endpoints/$endpointId'
@@ -231,6 +243,13 @@ declare module '@tanstack/react-router' {
       path: '/endpoints'
       fullPath: '/projects/$projectId/endpoints'
       preLoaderRoute: typeof ProjectsProjectIdEndpointsRouteRouteImport
+      parentRoute: typeof ProjectsProjectIdRouteRoute
+    }
+    '/projects/$projectId/export': {
+      id: '/projects/$projectId/export'
+      path: '/export'
+      fullPath: '/projects/$projectId/export'
+      preLoaderRoute: typeof ProjectsProjectIdExportRouteImport
       parentRoute: typeof ProjectsProjectIdRouteRoute
     }
     '/projects/$projectId/models': {
@@ -363,6 +382,7 @@ interface ProjectsProjectIdRouteRouteChildren {
   ProjectsProjectIdEndpointsRouteRoute: typeof ProjectsProjectIdEndpointsRouteRouteWithChildren
   ProjectsProjectIdModelsRouteRoute: typeof ProjectsProjectIdModelsRouteRouteWithChildren
   ProjectsProjectIdPagesRouteRoute: typeof ProjectsProjectIdPagesRouteRouteWithChildren
+  ProjectsProjectIdExportRoute: typeof ProjectsProjectIdExportRoute
   ProjectsProjectIdSettingsRoute: typeof ProjectsProjectIdSettingsRoute
   ProjectsProjectIdIndexRoute: typeof ProjectsProjectIdIndexRoute
 }
@@ -375,6 +395,7 @@ const ProjectsProjectIdRouteRouteChildren: ProjectsProjectIdRouteRouteChildren =
       ProjectsProjectIdModelsRouteRouteWithChildren,
     ProjectsProjectIdPagesRouteRoute:
       ProjectsProjectIdPagesRouteRouteWithChildren,
+    ProjectsProjectIdExportRoute: ProjectsProjectIdExportRoute,
     ProjectsProjectIdSettingsRoute: ProjectsProjectIdSettingsRoute,
     ProjectsProjectIdIndexRoute: ProjectsProjectIdIndexRoute,
   }

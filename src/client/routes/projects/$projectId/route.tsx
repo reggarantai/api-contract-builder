@@ -67,6 +67,14 @@ function ProjectLayout() {
             Models
           </Link>
           <Link
+            to="/projects/$projectId/export"
+            params={{ projectId }}
+            className={tabClassName}
+            activeProps={{ className: activeTabClassName }}
+          >
+            Export
+          </Link>
+          <Link
             to="/projects/$projectId/settings"
             params={{ projectId }}
             className={tabClassName}

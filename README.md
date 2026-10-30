@@ -50,6 +50,9 @@ pnpm dev
 | `pnpm format`      | Format only                                                     |
 | `pnpm db:generate` | Generate a migration after changing `src/server/db/schema.ts`   |
 
+Export tests compare against golden files in `test/golden/`. After an intended change to
+the export, regenerate them with `UPDATE_GOLDEN=1 pnpm test` and review the diff.
+
 Before the first `pnpm test:e2e`, install the test browser with
 `pnpm exec playwright install chromium`. Browser tests run against the production build on
 port 4100 with a throwaway data directory.

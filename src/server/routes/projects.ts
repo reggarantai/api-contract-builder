@@ -30,7 +30,7 @@ function toSummary(row: ProjectRow): ProjectSummary {
   };
 }
 
-function toProject(row: ProjectRow): Project {
+export function toProject(row: ProjectRow): Project {
   return {
     ...toSummary(row),
     servers: row.servers,

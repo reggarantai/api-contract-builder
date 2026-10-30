@@ -51,61 +51,75 @@ function isPermutation(ids: string[], expected: string[]) {
   );
 }
 
+function mockupFromRow(
+  storage: UploadStorage,
+  row: PageMockupRow,
+  projectId: string,
+): Mockup {
+  return {
+    id: row.id,
+    pageId: row.pageId,
+    url: storage.url(projectId, row.fileName),
+    originalName: row.originalName,
+    mimeType: row.mimeType,
+    width: row.width,
+    height: row.height,
+    caption: row.caption,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function mockupRowsOfPage(db: Db, pageId: string) {
+  return db
+    .select()
+    .from(pageMockups)
+    .where(eq(pageMockups.pageId, pageId))
+    .orderBy(asc(pageMockups.sortOrder))
+    .all();
+}
+
+/** A page as the API returns it, with its endpoint links and mockups. */
+export function pageFromRow(
+  db: Db,
+  storage: UploadStorage,
+  row: PageRow,
+): Page {
+  const links = db
+    .select()
+    .from(pageEndpoints)
+    .where(eq(pageEndpoints.pageId, row.id))
+    .orderBy(asc(pageEndpoints.sortOrder))
+    .all();
+  return {
+    id: row.id,
+    projectId: row.projectId,
+    name: row.name,
+    slug: row.slug,
+    description: row.description,
+    acceptanceCriteria: row.acceptanceCriteria,
+    endpoints: links.map((link) => ({
+      id: link.id,
+      endpointId: link.endpointId,
+      trigger: link.trigger,
+      note: link.note,
+    })),
+    mockups: mockupRowsOfPage(db, row.id).map((mockup) =>
+      mockupFromRow(storage, mockup, row.projectId),
+    ),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
 export function pageRoutes(
   db: Db,
   storage: UploadStorage,
   maxUploadBytes: number,
 ) {
-  function toMockup(row: PageMockupRow, projectId: string): Mockup {
-    return {
-      id: row.id,
-      pageId: row.pageId,
-      url: storage.url(projectId, row.fileName),
-      originalName: row.originalName,
-      mimeType: row.mimeType,
-      width: row.width,
-      height: row.height,
-      caption: row.caption,
-      createdAt: row.createdAt.toISOString(),
-    };
-  }
-
-  function mockupRowsOf(pageId: string) {
-    return db
-      .select()
-      .from(pageMockups)
-      .where(eq(pageMockups.pageId, pageId))
-      .orderBy(asc(pageMockups.sortOrder))
-      .all();
-  }
-
-  function toPage(row: PageRow): Page {
-    const links = db
-      .select()
-      .from(pageEndpoints)
-      .where(eq(pageEndpoints.pageId, row.id))
-      .orderBy(asc(pageEndpoints.sortOrder))
-      .all();
-    return {
-      id: row.id,
-      projectId: row.projectId,
-      name: row.name,
-      slug: row.slug,
-      description: row.description,
-      acceptanceCriteria: row.acceptanceCriteria,
-      endpoints: links.map((link) => ({
-        id: link.id,
-        endpointId: link.endpointId,
-        trigger: link.trigger,
-        note: link.note,
-      })),
-      mockups: mockupRowsOf(row.id).map((mockup) =>
-        toMockup(mockup, row.projectId),
-      ),
-      createdAt: row.createdAt.toISOString(),
-      updatedAt: row.updatedAt.toISOString(),
-    };
-  }
+  const toPage = (row: PageRow) => pageFromRow(db, storage, row);
+  const mockupRowsOf = (pageId: string) => mockupRowsOfPage(db, pageId);
+  const toMockup = (row: PageMockupRow, projectId: string) =>
+    mockupFromRow(storage, row, projectId);
 
   function findPage(projectId: string, pageId: string) {
     return db

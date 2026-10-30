@@ -289,6 +289,20 @@ Progress:
   - Mockups are reordered with move buttons; drag and drop is for uploading files.
   - One endpoint can be linked to a page more than once with different triggers.
   - The endpoint list can now be filtered by page.
+- **M6 — done (2026-10-30), built test-first.** Notes:
+  - Validation has two layers: the document against the official OpenAPI 3.1 schema
+    (`@seriousme/openapi-schema-validator`), and every schema against the JSON Schema
+    2020-12 meta-schema (Ajv). The first alone accepts schemas like `{"type": "strng"}`,
+    which the JSON editor allows. Invalid contracts can't be downloaded; the Export tab
+    lists the problems.
+  - A golden file (`test/golden/inventory.openapi.yaml`) pins the full export of a
+    realistic fixture; tests also run the export through Prism in-process (named
+    examples, error examples, request validation, security), and it was checked once
+    with the Prism CLI over HTTP, including `Prefer` headers.
+  - Each property of a parameters schema becomes a parameter; its `description` moves to
+    the parameter. Repeated page names get the page slug in their tag. Suggested operation
+    IDs that collide get a numeric suffix.
+  - Exports live in a new Export tab (scope: whole project or one page); pages link to it.
 - Note for M8: the image is ~430 MB uncompressed, mostly the Node base image (~340 MB).
   `better-sqlite3` ships prebuilt binaries for every platform (~27 MB); the ones for other
   platforms could be pruned.

@@ -1,7 +1,7 @@
 import { PAGE_TRIGGER_LABELS } from "@shared/pages";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { PencilIcon } from "lucide-react";
+import { DownloadIcon, PencilIcon } from "lucide-react";
 import { Markdown } from "@/components/markdown";
 import { Button } from "@/components/ui/button";
 import { MethodBadge, StatusLabel } from "@/features/endpoints/badges";
@@ -55,15 +55,27 @@ function PageView() {
     <article className="grid gap-8">
       <div className="flex items-center justify-between gap-4">
         <h2 className="font-heading text-xl font-semibold">{page.name}</h2>
-        <Button asChild variant="outline" size="sm">
-          <Link
-            to="/projects/$projectId/pages/$pageId/edit"
-            params={{ projectId, pageId }}
-          >
-            <PencilIcon />
-            Edit page
-          </Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button asChild variant="ghost" size="sm">
+            <Link
+              to="/projects/$projectId/export"
+              params={{ projectId }}
+              search={{ page: pageId }}
+            >
+              <DownloadIcon />
+              Export OpenAPI
+            </Link>
+          </Button>
+          <Button asChild variant="outline" size="sm">
+            <Link
+              to="/projects/$projectId/pages/$pageId/edit"
+              params={{ projectId, pageId }}
+            >
+              <PencilIcon />
+              Edit page
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <ViewSection title="Description">
