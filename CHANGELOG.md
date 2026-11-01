@@ -4,7 +4,7 @@ All notable changes to this project are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.2.0] - 2026-11-01
 
 ### Added
 
@@ -25,6 +25,8 @@ All notable changes to this project are listed here. The format follows
   `Prefer: example=invalid-credentials` (also `email-not-verified`, `invalid-parameters`,
   `idempotency-key-missing`, `idempotency-key-reused`, `request-in-progress`,
   `item-has-stock`, and `insufficient-stock`). Sample projects created before keep theirs.
+- Data volumes from 0.1.x work as they are: the database is migrated on start, and
+  existing responses keep their bodies.
 
 ## [0.1.1] - 2026-10-30
 
@@ -69,6 +71,6 @@ The first release.
 - **Docker image** `reggarantai/api-contract-builder` for `linux/amd64` and `linux/arm64`:
   runs as a non-root user, keeps everything in the `/data` volume, and has a healthcheck.
 
-[Unreleased]: https://github.com/reggarantai/api-contract-builder/compare/v0.1.1...HEAD
+[0.2.0]: https://github.com/reggarantai/api-contract-builder/releases/tag/v0.2.0
 [0.1.1]: https://github.com/reggarantai/api-contract-builder/releases/tag/v0.1.1
 [0.1.0]: https://github.com/reggarantai/api-contract-builder/releases/tag/v0.1.0
