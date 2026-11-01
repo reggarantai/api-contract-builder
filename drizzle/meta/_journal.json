@@ -43,6 +43,13 @@
       "when": 1793355042156,
       "tag": "0005_response_headers",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1793492601894,
+      "tag": "0006_error_types",
+      "breakpoints": true
     }
   ]
 }

@@ -47,6 +47,7 @@ describe("Markdown export", () => {
     );
     expect(Object.keys(files).sort()).toEqual([
       "inventory-app/README.md",
+      "inventory-app/error-types.md",
       "inventory-app/images/add-or-edit-stock-item/01-stock-item-form.png",
       "inventory-app/images/app-shell/01-app-shell.png",
       "inventory-app/images/forgot-password/01-forgot-password.png",
@@ -131,6 +132,7 @@ describe("Markdown export", () => {
     );
     expect(Object.keys(files).sort()).toEqual([
       "inventory-app/README.md",
+      "inventory-app/error-types.md",
       "inventory-app/images/stock-list/01-stock-list.png",
       "inventory-app/inventory-app.stock-list.openapi.yaml",
       "inventory-app/models.md",

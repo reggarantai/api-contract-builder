@@ -4,9 +4,18 @@ export const EXPORT_FORMATS = ["yaml", "json"] as const;
 export type ExportFormat = (typeof EXPORT_FORMATS)[number];
 
 export const lintIssueSchema = z.object({
-  kind: z.enum(["missing-example", "unused-endpoint", "unused-model"]),
+  kind: z.enum([
+    "missing-example",
+    "unused-endpoint",
+    "unused-model",
+    "unused-error-type",
+    "error-mismatch",
+  ]),
   /** What to open to fix it. */
-  target: z.object({ type: z.enum(["endpoint", "model"]), id: z.string() }),
+  target: z.object({
+    type: z.enum(["endpoint", "model", "error-type"]),
+    id: z.string(),
+  }),
   message: z.string(),
 });
 

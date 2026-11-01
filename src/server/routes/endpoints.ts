@@ -7,6 +7,7 @@ import {
   createEndpointInputSchema,
   type Endpoint,
   type EndpointFields,
+  type EndpointResponse,
   type EndpointSummary,
   endpointLabel,
   endpointSchema,
@@ -14,12 +15,19 @@ import {
   type HttpMethod,
   pathMatchKey,
   schemasOfEndpoint,
+  type UpdateEndpointInput,
   updateEndpointInputSchema,
 } from "../../shared/endpoints";
+import { checkResponseErrors } from "../../shared/error-types";
 import type { Db } from "../db/client";
 import { findProject, touchProject } from "../db/projects";
 import { checkModelRefs, pageIdsByEndpoint } from "../db/references";
-import { type EndpointRow, endpoints, type ProjectRow } from "../db/schema";
+import {
+  type EndpointRow,
+  endpoints,
+  errorTypes,
+  type ProjectRow,
+} from "../db/schema";
 import { jsonBody, toApiIssues, validationFailed } from "../validation";
 
 function fieldsOf(row: EndpointRow): EndpointFields {
@@ -138,7 +146,10 @@ function findOperationIdOwner(
     .get();
 }
 
-/** Issues for security schemes and models the endpoint uses but the project lacks. */
+/**
+ * Issues for security schemes, models, and catalog errors the endpoint uses
+ * but the project lacks, and for catalog errors its responses can't use.
+ */
 function checkReferences(
   db: Db,
   project: ProjectRow,
@@ -158,7 +169,39 @@ function checkReferences(
   for (const [path, schema] of schemasOfEndpoint(fields)) {
     issues.push(...checkModelRefs(db, project.id, schema, path));
   }
+  if (fields.responses.some((response) => response.errors.length > 0)) {
+    const catalog = db
+      .select({
+        id: errorTypes.id,
+        name: errorTypes.name,
+        status: errorTypes.status,
+        body: errorTypes.body,
+      })
+      .from(errorTypes)
+      .where(eq(errorTypes.projectId, project.id))
+      .all();
+    issues.push(...checkResponseErrors(fields, catalog));
+  }
   return issues;
+}
+
+/**
+ * Responses as sent, where those without `errors` (from clients older than
+ * the error catalog, which drop fields they don't know) keep the errors the
+ * response had, so a save can't silently lose them.
+ */
+function withStoredErrors(
+  responses: NonNullable<UpdateEndpointInput["responses"]>,
+  stored: EndpointResponse[],
+) {
+  return responses.map((response) => ({
+    ...response,
+    errors:
+      response.errors ??
+      (response.body === null
+        ? (stored.find((item) => item.id === response.id)?.errors ?? [])
+        : []),
+  }));
 }
 
 export function endpointRoutes(db: Db) {
@@ -235,9 +278,13 @@ export function endpointRoutes(db: Db) {
           return endpointNotFound(c);
         }
 
+        const input = c.req.valid("json");
         const result = endpointSchema.safeParse({
           ...fieldsOf(existing),
-          ...c.req.valid("json"),
+          ...input,
+          ...(input.responses && {
+            responses: withStoredErrors(input.responses, existing.responses),
+          }),
         });
         if (!result.success) {
           return validationFailed(c, toApiIssues(result.error));

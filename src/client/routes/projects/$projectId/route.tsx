@@ -67,6 +67,14 @@ function ProjectLayout() {
             Models
           </Link>
           <Link
+            to="/projects/$projectId/error-types"
+            params={{ projectId }}
+            className={tabClassName}
+            activeProps={{ className: activeTabClassName }}
+          >
+            Error types
+          </Link>
+          <Link
             to="/projects/$projectId/export"
             params={{ projectId }}
             className={tabClassName}

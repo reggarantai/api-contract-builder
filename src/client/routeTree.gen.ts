@@ -13,12 +13,15 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProjectsProjectIdRouteRouteImport } from './routes/projects/$projectId/route'
 import { Route as ProjectsProjectIdIndexRouteImport } from './routes/projects/$projectId/index'
 import { Route as ProjectsProjectIdEndpointsRouteRouteImport } from './routes/projects/$projectId/endpoints/route'
+import { Route as ProjectsProjectIdErrorTypesRouteRouteImport } from './routes/projects/$projectId/error-types/route'
 import { Route as ProjectsProjectIdExportRouteImport } from './routes/projects/$projectId/export'
 import { Route as ProjectsProjectIdModelsRouteRouteImport } from './routes/projects/$projectId/models/route'
 import { Route as ProjectsProjectIdPagesRouteRouteImport } from './routes/projects/$projectId/pages/route'
 import { Route as ProjectsProjectIdSettingsRouteImport } from './routes/projects/$projectId/settings'
 import { Route as ProjectsProjectIdEndpointsIndexRouteImport } from './routes/projects/$projectId/endpoints/index'
 import { Route as ProjectsProjectIdEndpointsEndpointIdRouteImport } from './routes/projects/$projectId/endpoints/$endpointId'
+import { Route as ProjectsProjectIdErrorTypesIndexRouteImport } from './routes/projects/$projectId/error-types/index'
+import { Route as ProjectsProjectIdErrorTypesErrorTypeIdRouteImport } from './routes/projects/$projectId/error-types/$errorTypeId'
 import { Route as ProjectsProjectIdModelsIndexRouteImport } from './routes/projects/$projectId/models/index'
 import { Route as ProjectsProjectIdModelsModelIdRouteImport } from './routes/projects/$projectId/models/$modelId'
 import { Route as ProjectsProjectIdPagesIndexRouteImport } from './routes/projects/$projectId/pages/index'
@@ -44,6 +47,12 @@ const ProjectsProjectIdEndpointsRouteRoute =
   ProjectsProjectIdEndpointsRouteRouteImport.update({
     id: '/endpoints',
     path: '/endpoints',
+    getParentRoute: () => ProjectsProjectIdRouteRoute,
+  } as any)
+const ProjectsProjectIdErrorTypesRouteRoute =
+  ProjectsProjectIdErrorTypesRouteRouteImport.update({
+    id: '/error-types',
+    path: '/error-types',
     getParentRoute: () => ProjectsProjectIdRouteRoute,
   } as any)
 const ProjectsProjectIdExportRoute = ProjectsProjectIdExportRouteImport.update({
@@ -81,6 +90,18 @@ const ProjectsProjectIdEndpointsEndpointIdRoute =
     path: '/$endpointId',
     getParentRoute: () => ProjectsProjectIdEndpointsRouteRoute,
   } as any)
+const ProjectsProjectIdErrorTypesIndexRoute =
+  ProjectsProjectIdErrorTypesIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => ProjectsProjectIdErrorTypesRouteRoute,
+  } as any)
+const ProjectsProjectIdErrorTypesErrorTypeIdRoute =
+  ProjectsProjectIdErrorTypesErrorTypeIdRouteImport.update({
+    id: '/$errorTypeId',
+    path: '/$errorTypeId',
+    getParentRoute: () => ProjectsProjectIdErrorTypesRouteRoute,
+  } as any)
 const ProjectsProjectIdModelsIndexRoute =
   ProjectsProjectIdModelsIndexRouteImport.update({
     id: '/',
@@ -116,14 +137,17 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/projects/$projectId': typeof ProjectsProjectIdRouteRouteWithChildren
   '/projects/$projectId/endpoints': typeof ProjectsProjectIdEndpointsRouteRouteWithChildren
+  '/projects/$projectId/error-types': typeof ProjectsProjectIdErrorTypesRouteRouteWithChildren
   '/projects/$projectId/models': typeof ProjectsProjectIdModelsRouteRouteWithChildren
   '/projects/$projectId/pages': typeof ProjectsProjectIdPagesRouteRouteWithChildren
   '/projects/$projectId/export': typeof ProjectsProjectIdExportRoute
   '/projects/$projectId/settings': typeof ProjectsProjectIdSettingsRoute
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
   '/projects/$projectId/endpoints/$endpointId': typeof ProjectsProjectIdEndpointsEndpointIdRoute
+  '/projects/$projectId/error-types/$errorTypeId': typeof ProjectsProjectIdErrorTypesErrorTypeIdRoute
   '/projects/$projectId/models/$modelId': typeof ProjectsProjectIdModelsModelIdRoute
   '/projects/$projectId/endpoints/': typeof ProjectsProjectIdEndpointsIndexRoute
+  '/projects/$projectId/error-types/': typeof ProjectsProjectIdErrorTypesIndexRoute
   '/projects/$projectId/models/': typeof ProjectsProjectIdModelsIndexRoute
   '/projects/$projectId/pages/': typeof ProjectsProjectIdPagesIndexRoute
   '/projects/$projectId/pages/$pageId/edit': typeof ProjectsProjectIdPagesPageIdEditRoute
@@ -135,8 +159,10 @@ export interface FileRoutesByTo {
   '/projects/$projectId/settings': typeof ProjectsProjectIdSettingsRoute
   '/projects/$projectId': typeof ProjectsProjectIdIndexRoute
   '/projects/$projectId/endpoints/$endpointId': typeof ProjectsProjectIdEndpointsEndpointIdRoute
+  '/projects/$projectId/error-types/$errorTypeId': typeof ProjectsProjectIdErrorTypesErrorTypeIdRoute
   '/projects/$projectId/models/$modelId': typeof ProjectsProjectIdModelsModelIdRoute
   '/projects/$projectId/endpoints': typeof ProjectsProjectIdEndpointsIndexRoute
+  '/projects/$projectId/error-types': typeof ProjectsProjectIdErrorTypesIndexRoute
   '/projects/$projectId/models': typeof ProjectsProjectIdModelsIndexRoute
   '/projects/$projectId/pages': typeof ProjectsProjectIdPagesIndexRoute
   '/projects/$projectId/pages/$pageId/edit': typeof ProjectsProjectIdPagesPageIdEditRoute
@@ -147,14 +173,17 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/projects/$projectId': typeof ProjectsProjectIdRouteRouteWithChildren
   '/projects/$projectId/endpoints': typeof ProjectsProjectIdEndpointsRouteRouteWithChildren
+  '/projects/$projectId/error-types': typeof ProjectsProjectIdErrorTypesRouteRouteWithChildren
   '/projects/$projectId/models': typeof ProjectsProjectIdModelsRouteRouteWithChildren
   '/projects/$projectId/pages': typeof ProjectsProjectIdPagesRouteRouteWithChildren
   '/projects/$projectId/export': typeof ProjectsProjectIdExportRoute
   '/projects/$projectId/settings': typeof ProjectsProjectIdSettingsRoute
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
   '/projects/$projectId/endpoints/$endpointId': typeof ProjectsProjectIdEndpointsEndpointIdRoute
+  '/projects/$projectId/error-types/$errorTypeId': typeof ProjectsProjectIdErrorTypesErrorTypeIdRoute
   '/projects/$projectId/models/$modelId': typeof ProjectsProjectIdModelsModelIdRoute
   '/projects/$projectId/endpoints/': typeof ProjectsProjectIdEndpointsIndexRoute
+  '/projects/$projectId/error-types/': typeof ProjectsProjectIdErrorTypesIndexRoute
   '/projects/$projectId/models/': typeof ProjectsProjectIdModelsIndexRoute
   '/projects/$projectId/pages/': typeof ProjectsProjectIdPagesIndexRoute
   '/projects/$projectId/pages/$pageId/edit': typeof ProjectsProjectIdPagesPageIdEditRoute
@@ -166,14 +195,17 @@ export interface FileRouteTypes {
     | '/'
     | '/projects/$projectId'
     | '/projects/$projectId/endpoints'
+    | '/projects/$projectId/error-types'
     | '/projects/$projectId/models'
     | '/projects/$projectId/pages'
     | '/projects/$projectId/export'
     | '/projects/$projectId/settings'
     | '/projects/$projectId/'
     | '/projects/$projectId/endpoints/$endpointId'
+    | '/projects/$projectId/error-types/$errorTypeId'
     | '/projects/$projectId/models/$modelId'
     | '/projects/$projectId/endpoints/'
+    | '/projects/$projectId/error-types/'
     | '/projects/$projectId/models/'
     | '/projects/$projectId/pages/'
     | '/projects/$projectId/pages/$pageId/edit'
@@ -185,8 +217,10 @@ export interface FileRouteTypes {
     | '/projects/$projectId/settings'
     | '/projects/$projectId'
     | '/projects/$projectId/endpoints/$endpointId'
+    | '/projects/$projectId/error-types/$errorTypeId'
     | '/projects/$projectId/models/$modelId'
     | '/projects/$projectId/endpoints'
+    | '/projects/$projectId/error-types'
     | '/projects/$projectId/models'
     | '/projects/$projectId/pages'
     | '/projects/$projectId/pages/$pageId/edit'
@@ -196,14 +230,17 @@ export interface FileRouteTypes {
     | '/'
     | '/projects/$projectId'
     | '/projects/$projectId/endpoints'
+    | '/projects/$projectId/error-types'
     | '/projects/$projectId/models'
     | '/projects/$projectId/pages'
     | '/projects/$projectId/export'
     | '/projects/$projectId/settings'
     | '/projects/$projectId/'
     | '/projects/$projectId/endpoints/$endpointId'
+    | '/projects/$projectId/error-types/$errorTypeId'
     | '/projects/$projectId/models/$modelId'
     | '/projects/$projectId/endpoints/'
+    | '/projects/$projectId/error-types/'
     | '/projects/$projectId/models/'
     | '/projects/$projectId/pages/'
     | '/projects/$projectId/pages/$pageId/edit'
@@ -243,6 +280,13 @@ declare module '@tanstack/react-router' {
       path: '/endpoints'
       fullPath: '/projects/$projectId/endpoints'
       preLoaderRoute: typeof ProjectsProjectIdEndpointsRouteRouteImport
+      parentRoute: typeof ProjectsProjectIdRouteRoute
+    }
+    '/projects/$projectId/error-types': {
+      id: '/projects/$projectId/error-types'
+      path: '/error-types'
+      fullPath: '/projects/$projectId/error-types'
+      preLoaderRoute: typeof ProjectsProjectIdErrorTypesRouteRouteImport
       parentRoute: typeof ProjectsProjectIdRouteRoute
     }
     '/projects/$projectId/export': {
@@ -286,6 +330,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/projects/$projectId/endpoints/$endpointId'
       preLoaderRoute: typeof ProjectsProjectIdEndpointsEndpointIdRouteImport
       parentRoute: typeof ProjectsProjectIdEndpointsRouteRoute
+    }
+    '/projects/$projectId/error-types/': {
+      id: '/projects/$projectId/error-types/'
+      path: '/'
+      fullPath: '/projects/$projectId/error-types/'
+      preLoaderRoute: typeof ProjectsProjectIdErrorTypesIndexRouteImport
+      parentRoute: typeof ProjectsProjectIdErrorTypesRouteRoute
+    }
+    '/projects/$projectId/error-types/$errorTypeId': {
+      id: '/projects/$projectId/error-types/$errorTypeId'
+      path: '/$errorTypeId'
+      fullPath: '/projects/$projectId/error-types/$errorTypeId'
+      preLoaderRoute: typeof ProjectsProjectIdErrorTypesErrorTypeIdRouteImport
+      parentRoute: typeof ProjectsProjectIdErrorTypesRouteRoute
     }
     '/projects/$projectId/models/': {
       id: '/projects/$projectId/models/'
@@ -342,6 +400,24 @@ const ProjectsProjectIdEndpointsRouteRouteWithChildren =
     ProjectsProjectIdEndpointsRouteRouteChildren,
   )
 
+interface ProjectsProjectIdErrorTypesRouteRouteChildren {
+  ProjectsProjectIdErrorTypesErrorTypeIdRoute: typeof ProjectsProjectIdErrorTypesErrorTypeIdRoute
+  ProjectsProjectIdErrorTypesIndexRoute: typeof ProjectsProjectIdErrorTypesIndexRoute
+}
+
+const ProjectsProjectIdErrorTypesRouteRouteChildren: ProjectsProjectIdErrorTypesRouteRouteChildren =
+  {
+    ProjectsProjectIdErrorTypesErrorTypeIdRoute:
+      ProjectsProjectIdErrorTypesErrorTypeIdRoute,
+    ProjectsProjectIdErrorTypesIndexRoute:
+      ProjectsProjectIdErrorTypesIndexRoute,
+  }
+
+const ProjectsProjectIdErrorTypesRouteRouteWithChildren =
+  ProjectsProjectIdErrorTypesRouteRoute._addFileChildren(
+    ProjectsProjectIdErrorTypesRouteRouteChildren,
+  )
+
 interface ProjectsProjectIdModelsRouteRouteChildren {
   ProjectsProjectIdModelsModelIdRoute: typeof ProjectsProjectIdModelsModelIdRoute
   ProjectsProjectIdModelsIndexRoute: typeof ProjectsProjectIdModelsIndexRoute
@@ -380,6 +456,7 @@ const ProjectsProjectIdPagesRouteRouteWithChildren =
 
 interface ProjectsProjectIdRouteRouteChildren {
   ProjectsProjectIdEndpointsRouteRoute: typeof ProjectsProjectIdEndpointsRouteRouteWithChildren
+  ProjectsProjectIdErrorTypesRouteRoute: typeof ProjectsProjectIdErrorTypesRouteRouteWithChildren
   ProjectsProjectIdModelsRouteRoute: typeof ProjectsProjectIdModelsRouteRouteWithChildren
   ProjectsProjectIdPagesRouteRoute: typeof ProjectsProjectIdPagesRouteRouteWithChildren
   ProjectsProjectIdExportRoute: typeof ProjectsProjectIdExportRoute
@@ -391,6 +468,8 @@ const ProjectsProjectIdRouteRouteChildren: ProjectsProjectIdRouteRouteChildren =
   {
     ProjectsProjectIdEndpointsRouteRoute:
       ProjectsProjectIdEndpointsRouteRouteWithChildren,
+    ProjectsProjectIdErrorTypesRouteRoute:
+      ProjectsProjectIdErrorTypesRouteRouteWithChildren,
     ProjectsProjectIdModelsRouteRoute:
       ProjectsProjectIdModelsRouteRouteWithChildren,
     ProjectsProjectIdPagesRouteRoute:

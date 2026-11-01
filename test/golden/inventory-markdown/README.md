@@ -19,6 +19,7 @@ API version **1.0.0**.
 
 - [Pages](#pages): what each screen does and which endpoints it calls
 - [Models](models.md): shared data shapes
+- [Error types](error-types.md): the errors endpoints answer, and when
 - [`inventory-app.openapi.yaml`](inventory-app.openapi.yaml): the contract for code generators and mock servers
 
 ## Servers
@@ -72,6 +73,31 @@ Unless an endpoint says otherwise, requests use **bearerAuth**.
 | `DELETE` | `/stock-items/{itemId}` | Delete a stock item | In review | [Stock list](pages/stock-list.md#delete-stock-itemsitemid) |
 | `GET` | `/stock-items/{itemId}/movements` | List an item's stock movements | Agreed | [Stock item](pages/stock-item.md#get-stock-itemsitemidmovements) |
 | `POST` | `/stock-items/{itemId}/movements` | Record a stock movement | In review | [Stock item](pages/stock-item.md#post-stock-itemsitemidmovements) |
+
+## Error types
+
+| Status | Error type | Title |
+| --- | --- | --- |
+| 400 | [`idempotency-key-missing`](error-types.md#idempotency-key-missing) | Idempotency-Key missing |
+| 400 | [`idempotency-key-reused`](error-types.md#idempotency-key-reused) | Idempotency-Key reused |
+| 400 | [`invalid-credentials`](error-types.md#invalid-credentials) | Invalid credentials |
+| 400 | [`invalid-link`](error-types.md#invalid-link) | Invalid or expired link |
+| 400 | [`invalid-parameters`](error-types.md#invalid-parameters) | Invalid parameters |
+| 401 | [`session-expired`](error-types.md#session-expired) | Session expired |
+| 401 | [`token-expired`](error-types.md#token-expired) | Access token expired |
+| 401 | [`unauthenticated`](error-types.md#unauthenticated) | Not signed in |
+| 403 | [`admins-only`](error-types.md#admins-only) | Admins only |
+| 403 | [`email-not-verified`](error-types.md#email-not-verified) | Email not verified |
+| 404 | [`not-found`](error-types.md#not-found) | Not found |
+| 409 | [`insufficient-stock`](error-types.md#insufficient-stock) | Not enough stock |
+| 409 | [`item-has-stock`](error-types.md#item-has-stock) | Item still in stock |
+| 409 | [`request-in-progress`](error-types.md#request-in-progress) | Request in progress |
+| 409 | [`sku-taken`](error-types.md#sku-taken) | SKU already used |
+| 409 | [`unit-locked`](error-types.md#unit-locked) | Unit can't change |
+| 415 | [`unsupported-media-type`](error-types.md#unsupported-media-type) | Unsupported media type |
+| 422 | [`validation-failed`](error-types.md#validation-failed) | Validation failed |
+| 429 | [`too-many-attempts`](error-types.md#too-many-attempts) | Too many attempts |
+| 429 | [`too-many-requests`](error-types.md#too-many-requests) | Too many requests |
 
 ## Mock the API
 

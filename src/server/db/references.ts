@@ -1,6 +1,11 @@
 import { and, asc, eq, ne } from "drizzle-orm";
 import type { ApiIssue } from "../../shared/api-error";
-import { endpointLabel, schemasOfEndpoint } from "../../shared/endpoints";
+import {
+  compareEndpoints,
+  endpointLabel,
+  schemasOfEndpoint,
+} from "../../shared/endpoints";
+import { schemasOfErrorType } from "../../shared/error-types";
 import {
   COMPONENT_REF_PREFIX,
   collectRefs,
@@ -9,7 +14,7 @@ import {
   modelRef,
 } from "../../shared/json-schema";
 import type { Db } from "./client";
-import { endpoints, models, pageEndpoints, pages } from "./schema";
+import { endpoints, errorTypes, models, pageEndpoints, pages } from "./schema";
 
 function byName(a: string, b: string) {
   return a.localeCompare(b, undefined, { sensitivity: "base" });
@@ -54,7 +59,10 @@ export function checkModelRefs(
   return [...messages].map((message) => ({ path: issuePath, message }));
 }
 
-/** Other models (by name) and endpoints (by label) that reference a model. */
+/**
+ * Other models (by name), error types ("error type <name>"), and endpoints
+ * (by label) that reference a model.
+ */
 export function usersOfModel(db: Db, projectId: string, modelId: string) {
   const ref = modelRef(modelId);
   const usesRef = (schema: JsonSchema) => collectRefs(schema).includes(ref);
@@ -67,6 +75,21 @@ export function usersOfModel(db: Db, projectId: string, modelId: string) {
     .filter((model) => usesRef(model.schema))
     .map((model) => model.name)
     .sort(byName);
+  const errorUsers = db
+    .select({
+      name: errorTypes.name,
+      headers: errorTypes.headers,
+      body: errorTypes.body,
+    })
+    .from(errorTypes)
+    .where(eq(errorTypes.projectId, projectId))
+    .all()
+    .filter((errorType) =>
+      schemasOfErrorType(errorType).some(([, schema]) => usesRef(schema)),
+    )
+    .map((errorType) => errorType.name)
+    .sort(byName)
+    .map((name) => `error type ${name}`);
   const endpointUsers = db
     .select()
     .from(endpoints)
@@ -78,7 +101,45 @@ export function usersOfModel(db: Db, projectId: string, modelId: string) {
     .map(endpointLabel)
     .sort(byName);
 
-  return [...modelUsers, ...endpointUsers];
+  return [...modelUsers, ...errorUsers, ...endpointUsers];
+}
+
+/** The endpoints whose responses use each catalog error, in list order. */
+export function endpointIdsByErrorType(db: Db, projectId: string) {
+  const byErrorType = new Map<string, string[]>();
+  for (const endpoint of endpointsOf(db, projectId)) {
+    const ids = new Set(
+      endpoint.responses.flatMap((response) =>
+        response.errors.map((error) => error.errorTypeId),
+      ),
+    );
+    for (const id of ids) {
+      byErrorType.set(id, [...(byErrorType.get(id) ?? []), endpoint.id]);
+    }
+  }
+  return byErrorType;
+}
+
+/** The endpoints whose responses use a catalog error, in list order. */
+export function endpointsUsingErrorType(
+  db: Db,
+  projectId: string,
+  errorTypeId: string,
+) {
+  return endpointsOf(db, projectId).filter((endpoint) =>
+    endpoint.responses.some((response) =>
+      response.errors.some((error) => error.errorTypeId === errorTypeId),
+    ),
+  );
+}
+
+function endpointsOf(db: Db, projectId: string) {
+  return db
+    .select()
+    .from(endpoints)
+    .where(eq(endpoints.projectId, projectId))
+    .all()
+    .sort(compareEndpoints);
 }
 
 /** Endpoints (by label) that require a security scheme explicitly. */

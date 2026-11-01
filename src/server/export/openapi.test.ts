@@ -1,8 +1,17 @@
 import { describe, expect, it } from "vitest";
+import type { EndpointResponse } from "../../shared/endpoints";
+import type { ErrorTypeBody } from "../../shared/error-types";
 import type { JsonSchema } from "../../shared/json-schema";
-import { buildOpenApi, lintContract, validateContract } from "./openapi";
+import {
+  buildOpenApi,
+  type ExportInput,
+  lintContract,
+  validateContract,
+} from "./openapi";
 import {
   testEndpoint,
+  testErrorResponse,
+  testErrorType,
   testInput,
   testModel,
   testPage,
@@ -147,6 +156,7 @@ describe("buildOpenApi", () => {
                     },
                   ],
                 },
+                errors: [],
               },
               {
                 id: "r2",
@@ -154,6 +164,7 @@ describe("buildOpenApi", () => {
                 description: "Not Found",
                 headers: objectSchema({}),
                 body: null,
+                errors: [],
               },
             ],
           }),
@@ -237,6 +248,7 @@ describe("buildOpenApi", () => {
                 ["Location"],
               ),
               body: null,
+              errors: [],
             },
             {
               id: "r2",
@@ -244,6 +256,7 @@ describe("buildOpenApi", () => {
               description: "Conflict",
               headers: objectSchema({}),
               body: null,
+              errors: [],
             },
           ],
         }),
@@ -480,6 +493,7 @@ describe("buildOpenApi", () => {
                 schema: { type: "array", items: { $ref: "model:stock" } },
                 examples: [],
               },
+              errors: [],
             },
           ],
         }),
@@ -504,6 +518,332 @@ describe("buildOpenApi", () => {
       "Stock",
     ]);
     expect(doc.tags).toEqual([{ name: "Stock list" }]);
+  });
+});
+
+describe("buildOpenApi with the error catalog", () => {
+  const problem = testModel(
+    "problem",
+    "Problem",
+    objectSchema({ type: { type: "string" }, title: { type: "string" } }),
+  );
+  const validationProblem = testModel(
+    "validation",
+    "ValidationProblem",
+    objectSchema({ errors: { type: "array" } }),
+  );
+  const challenge = (description: string) =>
+    objectSchema({ "WWW-Authenticate": { type: "string", description } }, [
+      "WWW-Authenticate",
+    ]);
+  const tokenExpired = testErrorType("expired", "token-expired", "401", {
+    title: "Access token expired",
+    description: "The access token is too old. Refresh it, then retry.",
+    headers: challenge("The Bearer challenge"),
+  });
+  const unauthenticated = testErrorType("anon", "unauthenticated", "401", {
+    title: "Not signed in",
+    headers: challenge("The Bearer challenge, without an error"),
+  });
+  const retryAfter = (description: string, required: boolean) =>
+    objectSchema(
+      { "Retry-After": { type: "integer", minimum: 1, description } },
+      required ? ["Retry-After"] : [],
+    );
+  const skuTaken = testErrorType("taken", "sku-taken", "409");
+  const inProgress = testErrorType("busy", "request-in-progress", "409", {
+    headers: retryAfter("Seconds before resending", true),
+  });
+  const validationFailed = testErrorType(
+    "invalid",
+    "validation-failed",
+    "422",
+    {
+      title: "Validation failed",
+      body: {
+        contentType: "application/problem+json",
+        schema: { $ref: "model:validation" },
+        example: { type: "https://api.example.com/problems/validation-failed" },
+      },
+    },
+  );
+
+  function inputWith(
+    responses: EndpointResponse[],
+    changes: Partial<ExportInput> = {},
+  ) {
+    return testInput({
+      models: [problem, validationProblem],
+      errorTypes: [tokenExpired, unauthenticated, skuTaken, inProgress],
+      endpoints: [testEndpoint("e1", "POST", "/stocks", { responses })],
+      ...changes,
+    });
+  }
+  const opResponses = (doc: ReturnType<typeof buildOpenApi>) =>
+    doc.paths["/stocks"]?.post?.responses ?? {};
+
+  it("defines each error once, in components.examples, and references it", () => {
+    const doc = buildOpenApi(
+      inputWith([
+        testErrorResponse("401", "Unauthorized", ["expired", "anon"]),
+      ]),
+    );
+
+    expect(opResponses(doc)["401"]).toEqual({
+      description: "Unauthorized",
+      headers: {
+        "WWW-Authenticate": {
+          required: true,
+          description: "The Bearer challenge",
+          schema: { type: "string" },
+        },
+      },
+      content: {
+        "application/problem+json": {
+          schema: { $ref: "#/components/schemas/Problem" },
+          examples: {
+            "token-expired": { $ref: "#/components/examples/token-expired" },
+            unauthenticated: { $ref: "#/components/examples/unauthenticated" },
+          },
+        },
+      },
+    });
+    expect(doc.components?.examples).toEqual({
+      "token-expired": {
+        summary: "Access token expired",
+        description: "The access token is too old. Refresh it, then retry.",
+        value: {
+          type: "https://api.example.com/problems/token-expired",
+          title: "Access token expired",
+          status: 401,
+        },
+      },
+      unauthenticated: {
+        summary: "Not signed in",
+        value: {
+          type: "https://api.example.com/problems/unauthenticated",
+          title: "Not signed in",
+          status: 401,
+        },
+      },
+      "sku-taken": {
+        summary: "sku-taken",
+        value: expect.objectContaining({ status: 409 }),
+      },
+      "request-in-progress": {
+        summary: "request-in-progress",
+        value: expect.objectContaining({ status: 409 }),
+      },
+    });
+    // Components keep the conventional order.
+    expect(Object.keys(doc.components ?? {})).toEqual(["schemas", "examples"]);
+  });
+
+  it("leaves documents without a catalog as they were", () => {
+    const doc = buildOpenApi(testInput({ models: [problem] }));
+
+    expect(Object.keys(doc.components ?? {})).toEqual(["schemas"]);
+  });
+
+  it("lists every error's example of a header they share", () => {
+    const withExample = (example: string) =>
+      objectSchema(
+        {
+          "WWW-Authenticate": {
+            type: "string",
+            description: "The Bearer challenge",
+            examples: [example],
+          },
+        },
+        ["WWW-Authenticate"],
+      );
+    const expired = {
+      ...tokenExpired,
+      headers: withExample('Bearer error="invalid_token"'),
+    };
+    const anonymous = { ...unauthenticated, headers: withExample("Bearer") };
+
+    const doc = buildOpenApi(
+      inputWith(
+        [testErrorResponse("401", "Unauthorized", ["expired", "anon"])],
+        {
+          errorTypes: [expired, anonymous],
+        },
+      ),
+    );
+
+    expect(opResponses(doc)["401"]?.headers).toEqual({
+      "WWW-Authenticate": {
+        required: true,
+        description: "The Bearer challenge",
+        schema: {
+          type: "string",
+          examples: ['Bearer error="invalid_token"', "Bearer"],
+        },
+      },
+    });
+  });
+
+  it("merges the errors' headers: required only if every error requires them", () => {
+    const tooManyLogins = testErrorType("logins", "too-many-attempts", "429", {
+      headers: retryAfter("Seconds to wait", true),
+    });
+    const tooManyEmails = testErrorType("emails", "too-many-emails", "429", {
+      headers: retryAfter("Seconds until the next email", true),
+    });
+
+    const doc = buildOpenApi(
+      inputWith(
+        [
+          testErrorResponse("409", "Conflict", ["taken", "busy"]),
+          testErrorResponse("429", "Too Many Requests", ["logins", "emails"]),
+          testErrorResponse(
+            "4XX",
+            "Client error",
+            ["busy"],
+            objectSchema({ "retry-after": { type: "string" } }),
+          ),
+        ],
+        {
+          errorTypes: [skuTaken, inProgress, tooManyLogins, tooManyEmails],
+        },
+      ),
+    );
+
+    expect(opResponses(doc)["409"]?.headers).toEqual({
+      "Retry-After": {
+        description:
+          "Only with `request-in-progress`: Seconds before resending",
+        schema: { type: "integer", minimum: 1 },
+      },
+    });
+    expect(opResponses(doc)["429"]?.headers).toEqual({
+      "Retry-After": {
+        required: true,
+        description: "Seconds to wait",
+        schema: { type: "integer", minimum: 1 },
+      },
+    });
+    // The response's own headers win, whatever their case.
+    expect(opResponses(doc)["4XX"]?.headers).toEqual({
+      "retry-after": { schema: { type: "string" } },
+    });
+  });
+
+  it("uses an endpoint's own examples of an error instead of the catalog's", () => {
+    const invalidEmail = {
+      type: "https://api.example.com/problems/validation-failed",
+      errors: [{ pointer: "#/email" }],
+    };
+
+    const doc = buildOpenApi(
+      inputWith(
+        [
+          testErrorResponse("422", "Unprocessable Content", [
+            {
+              errorTypeId: "invalid",
+              examples: [
+                {
+                  id: "x1",
+                  name: "invalid-email",
+                  summary: "",
+                  value: invalidEmail,
+                },
+                {
+                  id: "x2",
+                  name: "no-name",
+                  summary: "Name left out",
+                  value: invalidEmail,
+                },
+              ],
+            },
+          ]),
+        ],
+        { errorTypes: [validationFailed] },
+      ),
+    );
+
+    expect(opResponses(doc)["422"]?.content).toEqual({
+      "application/problem+json": {
+        schema: { $ref: "#/components/schemas/ValidationProblem" },
+        examples: {
+          // Doc viewers label examples by summary, else by name.
+          "invalid-email": { value: invalidEmail },
+          "no-name": { summary: "Name left out", value: invalidEmail },
+        },
+      },
+    });
+  });
+
+  it("lists every schema and content type the errors of a response use", () => {
+    const plain = testErrorType("plain", "unknown-sort", "400", {
+      body: {
+        contentType: "application/json",
+        schema: { type: "object" },
+        example: { message: "Unknown sort" },
+      },
+    });
+    const badBody = testErrorType("bad", "bad-body", "400", {
+      body: { ...validationFailed.body, example: {} } as ErrorTypeBody,
+    });
+    const badQuery = testErrorType("query", "bad-query", "400");
+
+    const doc = buildOpenApi(
+      inputWith(
+        [testErrorResponse("400", "Bad Request", ["query", "bad", "plain"])],
+        { errorTypes: [plain, badBody, badQuery] },
+      ),
+    );
+
+    const content = (opResponses(doc)["400"]?.content ?? {}) as Record<
+      string,
+      JsonSchema
+    >;
+    expect(Object.keys(content)).toEqual([
+      "application/problem+json",
+      "application/json",
+    ]);
+    expect(content["application/problem+json"]?.schema).toEqual({
+      anyOf: [
+        { $ref: "#/components/schemas/Problem" },
+        { $ref: "#/components/schemas/ValidationProblem" },
+      ],
+    });
+    expect(content["application/json"]).toEqual({
+      schema: { type: "object" },
+      examples: {
+        "unknown-sort": { $ref: "#/components/examples/unknown-sort" },
+      },
+    });
+  });
+
+  it("exports one page with only the errors its endpoints use, and their models", () => {
+    const input = testInput({
+      models: [problem, validationProblem],
+      errorTypes: [tokenExpired, unauthenticated, validationFailed],
+      endpoints: [
+        testEndpoint("me", "GET", "/me", {
+          responses: [testErrorResponse("401", "Unauthorized", ["expired"])],
+        }),
+        testEndpoint("login", "POST", "/auth/login", {
+          responses: [
+            testErrorResponse("422", "Unprocessable Content", ["invalid"]),
+          ],
+        }),
+      ],
+      pages: [
+        testPage("p1", "App shell", [
+          { endpointId: "me", trigger: "on_load", note: "" },
+        ]),
+      ],
+    });
+
+    const doc = buildOpenApi(input, { pageId: "p1" });
+
+    expect(Object.keys(doc.components?.examples ?? {})).toEqual([
+      "token-expired",
+    ]);
+    expect(Object.keys(doc.components?.schemas ?? {})).toEqual(["Problem"]);
   });
 });
 
@@ -538,6 +878,7 @@ describe("lintContract", () => {
                 schema: {},
                 examples: [],
               },
+              errors: [],
             },
             {
               id: "r2",
@@ -545,6 +886,7 @@ describe("lintContract", () => {
               description: "No Content",
               headers: objectSchema({}),
               body: null,
+              errors: [],
             },
           ],
         }),
@@ -605,6 +947,131 @@ describe("lintContract", () => {
 
     expect(lintContract(input, { pageId: "p1" })).toEqual([]);
   });
+
+  it("warns about unused errors and problem details that contradict their error", () => {
+    const problemExample = (status: number, title: string, type = "taken") => ({
+      type: `https://api.example.com/problems/${type}`,
+      title,
+      status,
+    });
+    const taken = testErrorType("taken", "taken", "409", {
+      title: "SKU already used",
+      body: {
+        contentType: "application/problem+json",
+        schema: {},
+        example: problemExample(400, "SKU used"),
+      },
+    });
+    const unused = testErrorType("unused", "unused", "418");
+    // Not problem details, so its members mean something else.
+    const custom = testErrorType("custom", "custom", "409", {
+      body: {
+        contentType: "application/json",
+        schema: {},
+        example: { status: "conflict", title: "Other" },
+      },
+    });
+    const input = testInput({
+      errorTypes: [taken, custom, unused],
+      endpoints: [
+        testEndpoint("add", "POST", "/stocks", {
+          requestBody: null,
+          responses: [
+            testErrorResponse("409", "Conflict", [
+              {
+                errorTypeId: "taken",
+                examples: [
+                  {
+                    id: "x1",
+                    name: "own",
+                    summary: "",
+                    value: problemExample(409, "SKU already used", "other"),
+                  },
+                ],
+              },
+              "custom",
+            ]),
+          ],
+        }),
+      ],
+      pages: [
+        testPage("p1", "Add stock", [
+          { endpointId: "add", trigger: "on_submit", note: "" },
+        ]),
+      ],
+    });
+
+    expect(lintContract(input)).toEqual([
+      {
+        kind: "error-mismatch",
+        target: { type: "endpoint", id: "add" },
+        message:
+          "POST /stocks: the 409 example own has another type than taken's example",
+      },
+      {
+        kind: "error-mismatch",
+        target: { type: "error-type", id: "taken" },
+        message: "taken: the example's status is 400, but the error's is 409",
+      },
+      {
+        kind: "error-mismatch",
+        target: { type: "error-type", id: "taken" },
+        message: "taken: the example's title isn't the error's title",
+      },
+      {
+        kind: "unused-error-type",
+        target: { type: "error-type", id: "unused" },
+        message: "unused isn't used by any endpoint",
+      },
+    ]);
+  });
+
+  it("warns about error types that share a type, or define a header differently", () => {
+    const slow = (id: string, name: string, type: string, header: JsonSchema) =>
+      testErrorType(id, name, "429", {
+        headers: objectSchema({ "Retry-After": header }),
+        body: {
+          contentType: "application/problem+json",
+          schema: {},
+          example: { type, title: name, status: 429 },
+        },
+      });
+    const input = testInput({
+      errorTypes: [
+        slow("a", "slow-a", "https://example.com/slow", { type: "integer" }),
+        slow("b", "slow-b", "https://example.com/slow", { type: "string" }),
+        slow("c", "slow-c", "about:blank", { type: "integer" }),
+        slow("d", "slow-d", "about:blank", { type: "integer" }),
+      ],
+      endpoints: [
+        testEndpoint("e1", "POST", "/emails", {
+          requestBody: null,
+          responses: [
+            testErrorResponse("429", "Too Many Requests", ["a", "b", "c", "d"]),
+          ],
+        }),
+      ],
+      pages: [
+        testPage("p1", "Emails", [
+          { endpointId: "e1", trigger: "on_submit", note: "" },
+        ]),
+      ],
+    });
+
+    expect(lintContract(input)).toEqual([
+      {
+        kind: "error-mismatch",
+        target: { type: "endpoint", id: "e1" },
+        message:
+          "POST /emails: the 429 response's error types define Retry-After differently; the export uses slow-a's",
+      },
+      {
+        kind: "error-mismatch",
+        target: { type: "error-type", id: "b" },
+        message: "slow-b has the same type as slow-a: https://example.com/slow",
+      },
+    ]);
+  });
 });
 
 describe("validateContract", () => {
@@ -640,6 +1107,7 @@ describe("validateContract", () => {
               description: "OK",
               headers: objectSchema({ ETag: { type: "text" } }),
               body: null,
+              errors: [],
             },
           ],
         }),
@@ -650,6 +1118,28 @@ describe("validateContract", () => {
       "Model Broken: /type must be equal to one of the allowed values",
       "GET /stocks query parameters: /properties/limit/minimum must be number",
       "GET /stocks 200 response headers: /properties/ETag/type must be equal to one of the allowed values",
+    ]);
+  });
+
+  it("reports invalid schemas of catalog errors", async () => {
+    const input = testInput({
+      errorTypes: [
+        testErrorType("slow", "slow-down", "429", {
+          headers: objectSchema({
+            "Retry-After": { type: "number", minimum: "1" },
+          }),
+          body: {
+            contentType: "application/problem+json",
+            schema: { type: "obj" },
+            example: {},
+          },
+        }),
+      ],
+    });
+
+    expect(await validateContract(input, buildOpenApi(input))).toEqual([
+      "Error type slow-down headers: /properties/Retry-After/minimum must be number",
+      "Error type slow-down body: /type must be equal to one of the allowed values",
     ]);
   });
 

@@ -71,7 +71,9 @@ No body.
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `invalid-link`:
+[`invalid-link`](../error-types.md#invalid-link): **Invalid or expired link**
+
+The token from an email link is unknown or has expired. Offer to send a new link.
 
 ```json
 {
@@ -96,6 +98,10 @@ Example `invalid-link`:
 | `errors` | array of object | Yes | One entry per invalid field | at least 1 item |
 | `errors[].pointer` | string | Yes | JSON Pointer (RFC 6901) to the field in the request body, as a URI fragment like `#/email` |  |
 | `errors[].detail` | string | Yes | What's wrong with it |  |
+
+[`validation-failed`](../error-types.md#validation-failed): **Validation failed**
+
+Some fields of the request body are invalid. `errors` lists each one, with a JSON Pointer to the field, so a form can show each message next to its field.
 
 Example `short-password`:
 

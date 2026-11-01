@@ -103,11 +103,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
               examples:
                 too-many-requests:
-                  value:
-                    type: https://api.inventory.example/problems/too-many-requests
-                    title: Too many requests
-                    status: 429
-                    detail: Wait a minute before asking for another email.
+                  $ref: "#/components/examples/too-many-requests"
       x-status: draft
       x-pages:
         - page: Forgot password
@@ -183,12 +179,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
               examples:
-                wrong-password:
-                  value:
-                    type: https://api.inventory.example/problems/invalid-credentials
-                    title: Invalid credentials
-                    status: 400
-                    detail: Email or password is wrong.
+                invalid-credentials:
+                  $ref: "#/components/examples/invalid-credentials"
         "403":
           description: Forbidden
           content:
@@ -196,12 +188,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
               examples:
-                not-verified:
-                  value:
-                    type: https://api.inventory.example/problems/email-not-verified
-                    title: Email not verified
-                    status: 403
-                    detail: Verify your email address first. We sent a link to budi@example.com.
+                email-not-verified:
+                  $ref: "#/components/examples/email-not-verified"
         "422":
           description: Unprocessable Content
           content:
@@ -235,11 +223,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
               examples:
                 too-many-attempts:
-                  value:
-                    type: https://api.inventory.example/problems/too-many-attempts
-                    title: Too many attempts
-                    status: 429
-                    detail: Too many sign-in attempts. Try again in 15 minutes.
+                  $ref: "#/components/examples/too-many-attempts"
       x-status: agreed
       x-notes-fe: "Keep the access token in memory, not in localStorage. Send API requests with `credentials: 'include'` so the browser keeps the cookie."
       x-notes-be: "Answer 400 for unknown emails too, and hash the password for them as well, so neither the answer nor its timing shows who has an account. Answer 403 only once the password matched. Throttle failed attempts per email and per IP address, unknown emails included, instead of locking accounts: a lock would let anyone lock a colleague out."
@@ -327,11 +311,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
               examples:
                 session-expired:
-                  value:
-                    type: https://api.inventory.example/problems/session-expired
-                    title: Session expired
-                    status: 401
-                    detail: Sign in again.
+                  $ref: "#/components/examples/session-expired"
       x-status: agreed
       x-notes-fe: "Call it directly, not through the code that refreshes on 401. Run one refresh at a time, across tabs too (e.g. with the Web Locks API): requests that get a 401 meanwhile wait for it, then retry once."
       x-notes-be: Rotate the refresh token on every use. Accept the previous token for 30 seconds after it's replaced, since tabs can refresh at the same moment; after that, a reused token was probably stolen, so revoke every session of the user. Only accept requests whose `Origin` is the app.
@@ -428,11 +408,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
               examples:
                 too-many-requests:
-                  value:
-                    type: https://api.inventory.example/problems/too-many-requests
-                    title: Too many requests
-                    status: 429
-                    detail: Wait a minute before asking for another email.
+                  $ref: "#/components/examples/too-many-requests"
       x-status: agreed
       x-notes-be: The verification link works for 24 hours. New accounts get the staff role; admins are promoted outside this app. Check passwords against known breached passwords (NIST SP 800-63B).
       x-pages:
@@ -482,11 +458,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
               examples:
                 invalid-link:
-                  value:
-                    type: https://api.inventory.example/problems/invalid-link
-                    title: Invalid or expired link
-                    status: 400
-                    detail: This link is invalid or has expired. Ask for a new one.
+                  $ref: "#/components/examples/invalid-link"
         "422":
           description: Unprocessable Content
           content:
@@ -554,11 +526,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
               examples:
                 invalid-link:
-                  value:
-                    type: https://api.inventory.example/problems/invalid-link
-                    title: Invalid or expired link
-                    status: 400
-                    detail: This link is invalid or has expired. Ask for a new one.
+                  $ref: "#/components/examples/invalid-link"
         "422":
           description: Unprocessable Content
           content:
@@ -644,11 +612,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
               examples:
                 too-many-requests:
-                  value:
-                    type: https://api.inventory.example/problems/too-many-requests
-                    title: Too many requests
-                    status: 429
-                    detail: Wait a minute before asking for another email.
+                  $ref: "#/components/examples/too-many-requests"
       x-status: review
       x-pages:
         - page: Login
@@ -701,23 +665,16 @@ paths:
                 type: string
                 examples:
                   - Bearer realm="inventory", error="invalid_token", error_description="The access token expired"
+                  - Bearer realm="inventory"
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
               examples:
                 token-expired:
-                  value:
-                    type: https://api.inventory.example/problems/token-expired
-                    title: Access token expired
-                    status: 401
-                    detail: Refresh the access token and try again.
+                  $ref: "#/components/examples/token-expired"
                 unauthenticated:
-                  value:
-                    type: https://api.inventory.example/problems/unauthenticated
-                    title: Not signed in
-                    status: 401
-                    detail: Send an access token in the Authorization header.
+                  $ref: "#/components/examples/unauthenticated"
       x-status: agreed
       x-pages:
         - page: Stock list
@@ -760,23 +717,16 @@ paths:
                 type: string
                 examples:
                   - Bearer realm="inventory", error="invalid_token", error_description="The access token expired"
+                  - Bearer realm="inventory"
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
               examples:
                 token-expired:
-                  value:
-                    type: https://api.inventory.example/problems/token-expired
-                    title: Access token expired
-                    status: 401
-                    detail: Refresh the access token and try again.
+                  $ref: "#/components/examples/token-expired"
                 unauthenticated:
-                  value:
-                    type: https://api.inventory.example/problems/unauthenticated
-                    title: Not signed in
-                    status: 401
-                    detail: Send an access token in the Authorization header.
+                  $ref: "#/components/examples/unauthenticated"
       x-status: agreed
       x-pages:
         - page: App shell
@@ -923,12 +873,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
               examples:
-                invalid-page-size:
-                  value:
-                    type: https://api.inventory.example/problems/invalid-parameters
-                    title: Invalid parameters
-                    status: 400
-                    detail: pageSize must be between 1 and 100.
+                invalid-parameters:
+                  $ref: "#/components/examples/invalid-parameters"
         "401":
           description: Unauthorized
           headers:
@@ -939,23 +885,16 @@ paths:
                 type: string
                 examples:
                   - Bearer realm="inventory", error="invalid_token", error_description="The access token expired"
+                  - Bearer realm="inventory"
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
               examples:
                 token-expired:
-                  value:
-                    type: https://api.inventory.example/problems/token-expired
-                    title: Access token expired
-                    status: 401
-                    detail: Refresh the access token and try again.
+                  $ref: "#/components/examples/token-expired"
                 unauthenticated:
-                  value:
-                    type: https://api.inventory.example/problems/unauthenticated
-                    title: Not signed in
-                    status: 401
-                    detail: Send an access token in the Authorization header.
+                  $ref: "#/components/examples/unauthenticated"
       x-status: agreed
       x-pages:
         - page: Stock list
@@ -1033,18 +972,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
               examples:
-                missing-key:
-                  value:
-                    type: https://api.inventory.example/problems/idempotency-key-missing
-                    title: Idempotency-Key missing
-                    status: 400
-                    detail: Send an Idempotency-Key header with each create.
-                key-reused:
-                  value:
-                    type: https://api.inventory.example/problems/idempotency-key-reused
-                    title: Idempotency-Key reused
-                    status: 400
-                    detail: This key was already used for a different request. Make a new one.
+                idempotency-key-missing:
+                  $ref: "#/components/examples/idempotency-key-missing"
+                idempotency-key-reused:
+                  $ref: "#/components/examples/idempotency-key-reused"
         "401":
           description: Unauthorized
           headers:
@@ -1055,28 +986,21 @@ paths:
                 type: string
                 examples:
                   - Bearer realm="inventory", error="invalid_token", error_description="The access token expired"
+                  - Bearer realm="inventory"
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
               examples:
                 token-expired:
-                  value:
-                    type: https://api.inventory.example/problems/token-expired
-                    title: Access token expired
-                    status: 401
-                    detail: Refresh the access token and try again.
+                  $ref: "#/components/examples/token-expired"
                 unauthenticated:
-                  value:
-                    type: https://api.inventory.example/problems/unauthenticated
-                    title: Not signed in
-                    status: 401
-                    detail: Send an access token in the Authorization header.
+                  $ref: "#/components/examples/unauthenticated"
         "409":
           description: Conflict
           headers:
             Retry-After:
-              description: "Only with `request-in-progress`: seconds before resending"
+              description: "Only with `request-in-progress`: Seconds before resending"
               schema:
                 type: integer
                 minimum: 1
@@ -1088,17 +1012,9 @@ paths:
                 $ref: "#/components/schemas/Problem"
               examples:
                 sku-taken:
-                  value:
-                    type: https://api.inventory.example/problems/sku-taken
-                    title: SKU already used
-                    status: 409
-                    detail: TAPE-050 is already used by Packing tape, 50 m.
-                in-progress:
-                  value:
-                    type: https://api.inventory.example/problems/request-in-progress
-                    title: Request in progress
-                    status: 409
-                    detail: A request with this Idempotency-Key is still running. Resend it later.
+                  $ref: "#/components/examples/sku-taken"
+                request-in-progress:
+                  $ref: "#/components/examples/request-in-progress"
         "422":
           description: Unprocessable Content
           content:
@@ -1169,23 +1085,16 @@ paths:
                 type: string
                 examples:
                   - Bearer realm="inventory", error="invalid_token", error_description="The access token expired"
+                  - Bearer realm="inventory"
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
               examples:
                 token-expired:
-                  value:
-                    type: https://api.inventory.example/problems/token-expired
-                    title: Access token expired
-                    status: 401
-                    detail: Refresh the access token and try again.
+                  $ref: "#/components/examples/token-expired"
                 unauthenticated:
-                  value:
-                    type: https://api.inventory.example/problems/unauthenticated
-                    title: Not signed in
-                    status: 401
-                    detail: Send an access token in the Authorization header.
+                  $ref: "#/components/examples/unauthenticated"
         "404":
           description: Not Found
           content:
@@ -1194,11 +1103,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
               examples:
                 not-found:
-                  value:
-                    type: https://api.inventory.example/problems/not-found
-                    title: Not found
-                    status: 404
-                    detail: There's no stock item with ID 9d0c8b7a-6f5e-4d3c-8b2a-1f0e9d8c7b6a.
+                  $ref: "#/components/examples/not-found"
       x-status: agreed
       x-pages:
         - page: Stock item
@@ -1266,23 +1171,16 @@ paths:
                 type: string
                 examples:
                   - Bearer realm="inventory", error="invalid_token", error_description="The access token expired"
+                  - Bearer realm="inventory"
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
               examples:
                 token-expired:
-                  value:
-                    type: https://api.inventory.example/problems/token-expired
-                    title: Access token expired
-                    status: 401
-                    detail: Refresh the access token and try again.
+                  $ref: "#/components/examples/token-expired"
                 unauthenticated:
-                  value:
-                    type: https://api.inventory.example/problems/unauthenticated
-                    title: Not signed in
-                    status: 401
-                    detail: Send an access token in the Authorization header.
+                  $ref: "#/components/examples/unauthenticated"
         "404":
           description: Not Found
           content:
@@ -1291,11 +1189,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
               examples:
                 not-found:
-                  value:
-                    type: https://api.inventory.example/problems/not-found
-                    title: Not found
-                    status: 404
-                    detail: There's no stock item with ID 9d0c8b7a-6f5e-4d3c-8b2a-1f0e9d8c7b6a.
+                  $ref: "#/components/examples/not-found"
         "409":
           description: Conflict
           content:
@@ -1304,17 +1198,9 @@ paths:
                 $ref: "#/components/schemas/Problem"
               examples:
                 sku-taken:
-                  value:
-                    type: https://api.inventory.example/problems/sku-taken
-                    title: SKU already used
-                    status: 409
-                    detail: TAPE-050 is already used by Packing tape, 50 m.
+                  $ref: "#/components/examples/sku-taken"
                 unit-locked:
-                  value:
-                    type: https://api.inventory.example/problems/unit-locked
-                    title: Unit can't change
-                    status: 409
-                    detail: Shipping box, small already has stock movements, so its unit can't change.
+                  $ref: "#/components/examples/unit-locked"
         "415":
           description: Unsupported Media Type
           headers:
@@ -1385,23 +1271,16 @@ paths:
                 type: string
                 examples:
                   - Bearer realm="inventory", error="invalid_token", error_description="The access token expired"
+                  - Bearer realm="inventory"
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
               examples:
                 token-expired:
-                  value:
-                    type: https://api.inventory.example/problems/token-expired
-                    title: Access token expired
-                    status: 401
-                    detail: Refresh the access token and try again.
+                  $ref: "#/components/examples/token-expired"
                 unauthenticated:
-                  value:
-                    type: https://api.inventory.example/problems/unauthenticated
-                    title: Not signed in
-                    status: 401
-                    detail: Send an access token in the Authorization header.
+                  $ref: "#/components/examples/unauthenticated"
         "403":
           description: Forbidden
           content:
@@ -1410,11 +1289,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
               examples:
                 admins-only:
-                  value:
-                    type: https://api.inventory.example/problems/admins-only
-                    title: Admins only
-                    status: 403
-                    detail: Only admins can delete stock items.
+                  $ref: "#/components/examples/admins-only"
         "404":
           description: Not Found
           content:
@@ -1423,11 +1298,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
               examples:
                 not-found:
-                  value:
-                    type: https://api.inventory.example/problems/not-found
-                    title: Not found
-                    status: 404
-                    detail: There's no stock item with ID 9d0c8b7a-6f5e-4d3c-8b2a-1f0e9d8c7b6a.
+                  $ref: "#/components/examples/not-found"
         "409":
           description: Conflict
           content:
@@ -1435,12 +1306,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
               examples:
-                has-stock:
-                  value:
-                    type: https://api.inventory.example/problems/item-has-stock
-                    title: Item still in stock
-                    status: 409
-                    detail: Shipping box, small still has 340 on hand. Issue or count them to 0 first.
+                item-has-stock:
+                  $ref: "#/components/examples/item-has-stock"
       x-status: review
       x-notes-be: "Soft delete: keep the item and its movements for reports."
       x-pages:
@@ -1544,12 +1411,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
               examples:
-                invalid-page-size:
-                  value:
-                    type: https://api.inventory.example/problems/invalid-parameters
-                    title: Invalid parameters
-                    status: 400
-                    detail: pageSize must be between 1 and 100.
+                invalid-parameters:
+                  $ref: "#/components/examples/invalid-parameters"
         "401":
           description: Unauthorized
           headers:
@@ -1560,23 +1423,16 @@ paths:
                 type: string
                 examples:
                   - Bearer realm="inventory", error="invalid_token", error_description="The access token expired"
+                  - Bearer realm="inventory"
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
               examples:
                 token-expired:
-                  value:
-                    type: https://api.inventory.example/problems/token-expired
-                    title: Access token expired
-                    status: 401
-                    detail: Refresh the access token and try again.
+                  $ref: "#/components/examples/token-expired"
                 unauthenticated:
-                  value:
-                    type: https://api.inventory.example/problems/unauthenticated
-                    title: Not signed in
-                    status: 401
-                    detail: Send an access token in the Authorization header.
+                  $ref: "#/components/examples/unauthenticated"
         "404":
           description: Not Found
           content:
@@ -1585,11 +1441,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
               examples:
                 not-found:
-                  value:
-                    type: https://api.inventory.example/problems/not-found
-                    title: Not found
-                    status: 404
-                    detail: There's no stock item with ID 9d0c8b7a-6f5e-4d3c-8b2a-1f0e9d8c7b6a.
+                  $ref: "#/components/examples/not-found"
       x-status: agreed
       x-pages:
         - page: Stock item
@@ -1676,18 +1528,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
               examples:
-                missing-key:
-                  value:
-                    type: https://api.inventory.example/problems/idempotency-key-missing
-                    title: Idempotency-Key missing
-                    status: 400
-                    detail: Send an Idempotency-Key header with each create.
-                key-reused:
-                  value:
-                    type: https://api.inventory.example/problems/idempotency-key-reused
-                    title: Idempotency-Key reused
-                    status: 400
-                    detail: This key was already used for a different request. Make a new one.
+                idempotency-key-missing:
+                  $ref: "#/components/examples/idempotency-key-missing"
+                idempotency-key-reused:
+                  $ref: "#/components/examples/idempotency-key-reused"
         "401":
           description: Unauthorized
           headers:
@@ -1698,23 +1542,16 @@ paths:
                 type: string
                 examples:
                   - Bearer realm="inventory", error="invalid_token", error_description="The access token expired"
+                  - Bearer realm="inventory"
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
               examples:
                 token-expired:
-                  value:
-                    type: https://api.inventory.example/problems/token-expired
-                    title: Access token expired
-                    status: 401
-                    detail: Refresh the access token and try again.
+                  $ref: "#/components/examples/token-expired"
                 unauthenticated:
-                  value:
-                    type: https://api.inventory.example/problems/unauthenticated
-                    title: Not signed in
-                    status: 401
-                    detail: Send an access token in the Authorization header.
+                  $ref: "#/components/examples/unauthenticated"
         "404":
           description: Not Found
           content:
@@ -1723,16 +1560,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
               examples:
                 not-found:
-                  value:
-                    type: https://api.inventory.example/problems/not-found
-                    title: Not found
-                    status: 404
-                    detail: There's no stock item with ID 9d0c8b7a-6f5e-4d3c-8b2a-1f0e9d8c7b6a.
+                  $ref: "#/components/examples/not-found"
         "409":
           description: Conflict
           headers:
             Retry-After:
-              description: "Only with `request-in-progress`: seconds before resending"
+              description: "Only with `request-in-progress`: Seconds before resending"
               schema:
                 type: integer
                 minimum: 1
@@ -1743,18 +1576,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
               examples:
-                not-enough-stock:
-                  value:
-                    type: https://api.inventory.example/problems/insufficient-stock
-                    title: Not enough stock
-                    status: 409
-                    detail: Only 18 on hand, so 30 can't be issued.
-                in-progress:
-                  value:
-                    type: https://api.inventory.example/problems/request-in-progress
-                    title: Request in progress
-                    status: 409
-                    detail: A request with this Idempotency-Key is still running. Resend it later.
+                insufficient-stock:
+                  $ref: "#/components/examples/insufficient-stock"
+                request-in-progress:
+                  $ref: "#/components/examples/request-in-progress"
         "422":
           description: Unprocessable Content
           content:
@@ -2186,6 +2011,170 @@ components:
         - title
         - status
         - errors
+  examples:
+    idempotency-key-missing:
+      summary: Idempotency-Key missing
+      description: A create was sent without an `Idempotency-Key` header.
+      value:
+        type: https://api.inventory.example/problems/idempotency-key-missing
+        title: Idempotency-Key missing
+        status: 400
+        detail: Send an Idempotency-Key header with each create.
+    idempotency-key-reused:
+      summary: Idempotency-Key reused
+      description: The key was already used for a request with a different body. Make a new key for each new thing to create.
+      value:
+        type: https://api.inventory.example/problems/idempotency-key-reused
+        title: Idempotency-Key reused
+        status: 400
+        detail: This key was already used for a different request. Make a new one.
+    invalid-credentials:
+      summary: Invalid credentials
+      description: "The email or password is wrong. It's 400, not 401: a 401 always means the access token is missing or expired."
+      value:
+        type: https://api.inventory.example/problems/invalid-credentials
+        title: Invalid credentials
+        status: 400
+        detail: Email or password is wrong.
+    invalid-link:
+      summary: Invalid or expired link
+      description: The token from an email link is unknown or has expired. Offer to send a new link.
+      value:
+        type: https://api.inventory.example/problems/invalid-link
+        title: Invalid or expired link
+        status: 400
+        detail: This link is invalid or has expired. Ask for a new one.
+    invalid-parameters:
+      summary: Invalid parameters
+      description: A query or header parameter is invalid; `detail` says which.
+      value:
+        type: https://api.inventory.example/problems/invalid-parameters
+        title: Invalid parameters
+        status: 400
+        detail: pageSize must be between 1 and 100.
+    session-expired:
+      summary: Session expired
+      description: The refresh token is missing, expired, or revoked, so the session is over. Sign in again.
+      value:
+        type: https://api.inventory.example/problems/session-expired
+        title: Session expired
+        status: 401
+        detail: Sign in again.
+    token-expired:
+      summary: Access token expired
+      description: The access token has expired. Refresh it once with `POST /auth/refresh`, then retry the request.
+      value:
+        type: https://api.inventory.example/problems/token-expired
+        title: Access token expired
+        status: 401
+        detail: Refresh the access token and try again.
+    unauthenticated:
+      summary: Not signed in
+      description: The request has no access token. Send one in the `Authorization` header.
+      value:
+        type: https://api.inventory.example/problems/unauthenticated
+        title: Not signed in
+        status: 401
+        detail: Send an access token in the Authorization header.
+    admins-only:
+      summary: Admins only
+      description: Only admins can do this; staff can't.
+      value:
+        type: https://api.inventory.example/problems/admins-only
+        title: Admins only
+        status: 403
+        detail: Only admins can delete stock items.
+    email-not-verified:
+      summary: Email not verified
+      description: The password matched, but the email address isn't verified yet. Offer to send a new link with `POST /auth/verify-email/resend`.
+      value:
+        type: https://api.inventory.example/problems/email-not-verified
+        title: Email not verified
+        status: 403
+        detail: Verify your email address first. We sent a link to budi@example.com.
+    not-found:
+      summary: Not found
+      description: "Nothing has this ID: it's unknown, malformed, or deleted."
+      value:
+        type: https://api.inventory.example/problems/not-found
+        title: Not found
+        status: 404
+        detail: There's no stock item with ID 9d0c8b7a-6f5e-4d3c-8b2a-1f0e9d8c7b6a.
+    insufficient-stock:
+      summary: Not enough stock
+      description: The issue would take the quantity on hand below 0. Nothing was recorded.
+      value:
+        type: https://api.inventory.example/problems/insufficient-stock
+        title: Not enough stock
+        status: 409
+        detail: Only 18 on hand, so 30 can't be issued.
+    item-has-stock:
+      summary: Item still in stock
+      description: Only items with nothing on hand can be deleted. Issue or count the stock to 0 first.
+      value:
+        type: https://api.inventory.example/problems/item-has-stock
+        title: Item still in stock
+        status: 409
+        detail: Shipping box, small still has 340 on hand. Issue or count them to 0 first.
+    request-in-progress:
+      summary: Request in progress
+      description: A request with the same `Idempotency-Key` is still running. Resend it after `Retry-After` seconds to get its result.
+      value:
+        type: https://api.inventory.example/problems/request-in-progress
+        title: Request in progress
+        status: 409
+        detail: A request with this Idempotency-Key is still running. Resend it later.
+    sku-taken:
+      summary: SKU already used
+      description: Another stock item has this SKU. SKUs are unique, ignoring case; a deleted item's SKU can be used again.
+      value:
+        type: https://api.inventory.example/problems/sku-taken
+        title: SKU already used
+        status: 409
+        detail: TAPE-050 is already used by Packing tape, 50 m.
+    unit-locked:
+      summary: Unit can't change
+      description: The item already has stock movements, so its unit can't change.
+      value:
+        type: https://api.inventory.example/problems/unit-locked
+        title: Unit can't change
+        status: 409
+        detail: Shipping box, small already has stock movements, so its unit can't change.
+    unsupported-media-type:
+      summary: Unsupported media type
+      description: The request body isn't in a content type the endpoint takes.
+      value:
+        type: https://api.inventory.example/problems/unsupported-media-type
+        title: Unsupported media type
+        status: 415
+        detail: Send the body as JSON.
+    validation-failed:
+      summary: Validation failed
+      description: Some fields of the request body are invalid. `errors` lists each one, with a JSON Pointer to the field, so a form can show each message next to its field.
+      value:
+        type: https://api.inventory.example/problems/validation-failed
+        title: Validation failed
+        status: 422
+        detail: Some fields are invalid.
+        errors:
+          - pointer: "#/name"
+            detail: Enter a name.
+    too-many-attempts:
+      summary: Too many attempts
+      description: Too many failed sign-ins for this email or from this IP address. Wait `Retry-After` seconds.
+      value:
+        type: https://api.inventory.example/problems/too-many-attempts
+        title: Too many attempts
+        status: 429
+        detail: Too many sign-in attempts. Try again in 15 minutes.
+    too-many-requests:
+      summary: Too many requests
+      description: Too many emails were asked for in a short time. Wait `Retry-After` seconds.
+      value:
+        type: https://api.inventory.example/problems/too-many-requests
+        title: Too many requests
+        status: 429
+        detail: Wait a minute before asking for another email.
   securitySchemes:
     bearerAuth:
       type: http

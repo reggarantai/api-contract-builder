@@ -42,6 +42,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { showRequestError } from "@/lib/forms";
+import { errorTypesQueryOptions } from "../../error-types/queries";
 import { modelsQueryOptions } from "../../models/queries";
 import { SchemaEditor } from "../../schema-editor/schema-editor";
 import { StatusLabel } from "../badges";
@@ -80,6 +81,7 @@ export function EndpointEditor({
 }) {
   const projectId = project.id;
   const models = useQuery(modelsQueryOptions(projectId)).data ?? [];
+  const errorTypes = useQuery(errorTypesQueryOptions(projectId)).data ?? [];
   const updateEndpoint = useUpdateEndpoint(projectId, endpoint.id);
   const values = useMemo(() => fieldsOf(endpoint), [endpoint]);
   const form = useForm<EndpointFields, unknown, EndpointFields>({
@@ -492,7 +494,12 @@ export function EndpointEditor({
             />
           )}
 
-          <ResponsesEditor form={form} projectId={projectId} models={models} />
+          <ResponsesEditor
+            form={form}
+            projectId={projectId}
+            models={models}
+            errorTypes={errorTypes}
+          />
 
           <EditorSection
             title="Notes"

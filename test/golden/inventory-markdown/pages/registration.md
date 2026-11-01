@@ -79,6 +79,10 @@ No body.
 | `errors[].pointer` | string | Yes | JSON Pointer (RFC 6901) to the field in the request body, as a URI fragment like `#/email` |  |
 | `errors[].detail` | string | Yes | What's wrong with it |  |
 
+[`validation-failed`](../error-types.md#validation-failed): **Validation failed**
+
+Some fields of the request body are invalid. `errors` lists each one, with a JSON Pointer to the field, so a form can show each message next to its field.
+
 Example `short-password`:
 
 ```json
@@ -129,7 +133,9 @@ Example `breached-password`:
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `too-many-requests`:
+[`too-many-requests`](../error-types.md#too-many-requests): **Too many requests**
+
+Too many emails were asked for in a short time. Wait `Retry-After` seconds.
 
 ```json
 {

@@ -206,17 +206,16 @@ const nullableText = (maxLength: number, description = "") => ({
   ...(description ? { description } : {}),
 });
 
+const named = (examples: Examples) =>
+  examples.map(([name, value, summary = ""]) => ({
+    id: name,
+    name,
+    summary,
+    value,
+  }));
+
 function body(contentType: string, schema: unknown, examples: Examples) {
-  return {
-    contentType,
-    schema,
-    examples: examples.map(([name, value, summary = ""]) => ({
-      id: name,
-      name,
-      summary,
-      value,
-    })),
-  };
+  return { contentType, schema, examples: named(examples) };
 }
 const json = (schema: unknown, examples: Examples) =>
   body("application/json", schema, examples);
@@ -611,36 +610,224 @@ export async function buildInventorySample(
     ),
   );
 
-  // --- Shared responses -----------------------------------------------------
-  type ProblemExample = [
+  // --- Error types --------------------------------------------------------
+  // Each problem type once; responses list the ones they can answer with.
+  const errorType = (
     name: string,
-    slug: string,
-    title: string,
-    detail: string,
-  ];
-  const problemResponse = (
+    fields: {
+      status: number;
+      title: string;
+      description: string;
+      detail: string;
+      headers?: Schema;
+      schema?: { id: string };
+      members?: Schema;
+    },
+  ) =>
+    send(request, "POST", `${base}/error-types`, {
+      name,
+      status: String(fields.status),
+      title: fields.title,
+      description: fields.description,
+      headers: fields.headers ?? NONE,
+      body: {
+        contentType: "application/problem+json",
+        schema: ref(fields.schema ?? problemModel),
+        example: {
+          ...problem(fields.status, name, fields.title, fields.detail),
+          ...fields.members,
+        },
+      },
+    });
+  const bearerChallenge = (example: string) =>
+    object({
+      "WWW-Authenticate": {
+        type: "string",
+        description:
+          'The Bearer challenge (RFC 6750). It adds `error="invalid_token"` when the token sent is expired or invalid.',
+        examples: [example],
+      },
+    });
+  const catalog = {
+    keyMissing: await errorType("idempotency-key-missing", {
+      status: 400,
+      title: "Idempotency-Key missing",
+      description: "A create was sent without an `Idempotency-Key` header.",
+      detail: "Send an Idempotency-Key header with each create.",
+    }),
+    keyReused: await errorType("idempotency-key-reused", {
+      status: 400,
+      title: "Idempotency-Key reused",
+      description:
+        "The key was already used for a request with a different body. Make a new key for each new thing to create.",
+      detail:
+        "This key was already used for a different request. Make a new one.",
+    }),
+    invalidCredentials: await errorType("invalid-credentials", {
+      status: 400,
+      title: "Invalid credentials",
+      description:
+        "The email or password is wrong. It's 400, not 401: a 401 always means the access token is missing or expired.",
+      detail: "Email or password is wrong.",
+    }),
+    invalidLink: await errorType("invalid-link", {
+      status: 400,
+      title: "Invalid or expired link",
+      description:
+        "The token from an email link is unknown or has expired. Offer to send a new link.",
+      detail: "This link is invalid or has expired. Ask for a new one.",
+    }),
+    invalidParameters: await errorType("invalid-parameters", {
+      status: 400,
+      title: "Invalid parameters",
+      description:
+        "A query or header parameter is invalid; `detail` says which.",
+      detail: "pageSize must be between 1 and 100.",
+    }),
+    sessionExpired: await errorType("session-expired", {
+      status: 401,
+      title: "Session expired",
+      description:
+        "The refresh token is missing, expired, or revoked, so the session is over. Sign in again.",
+      detail: "Sign in again.",
+      headers: object(clearCookie),
+    }),
+    tokenExpired: await errorType("token-expired", {
+      status: 401,
+      title: "Access token expired",
+      description:
+        "The access token has expired. Refresh it once with `POST /auth/refresh`, then retry the request.",
+      detail: "Refresh the access token and try again.",
+      headers: bearerChallenge(
+        'Bearer realm="inventory", error="invalid_token", error_description="The access token expired"',
+      ),
+    }),
+    unauthenticated: await errorType("unauthenticated", {
+      status: 401,
+      title: "Not signed in",
+      description:
+        "The request has no access token. Send one in the `Authorization` header.",
+      detail: "Send an access token in the Authorization header.",
+      headers: bearerChallenge('Bearer realm="inventory"'),
+    }),
+    adminsOnly: await errorType("admins-only", {
+      status: 403,
+      title: "Admins only",
+      description: "Only admins can do this; staff can't.",
+      detail: "Only admins can delete stock items.",
+    }),
+    emailNotVerified: await errorType("email-not-verified", {
+      status: 403,
+      title: "Email not verified",
+      description:
+        "The password matched, but the email address isn't verified yet. Offer to send a new link with `POST /auth/verify-email/resend`.",
+      detail:
+        "Verify your email address first. We sent a link to budi@example.com.",
+    }),
+    notFound: await errorType("not-found", {
+      status: 404,
+      title: "Not found",
+      description: "Nothing has this ID: it's unknown, malformed, or deleted.",
+      detail:
+        "There's no stock item with ID 9d0c8b7a-6f5e-4d3c-8b2a-1f0e9d8c7b6a.",
+    }),
+    insufficientStock: await errorType("insufficient-stock", {
+      status: 409,
+      title: "Not enough stock",
+      description:
+        "The issue would take the quantity on hand below 0. Nothing was recorded.",
+      detail: "Only 18 on hand, so 30 can't be issued.",
+    }),
+    itemHasStock: await errorType("item-has-stock", {
+      status: 409,
+      title: "Item still in stock",
+      description:
+        "Only items with nothing on hand can be deleted. Issue or count the stock to 0 first.",
+      detail:
+        "Shipping box, small still has 340 on hand. Issue or count them to 0 first.",
+    }),
+    requestInProgress: await errorType("request-in-progress", {
+      status: 409,
+      title: "Request in progress",
+      description:
+        "A request with the same `Idempotency-Key` is still running. Resend it after `Retry-After` seconds to get its result.",
+      detail:
+        "A request with this Idempotency-Key is still running. Resend it later.",
+      headers: object(retryAfter(2, "Seconds before resending")),
+    }),
+    skuTaken: await errorType("sku-taken", {
+      status: 409,
+      title: "SKU already used",
+      description:
+        "Another stock item has this SKU. SKUs are unique, ignoring case; a deleted item's SKU can be used again.",
+      detail: "TAPE-050 is already used by Packing tape, 50 m.",
+    }),
+    unitLocked: await errorType("unit-locked", {
+      status: 409,
+      title: "Unit can't change",
+      description:
+        "The item already has stock movements, so its unit can't change.",
+      detail:
+        "Shipping box, small already has stock movements, so its unit can't change.",
+    }),
+    unsupportedMediaType: await errorType("unsupported-media-type", {
+      status: 415,
+      title: "Unsupported media type",
+      description:
+        "The request body isn't in a content type the endpoint takes.",
+      detail: "Send the body as JSON.",
+    }),
+    validationFailed: await errorType("validation-failed", {
+      status: 422,
+      title: "Validation failed",
+      description:
+        "Some fields of the request body are invalid. `errors` lists each one, with a JSON Pointer to the field, so a form can show each message next to its field.",
+      detail: "Some fields are invalid.",
+      schema: validationProblem,
+      members: {
+        errors: [{ pointer: "#/name", detail: "Enter a name." }],
+      },
+    }),
+    tooManyAttempts: await errorType("too-many-attempts", {
+      status: 429,
+      title: "Too many attempts",
+      description:
+        "Too many failed sign-ins for this email or from this IP address. Wait `Retry-After` seconds.",
+      detail: "Too many sign-in attempts. Try again in 15 minutes.",
+      headers: object(retryAfter(900)),
+    }),
+    tooManyRequests: await errorType("too-many-requests", {
+      status: 429,
+      title: "Too many requests",
+      description:
+        "Too many emails were asked for in a short time. Wait `Retry-After` seconds.",
+      detail: "Wait a minute before asking for another email.",
+      headers: object(retryAfter(60)),
+    }),
+  };
+
+  // --- Shared responses -----------------------------------------------------
+  /** An error type, or one with this endpoint's own examples of it. */
+  type ErrorUse = { id: string } | [errorType: { id: string }, Examples];
+  const errorResponse = (
     status: number,
     description: string,
-    examples: ProblemExample[],
+    errors: ErrorUse[],
     headers?: Schema,
-  ) =>
-    response(String(status), description, {
-      headers,
-      body: body(
-        "application/problem+json",
-        ref(problemModel),
-        examples.map(([name, slug, title, detail]) => [
-          name,
-          problem(status, slug, title, detail),
-        ]),
-      ),
-    });
+  ) => ({
+    ...response(String(status), description, { headers }),
+    errors: errors.map((error) =>
+      Array.isArray(error)
+        ? { errorTypeId: error[0].id, examples: named(error[1]) }
+        : { errorTypeId: error.id, examples: [] },
+    ),
+  });
   type FieldErrors = { pointer: string; detail: string }[];
+  /** A 422 with the fields this endpoint checks. */
   const invalidFields = (examples: [name: string, errors: FieldErrors][]) =>
-    response("422", "Unprocessable Content", {
-      body: body(
-        "application/problem+json",
-        ref(validationProblem),
+    errorResponse(422, "Unprocessable Content", [
+      [
+        catalog.validationFailed,
         examples.map(([name, errors]) => [
           name,
           {
@@ -653,8 +840,8 @@ export async function buildInventorySample(
             errors,
           },
         ]),
-      ),
-    });
+      ],
+    ]);
   const invalidEmail = invalidFields([
     [
       "invalid-email",
@@ -676,113 +863,25 @@ export async function buildInventorySample(
       ],
     ],
   ]);
-  const unauthorized = problemResponse(
-    401,
-    "Unauthorized",
-    [
-      [
-        "token-expired",
-        "token-expired",
-        "Access token expired",
-        "Refresh the access token and try again.",
-      ],
-      [
-        "unauthenticated",
-        "unauthenticated",
-        "Not signed in",
-        "Send an access token in the Authorization header.",
-      ],
-    ],
-    object({
-      "WWW-Authenticate": {
-        type: "string",
-        description:
-          'The Bearer challenge (RFC 6750). It adds `error="invalid_token"` when the token sent is expired or invalid.',
-        examples: [
-          'Bearer realm="inventory", error="invalid_token", error_description="The access token expired"',
-        ],
-      },
-    }),
-  );
-  const itemNotFound = problemResponse(404, "Not Found", [
-    [
-      "not-found",
-      "not-found",
-      "Not found",
-      "There's no stock item with ID 9d0c8b7a-6f5e-4d3c-8b2a-1f0e9d8c7b6a.",
-    ],
+  const unauthorized = errorResponse(401, "Unauthorized", [
+    catalog.tokenExpired,
+    catalog.unauthenticated,
   ]);
-  const invalidParameters = problemResponse(400, "Bad Request", [
-    [
-      "invalid-page-size",
-      "invalid-parameters",
-      "Invalid parameters",
-      "pageSize must be between 1 and 100.",
-    ],
+  const itemNotFound = errorResponse(404, "Not Found", [catalog.notFound]);
+  const invalidParameters = errorResponse(400, "Bad Request", [
+    catalog.invalidParameters,
   ]);
-  const idempotencyErrors = problemResponse(400, "Bad Request", [
-    [
-      "missing-key",
-      "idempotency-key-missing",
-      "Idempotency-Key missing",
-      "Send an Idempotency-Key header with each create.",
-    ],
-    [
-      "key-reused",
-      "idempotency-key-reused",
-      "Idempotency-Key reused",
-      "This key was already used for a different request. Make a new one.",
-    ],
+  const idempotencyErrors = errorResponse(400, "Bad Request", [
+    catalog.keyMissing,
+    catalog.keyReused,
   ]);
-  /** A 409 whose examples include a resend while the first request runs. */
-  const createConflict = (example: ProblemExample) =>
-    problemResponse(
-      409,
-      "Conflict",
-      [
-        example,
-        [
-          "in-progress",
-          "request-in-progress",
-          "Request in progress",
-          "A request with this Idempotency-Key is still running. Resend it later.",
-        ],
-      ],
-      object(
-        retryAfter(
-          2,
-          "Only with `request-in-progress`: seconds before resending",
-        ),
-        [],
-      ),
-    );
-  const skuTaken: ProblemExample = [
-    "sku-taken",
-    "sku-taken",
-    "SKU already used",
-    "TAPE-050 is already used by Packing tape, 50 m.",
-  ];
-  const invalidLink = problemResponse(400, "Bad Request", [
-    [
-      "invalid-link",
-      "invalid-link",
-      "Invalid or expired link",
-      "This link is invalid or has expired. Ask for a new one.",
-    ],
+  /** A 409 that a resend can also get while the first request runs. */
+  const createConflict = (conflict: { id: string }) =>
+    errorResponse(409, "Conflict", [conflict, catalog.requestInProgress]);
+  const invalidLink = errorResponse(400, "Bad Request", [catalog.invalidLink]);
+  const tooManyEmails = errorResponse(429, "Too Many Requests", [
+    catalog.tooManyRequests,
   ]);
-  const tooManyEmails = problemResponse(
-    429,
-    "Too Many Requests",
-    [
-      [
-        "too-many-requests",
-        "too-many-requests",
-        "Too many requests",
-        "Wait a minute before asking for another email.",
-      ],
-    ],
-    object(retryAfter(60)),
-  );
   const accepted = response("202", "Accepted");
   const emailBody = (address: string) =>
     requestBody(object({ email }), [["email", { email: address }]]);
@@ -867,36 +966,10 @@ export async function buildInventorySample(
           ],
         ]),
       }),
-      problemResponse(400, "Bad Request", [
-        [
-          "wrong-password",
-          "invalid-credentials",
-          "Invalid credentials",
-          "Email or password is wrong.",
-        ],
-      ]),
-      problemResponse(403, "Forbidden", [
-        [
-          "not-verified",
-          "email-not-verified",
-          "Email not verified",
-          "Verify your email address first. We sent a link to budi@example.com.",
-        ],
-      ]),
+      errorResponse(400, "Bad Request", [catalog.invalidCredentials]),
+      errorResponse(403, "Forbidden", [catalog.emailNotVerified]),
       invalidEmail,
-      problemResponse(
-        429,
-        "Too Many Requests",
-        [
-          [
-            "too-many-attempts",
-            "too-many-attempts",
-            "Too many attempts",
-            "Too many sign-in attempts. Try again in 15 minutes.",
-          ],
-        ],
-        object(retryAfter(900)),
-      ),
+      errorResponse(429, "Too Many Requests", [catalog.tooManyAttempts]),
     ],
     notesFe:
       "Keep the access token in memory, not in localStorage. Send API requests with `credentials: 'include'` so the browser keeps the cookie.",
@@ -1040,19 +1113,7 @@ export async function buildInventorySample(
             ],
           ]),
         }),
-        problemResponse(
-          401,
-          "Unauthorized",
-          [
-            [
-              "session-expired",
-              "session-expired",
-              "Session expired",
-              "Sign in again.",
-            ],
-          ],
-          object(clearCookie),
-        ),
+        errorResponse(401, "Unauthorized", [catalog.sessionExpired]),
       ],
       notesFe:
         "Call it directly, not through the code that refreshes on 401. Run one refresh at a time, across tabs too (e.g. with the Web Locks API): requests that get a 401 meanwhile wait for it, then retry once.",
@@ -1225,7 +1286,7 @@ export async function buildInventorySample(
         }),
         idempotencyErrors,
         unauthorized,
-        createConflict(skuTaken),
+        createConflict(catalog.skuTaken),
         invalidFields([
           [
             "unknown-category",
@@ -1281,24 +1342,24 @@ export async function buildInventorySample(
         }),
         unauthorized,
         itemNotFound,
-        problemResponse(409, "Conflict", [
-          skuTaken,
-          [
-            "unit-locked",
-            "unit-locked",
-            "Unit can't change",
-            "Shipping box, small already has stock movements, so its unit can't change.",
-          ],
-        ]),
-        problemResponse(
+        errorResponse(409, "Conflict", [catalog.skuTaken, catalog.unitLocked]),
+        errorResponse(
           415,
           "Unsupported Media Type",
           [
             [
-              "not-merge-patch",
-              "unsupported-media-type",
-              "Unsupported media type",
-              "Send the changes as application/merge-patch+json.",
+              catalog.unsupportedMediaType,
+              [
+                [
+                  "not-merge-patch",
+                  problem(
+                    415,
+                    "unsupported-media-type",
+                    "Unsupported media type",
+                    "Send the changes as application/merge-patch+json.",
+                  ),
+                ],
+              ],
             ],
           ],
           object({
@@ -1331,23 +1392,9 @@ export async function buildInventorySample(
       responses: [
         response("204", "No Content"),
         unauthorized,
-        problemResponse(403, "Forbidden", [
-          [
-            "admins-only",
-            "admins-only",
-            "Admins only",
-            "Only admins can delete stock items.",
-          ],
-        ]),
+        errorResponse(403, "Forbidden", [catalog.adminsOnly]),
         itemNotFound,
-        problemResponse(409, "Conflict", [
-          [
-            "has-stock",
-            "item-has-stock",
-            "Item still in stock",
-            "Shipping box, small still has 340 on hand. Issue or count them to 0 first.",
-          ],
-        ]),
+        errorResponse(409, "Conflict", [catalog.itemHasStock]),
       ],
       notesBe: "Soft delete: keep the item and its movements for reports.",
     }),
@@ -1437,12 +1484,7 @@ export async function buildInventorySample(
         idempotencyErrors,
         unauthorized,
         itemNotFound,
-        createConflict([
-          "not-enough-stock",
-          "insufficient-stock",
-          "Not enough stock",
-          "Only 18 on hand, so 30 can't be issued.",
-        ]),
+        createConflict(catalog.insufficientStock),
         invalidFields([
           [
             "zero-receipt",

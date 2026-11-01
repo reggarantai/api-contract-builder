@@ -121,8 +121,87 @@ describe("openDatabase", () => {
 
     const noHeaders = { type: "object", properties: {} };
     expect(row?.responses).toEqual([
-      { ...oldResponses[0], headers: noHeaders },
-      { ...oldResponses[1], headers: noHeaders },
+      { ...oldResponses[0], headers: noHeaders, errors: [] },
+      { ...oldResponses[1], headers: noHeaders, errors: [] },
+    ]);
+  });
+
+  it("gives responses saved before the error catalog no catalog errors", () => {
+    const databasePath = path.join(temp.dir, "app.db");
+    const before = openDatabase(
+      databasePath,
+      migrationsUpTo(
+        path.join(temp.dir, "old-migrations"),
+        "0005_response_headers",
+      ),
+    );
+    const now = new Date();
+    before.db
+      .insert(projects)
+      .values({
+        id: "p1",
+        name: "Shop",
+        slug: "shop",
+        description: "",
+        apiVersion: "1.0.0",
+        servers: [],
+        securitySchemes: [],
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+    const noHeaders = { type: "object", properties: {} };
+    const oldResponses = [
+      {
+        id: "r1",
+        status: "200",
+        description: "OK",
+        headers: noHeaders,
+        body: null,
+      },
+      {
+        id: "r2",
+        status: "404",
+        description: "Not Found",
+        headers: noHeaders,
+        body: { contentType: "application/json", schema: {}, examples: [] },
+      },
+    ];
+    before.db
+      .insert(endpoints)
+      .values({
+        id: "e1",
+        projectId: "p1",
+        method: "GET",
+        path: "/stocks",
+        pathKey: "/stocks",
+        operationId: "",
+        summary: "",
+        description: "",
+        status: "draft",
+        deprecated: false,
+        security: { type: "default" },
+        parameters: {
+          path: noHeaders,
+          query: noHeaders,
+          header: noHeaders,
+        },
+        responses: oldResponses as never,
+        notesFe: "",
+        notesBe: "",
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+    before.close();
+
+    const after = openDatabase(databasePath, migrationsDir);
+    const [row] = after.db.select().from(endpoints).all();
+    after.close();
+
+    expect(row?.responses).toEqual([
+      { ...oldResponses[0], errors: [] },
+      { ...oldResponses[1], errors: [] },
     ]);
   });
 });

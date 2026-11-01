@@ -12,6 +12,7 @@ import type {
   EndpointStatus,
   HttpMethod,
 } from "../../shared/endpoints";
+import type { ErrorTypeBody } from "../../shared/error-types";
 import type { JsonSchema } from "../../shared/json-schema";
 import type { MOCKUP_MIME_TYPES, PageTrigger } from "../../shared/pages";
 import type { SecurityScheme, Server } from "../../shared/projects";
@@ -106,6 +107,33 @@ export const endpoints = sqliteTable(
 );
 
 export type EndpointRow = typeof endpoints.$inferSelect;
+
+/** The error catalog: errors defined once, used by endpoint responses. */
+export const errorTypes = sqliteTable(
+  "error_types",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    status: text("status").notNull(),
+    title: text("title").notNull(),
+    description: text("description").notNull(),
+    headers: text("headers", { mode: "json" }).$type<JsonSchema>().notNull(),
+    body: text("body", { mode: "json" }).$type<ErrorTypeBody>().notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("error_types_project_id_name_unique").on(
+      table.projectId,
+      table.name,
+    ),
+  ],
+);
+
+export type ErrorTypeRow = typeof errorTypes.$inferSelect;
 
 export const pages = sqliteTable(
   "pages",

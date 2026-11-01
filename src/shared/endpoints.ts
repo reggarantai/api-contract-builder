@@ -54,6 +54,31 @@ export const RESPONSE_DESCRIPTIONS: Record<string, string> = {
   default: "Unexpected error",
 };
 
+/** Reason phrases (RFC 9110, RFC 6585) of error statuses the list above leaves out. */
+const OTHER_REASON_PHRASES: Record<string, string> = {
+  "402": "Payment Required",
+  "405": "Method Not Allowed",
+  "406": "Not Acceptable",
+  "407": "Proxy Authentication Required",
+  "408": "Request Timeout",
+  "410": "Gone",
+  "411": "Length Required",
+  "412": "Precondition Failed",
+  "413": "Content Too Large",
+  "414": "URI Too Long",
+  "415": "Unsupported Media Type",
+  "416": "Range Not Satisfiable",
+  "417": "Expectation Failed",
+  "421": "Misdirected Request",
+  "426": "Upgrade Required",
+  "428": "Precondition Required",
+  "431": "Request Header Fields Too Large",
+  "501": "Not Implemented",
+  "502": "Bad Gateway",
+  "503": "Service Unavailable",
+  "504": "Gateway Timeout",
+};
+
 // --- Paths ------------------------------------------------------------------
 
 /** The parameter names in a path template like `/stocks/{id}`, or why it's invalid. */
@@ -164,7 +189,7 @@ export function syncPathParameters(
 
 const itemIdSchema = z.string().min(1).max(64);
 
-const objectSchemaSchema = jsonSchemaSchema.refine(
+export const objectSchemaSchema = jsonSchemaSchema.refine(
   (schema) => schema.type === "object",
   "Must be an object schema",
 );
@@ -210,6 +235,13 @@ export const requestBodySchema = bodySchema.extend({
   description: z.string().trim().max(2000),
 });
 
+/** An error from the project's catalog that a response can answer with. */
+export const responseErrorSchema = z.object({
+  errorTypeId: itemIdSchema,
+  /** The endpoint's own examples of the error; empty uses the catalog's. */
+  examples: z.array(exampleSchema).max(20),
+});
+
 export const responseSchema = z.object({
   id: itemIdSchema,
   status: z
@@ -222,9 +254,30 @@ export const responseSchema = z.object({
   description: z.string().trim().min(1, "Description is required").max(500),
   /** An object schema; each property is a header. */
   headers: objectSchemaSchema,
-  /** Null for responses without a body, like 204. */
+  /** Null for responses without a body, like 204, and those with errors. */
   body: bodySchema.nullable(),
+  /** Errors from the catalog; they give the response its body. */
+  errors: z.array(responseErrorSchema).max(30),
 });
+
+/**
+ * Responses as API clients send them. Clients from before the error catalog
+ * leave out `errors`; the server then keeps what the response had.
+ */
+const responseInputSchema = responseSchema.extend({
+  errors: z
+    .array(
+      responseErrorSchema.extend({
+        examples: responseErrorSchema.shape.examples.default([]),
+      }),
+    )
+    .max(30)
+    .optional(),
+});
+
+function responsesSchema<T extends z.ZodType>(response: T) {
+  return z.array(response).min(1, "Add at least one response").max(30);
+}
 
 export const endpointSecuritySchema = z.discriminatedUnion("type", [
   /** The project's default scheme. */
@@ -262,10 +315,7 @@ export const endpointFieldsSchema = z.object({
     header: objectSchemaSchema,
   }),
   requestBody: requestBodySchema.nullable(),
-  responses: z
-    .array(responseSchema)
-    .min(1, "Add at least one response")
-    .max(30),
+  responses: responsesSchema(responseSchema),
   notesFe: z.string().trim().max(10_000),
   notesBe: z.string().trim().max(10_000),
 });
@@ -273,6 +323,7 @@ export const endpointFieldsSchema = z.object({
 export type EndpointFields = z.infer<typeof endpointFieldsSchema>;
 export type EndpointBody = z.infer<typeof bodySchema>;
 export type EndpointResponse = z.infer<typeof responseSchema>;
+export type EndpointResponseError = z.infer<typeof responseErrorSchema>;
 export type EndpointExample = z.infer<typeof exampleSchema>;
 export type EndpointSecurity = z.infer<typeof endpointSecuritySchema>;
 
@@ -293,6 +344,21 @@ function addDuplicateIssues(
     }
     seen.add(value);
   });
+}
+
+/** Response headers OpenAPI would ignore, and names that differ only in case. */
+export function addResponseHeaderIssues(
+  ctx: z.RefinementCtx,
+  schema: JsonSchema,
+  path: (string | number)[],
+) {
+  addHeaderIssues(
+    ctx,
+    schema,
+    path,
+    RESERVED_RESPONSE_HEADERS,
+    (name) => `${name} is set by the response body, not as a header`,
+  );
 }
 
 /** Headers OpenAPI would ignore, and names that differ only in case. */
@@ -352,12 +418,24 @@ function refineEndpoint(endpoint: EndpointFields, ctx: z.RefinementCtx) {
       `${name} is set by the request body or authentication, not as a parameter`,
   );
   endpoint.responses.forEach((response, index) => {
-    addHeaderIssues(
+    addResponseHeaderIssues(ctx, response.headers, [
+      "responses",
+      index,
+      "headers",
+    ]);
+    if (response.errors.length > 0 && response.body !== null) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["responses", index, "body"],
+        message:
+          "This response's errors give it its body; remove this one or the errors",
+      });
+    }
+    addDuplicateIssues(
       ctx,
-      response.headers,
-      ["responses", index, "headers"],
-      RESERVED_RESPONSE_HEADERS,
-      (name) => `${name} is set by the response body, not as a header`,
+      response.errors.map((error) => error.errorTypeId),
+      (errorIndex) => ["responses", index, "errors", errorIndex, "errorTypeId"],
+      () => "This error is already in this response",
     );
   });
 
@@ -406,7 +484,9 @@ export const createEndpointInputSchema = z.object({
   summary: z.string().trim().max(200).default(""),
 });
 
-export const updateEndpointInputSchema = endpointFieldsSchema.partial();
+export const updateEndpointInputSchema = endpointFieldsSchema
+  .extend({ responses: responsesSchema(responseInputSchema) })
+  .partial();
 
 export const endpointResponseFieldsSchema = endpointFieldsSchema.extend({
   id: z.string(),
@@ -456,6 +536,17 @@ export function schemasOfEndpoint(
   return schemas;
 }
 
+/** List order: by path, then by method in HTTP_METHODS order. */
+export function compareEndpoints(
+  a: Pick<EndpointFields, "method" | "path">,
+  b: Pick<EndpointFields, "method" | "path">,
+) {
+  if (a.path !== b.path) {
+    return a.path < b.path ? -1 : 1;
+  }
+  return HTTP_METHODS.indexOf(a.method) - HTTP_METHODS.indexOf(b.method);
+}
+
 /** "GET /stocks/{id}" */
 export function endpointLabel(
   endpoint: Pick<EndpointFields, "method" | "path">,
@@ -475,13 +566,19 @@ export function newBody(): EndpointBody {
   };
 }
 
+/** The usual description of a status, like "Not Found", or "" for unusual ones. */
+export function reasonPhrase(status: string) {
+  return RESPONSE_DESCRIPTIONS[status] ?? OTHER_REASON_PHRASES[status] ?? "";
+}
+
 export function newResponse(id: string, status: string): EndpointResponse {
   return {
     id,
     status,
-    description: RESPONSE_DESCRIPTIONS[status] ?? "",
+    description: reasonPhrase(status),
     headers: EMPTY_OBJECT_SCHEMA,
     body: status === "204" ? null : newBody(),
+    errors: [],
   };
 }
 

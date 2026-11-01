@@ -8,9 +8,23 @@ All notable changes to this project are listed here. The format follows
 
 ### Added
 
+- **Error types**: a catalog of the errors the API answers with, each described once:
+  status, title, when it happens, headers (like `Retry-After`), and an example. Responses
+  list the error types they answer with, and an endpoint can give its own examples of one
+  (like the fields its 422 reports). Exports define each error type once, as
+  `components.examples` in OpenAPI and in `error-types.md` in the Markdown bundle, and
+  warn about unused error types and problem details (RFC 9457) that contradict theirs.
 - `SECURITY.md`: how to report a vulnerability, and how the image is kept clean.
 - A weekly rebuild: when a base image has a new build, the latest release's image is
   rebuilt, tested, and published again as `X.Y` and `latest`.
+
+### Changed
+
+- The sample project describes its 20 error types once in the catalog. Their examples are
+  named after the error type now, so `Prefer: example=wrong-password` is
+  `Prefer: example=invalid-credentials` (also `email-not-verified`, `invalid-parameters`,
+  `idempotency-key-missing`, `idempotency-key-reused`, `request-in-progress`,
+  `item-has-stock`, and `insufficient-stock`). Sample projects created before keep theirs.
 
 ## [0.1.1] - 2026-10-30
 

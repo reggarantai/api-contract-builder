@@ -132,3 +132,32 @@ export async function getPage(
     mockups: { originalName: string; caption: string }[];
   };
 }
+
+export type CreatedErrorType = { id: string; name: string };
+
+/** An error type with a problem details body. */
+export async function createErrorType(
+  request: APIRequestContext,
+  projectId: string,
+  fields: { name: string; status: string; title: string },
+): Promise<CreatedErrorType> {
+  const response = await request.post(
+    `/api/projects/${projectId}/error-types`,
+    {
+      data: {
+        ...fields,
+        body: {
+          contentType: "application/problem+json",
+          schema: { type: "object" },
+          example: {
+            type: `https://api.example.com/problems/${fields.name}`,
+            title: fields.title,
+            status: Number(fields.status),
+          },
+        },
+      },
+    },
+  );
+  expect(response.status()).toBe(201);
+  return (await response.json()) as CreatedErrorType;
+}

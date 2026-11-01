@@ -12,17 +12,24 @@ import {
   schemasOfEndpoint,
   suggestOperationId,
 } from "../../shared/endpoints";
+import {
+  type ErrorType,
+  isProblemDetails,
+  schemasOfErrorType,
+} from "../../shared/error-types";
 import type { LintIssue } from "../../shared/export";
 import {
   collectRefs,
   isJsonObject,
   type JsonSchema,
+  type JsonValue,
   modelIdOfRef,
   refsToComponentNames,
 } from "../../shared/json-schema";
 import type { Model } from "../../shared/models";
 import type { Page, PageTrigger } from "../../shared/pages";
 import type { Project, SecurityScheme } from "../../shared/projects";
+import { errorResponseParts } from "./error-responses";
 
 /** Everything an export reads, as the API returns it. */
 export type ExportInput = {
@@ -30,6 +37,8 @@ export type ExportInput = {
   models: Model[];
   endpoints: Endpoint[];
   pages: Page[];
+  /** The error catalog, by status and name. */
+  errorTypes: ErrorType[];
 };
 
 /** Export the whole project, or only what one page uses. */
@@ -67,6 +76,7 @@ export type OpenApiDocument = {
   paths: Record<string, Partial<Record<HttpMethodKey, Operation>>>;
   components?: {
     schemas?: Record<string, JsonSchema>;
+    examples?: Record<string, JsonSchema>;
     securitySchemes?: Record<string, JsonSchema>;
   };
 };
@@ -87,13 +97,21 @@ function modelRefsIn(schema: JsonSchema) {
   });
 }
 
-/** The pages, endpoints, and models an export includes. */
+/** The error types an endpoint's responses use. */
+function errorTypeIdsOf(endpoint: Endpoint) {
+  return endpoint.responses.flatMap((response) =>
+    response.errors.map((error) => error.errorTypeId),
+  );
+}
+
+/** The pages, endpoints, error types, and models an export includes. */
 export function scopeOf(input: ExportInput, { pageId }: ExportOptions) {
   if (pageId === undefined) {
     return {
       page: undefined,
       pages: input.pages,
       endpoints: input.endpoints,
+      errorTypes: input.errorTypes,
       models: input.models,
     };
   }
@@ -104,12 +122,17 @@ export function scopeOf(input: ExportInput, { pageId }: ExportOptions) {
   const endpoints = input.endpoints.filter((endpoint) =>
     page.endpoints.some((link) => link.endpointId === endpoint.id),
   );
-
-  // Models the endpoints use, and the models those use, and so on.
-  const used = new Set<string>();
-  const pending = endpoints.flatMap((endpoint) =>
-    schemasOfEndpoint(endpoint).flatMap(([, schema]) => modelRefsIn(schema)),
+  const usedErrorTypes = new Set(endpoints.flatMap(errorTypeIdsOf));
+  const errorTypes = input.errorTypes.filter((errorType) =>
+    usedErrorTypes.has(errorType.id),
   );
+
+  // Models the endpoints and errors use, and the models those use, and so on.
+  const used = new Set<string>();
+  const pending = [
+    ...endpoints.flatMap((endpoint) => schemasOfEndpoint(endpoint)),
+    ...errorTypes.flatMap((errorType) => schemasOfErrorType(errorType)),
+  ].flatMap(([, schema]) => modelRefsIn(schema));
   while (pending.length > 0) {
     const id = pending.pop() as string;
     const model = input.models.find((item) => item.id === id);
@@ -119,7 +142,7 @@ export function scopeOf(input: ExportInput, { pageId }: ExportOptions) {
     }
   }
   const models = input.models.filter((model) => used.has(model.id));
-  return { page, pages: [page], endpoints, models };
+  return { page, pages: [page], endpoints, errorTypes, models };
 }
 
 // --- Building ---------------------------------------------------------------
@@ -237,13 +260,37 @@ export function buildOpenApi(
     );
   }
 
+  const errorTypesById = new Map(
+    input.errorTypes.map((errorType) => [errorType.id, errorType]),
+  );
+
   function response(response: EndpointResponse): JsonSchema {
     const object: JsonSchema = { description: response.description };
-    const headers = fieldObjects(response.headers);
+    const parts =
+      response.errors.length > 0
+        ? errorResponseParts(response, errorTypesById)
+        : undefined;
+    const headers = fieldObjects(parts ? parts.headers : response.headers);
     if (headers.length > 0) {
       object.headers = Object.fromEntries(headers);
     }
-    if (response.body) {
+    if (parts) {
+      // The catalog's examples are components; an endpoint's own stay here.
+      const content: JsonSchema = {};
+      for (const item of parts.contents) {
+        const examples: JsonSchema = {};
+        for (const example of item.examples) {
+          examples[example.name] = example.own
+            ? {
+                ...withText({}, "summary", example.own.summary),
+                value: example.own.value,
+              }
+            : { $ref: `#/components/examples/${example.errorType.name}` };
+        }
+        content[item.contentType] = { schema: toRefs(item.schema), examples };
+      }
+      object.content = content;
+    } else if (response.body) {
       object.content = content(response.body);
     }
     return object;
@@ -358,6 +405,19 @@ export function buildOpenApi(
       ]),
     );
   }
+  // Each error type once, so responses reference instead of repeating it.
+  if (scope.errorTypes.length > 0) {
+    components.examples = Object.fromEntries(
+      scope.errorTypes.map((errorType) => [
+        errorType.name,
+        {
+          summary: errorType.title,
+          ...withText({}, "description", errorType.description),
+          value: errorType.body.example,
+        },
+      ]),
+    );
+  }
   if (project.securitySchemes.length > 0) {
     components.securitySchemes = Object.fromEntries(
       project.securitySchemes.map((scheme) => [
@@ -381,6 +441,9 @@ export function lintContract(
 ): LintIssue[] {
   const scope = scopeOf(input, options);
   const issues: LintIssue[] = [];
+  const errorTypesById = new Map(
+    input.errorTypes.map((errorType) => [errorType.id, errorType]),
+  );
 
   for (const endpoint of scope.endpoints) {
     const target = { type: "endpoint" as const, id: endpoint.id };
@@ -399,6 +462,92 @@ export function lintContract(
           target,
           message: `${label}: the ${response.status} response has no example`,
         });
+      }
+      if (response.errors.length === 0) {
+        continue;
+      }
+      const parts = errorResponseParts(response, errorTypesById);
+      for (const { header, usedFrom } of parts.conflicts) {
+        issues.push({
+          kind: "error-mismatch",
+          target,
+          message: `${label}: the ${response.status} response's error types define ${header} differently; the export uses ${usedFrom}'s`,
+        });
+      }
+      for (const usage of response.errors) {
+        const errorType = errorTypesById.get(usage.errorTypeId);
+        if (!errorType || !isProblemDetails(errorType.body.contentType)) {
+          continue;
+        }
+        const catalogType = memberOf(errorType.body.example, "type");
+        for (const example of usage.examples) {
+          const what = `${label}: the ${response.status} example ${example.name}`;
+          const value = example.value as JsonValue;
+          const status = memberOf(value, "status");
+          if (status !== undefined && status !== Number(errorType.status)) {
+            issues.push({
+              kind: "error-mismatch",
+              target,
+              message: `${what} has status ${JSON.stringify(status)}, but ${errorType.name}'s is ${errorType.status}`,
+            });
+          }
+          const title = memberOf(value, "title");
+          if (title !== undefined && title !== errorType.title) {
+            issues.push({
+              kind: "error-mismatch",
+              target,
+              message: `${what} has another title than ${errorType.name}`,
+            });
+          }
+          const type = memberOf(value, "type");
+          if (type !== undefined && type !== catalogType) {
+            issues.push({
+              kind: "error-mismatch",
+              target,
+              message: `${what} has another type than ${errorType.name}'s example`,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // Problem details (RFC 9457) send the status of the response, keep the
+  // title of their type, and are told apart by `type`.
+  const types = new Map<string, string>();
+  for (const errorType of scope.errorTypes) {
+    if (!isProblemDetails(errorType.body.contentType)) {
+      continue;
+    }
+    const target = { type: "error-type" as const, id: errorType.id };
+    const { example } = errorType.body;
+    const status = memberOf(example, "status");
+    if (status !== undefined && status !== Number(errorType.status)) {
+      issues.push({
+        kind: "error-mismatch",
+        target,
+        message: `${errorType.name}: the example's status is ${JSON.stringify(status)}, but the error's is ${errorType.status}`,
+      });
+    }
+    const title = memberOf(example, "title");
+    if (title !== undefined && title !== errorType.title) {
+      issues.push({
+        kind: "error-mismatch",
+        target,
+        message: `${errorType.name}: the example's title isn't the error's title`,
+      });
+    }
+    const type = memberOf(example, "type");
+    if (typeof type === "string" && type !== "about:blank") {
+      const first = types.get(type);
+      if (first) {
+        issues.push({
+          kind: "error-mismatch",
+          target,
+          message: `${errorType.name} has the same type as ${first}: ${type}`,
+        });
+      } else {
+        types.set(type, errorType.name);
       }
     }
   }
@@ -419,11 +568,12 @@ export function lintContract(
     }
 
     const referenced = new Set([
-      ...input.endpoints.flatMap((endpoint) =>
-        schemasOfEndpoint(endpoint).flatMap(([, schema]) =>
-          modelRefsIn(schema),
+      ...[
+        ...input.endpoints.flatMap((endpoint) => schemasOfEndpoint(endpoint)),
+        ...input.errorTypes.flatMap((errorType) =>
+          schemasOfErrorType(errorType),
         ),
-      ),
+      ].flatMap(([, schema]) => modelRefsIn(schema)),
       ...input.models.flatMap((model) =>
         modelRefsIn(model.schema).filter((id) => id !== model.id),
       ),
@@ -437,8 +587,24 @@ export function lintContract(
         });
       }
     }
+
+    const usedErrorTypes = new Set(input.endpoints.flatMap(errorTypeIdsOf));
+    for (const errorType of input.errorTypes) {
+      if (!usedErrorTypes.has(errorType.id)) {
+        issues.push({
+          kind: "unused-error-type",
+          target: { type: "error-type", id: errorType.id },
+          message: `${errorType.name} isn't used by any endpoint`,
+        });
+      }
+    }
   }
   return issues;
+}
+
+/** A member of a JSON object, or undefined. */
+function memberOf(value: JsonValue, name: string): JsonValue | undefined {
+  return isJsonObject(value) ? value[name] : undefined;
 }
 
 // --- Validation -------------------------------------------------------------
@@ -502,6 +668,14 @@ export async function validateContract(
   const messages = [
     ...scope.models.flatMap((model) =>
       checkSchema(`Model ${model.name}: `, model.schema),
+    ),
+    ...scope.errorTypes.flatMap((errorType) =>
+      schemasOfErrorType(errorType).flatMap(([fieldPath, schema]) =>
+        checkSchema(
+          `Error type ${errorType.name} ${fieldPath === "headers" ? "headers" : "body"}: `,
+          schema,
+        ),
+      ),
     ),
     ...scope.endpoints.flatMap((endpoint) =>
       schemasOfEndpoint(endpoint).flatMap(([fieldPath, schema]) =>

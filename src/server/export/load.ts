@@ -2,8 +2,10 @@ import { asc, eq, sql } from "drizzle-orm";
 import { HTTP_METHODS } from "../../shared/endpoints";
 import type { Db } from "../db/client";
 import { findProject } from "../db/projects";
+import { endpointIdsByErrorType } from "../db/references";
 import { type EndpointRow, endpoints, models, pages } from "../db/schema";
 import { toEndpoint } from "../routes/endpoints";
+import { errorTypesOf, toErrorType } from "../routes/error-types";
 import { toModel } from "../routes/models";
 import { pageFromRow } from "../routes/pages";
 import { toProject } from "../routes/projects";
@@ -27,6 +29,7 @@ export function loadExportInput(
   if (!project) {
     return undefined;
   }
+  const errorTypeUsers = endpointIdsByErrorType(db, project.id);
   return {
     project: toProject(project),
     models: db
@@ -50,5 +53,8 @@ export function loadExportInput(
       .orderBy(asc(pages.sortOrder))
       .all()
       .map((row) => pageFromRow(db, storage, row)),
+    errorTypes: errorTypesOf(db, project.id).map((row) =>
+      toErrorType(row, errorTypeUsers.get(row.id) ?? []),
+    ),
   };
 }

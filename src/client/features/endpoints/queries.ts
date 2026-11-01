@@ -52,6 +52,10 @@ function useInvalidateLists(projectId: string) {
     Promise.all([
       queryClient.invalidateQueries({ queryKey: endpointKeys.list(projectId) }),
       queryClient.invalidateQueries({ queryKey: projectKeys.list() }),
+      // Error types list the endpoints that use them.
+      queryClient.invalidateQueries({
+        queryKey: [...projectKeys.detail(projectId), "error-types"],
+      }),
     ]);
 }
 

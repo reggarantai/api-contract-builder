@@ -8,6 +8,7 @@ import {
   schemasOfEndpoint,
   suggestOperationId,
   syncPathParameters,
+  updateEndpointInputSchema,
 } from "./endpoints";
 
 describe("parsePathTemplate", () => {
@@ -123,6 +124,7 @@ describe("createEndpointDefaults", () => {
         description: "OK",
         headers: { type: "object", properties: {} },
         body: { contentType: "application/json" },
+        errors: [],
       },
     ]);
     expect(endpoint).toMatchObject({
@@ -289,6 +291,57 @@ describe("endpointSchema", () => {
         ],
       }),
     ).toEqual(["responses.0.body.examples.1.name"]);
+  });
+
+  it("lets clients leave out catalog errors, and the examples of one", () => {
+    const [ok] = base.responses;
+    if (!ok) throw new Error("expected a default response");
+    const { errors: _errors, ...withoutErrors } = ok;
+
+    const result = updateEndpointInputSchema.safeParse({
+      responses: [
+        withoutErrors,
+        { ...withoutErrors, id: "r2", errors: [{ errorTypeId: "gone" }] },
+      ],
+    });
+
+    if (!result.success) throw result.error;
+    expect(result.data.responses?.[0]).not.toHaveProperty("errors");
+    expect(result.data.responses?.[1]?.errors).toEqual([
+      { errorTypeId: "gone", examples: [] },
+    ]);
+    // Stored and edited responses always have them.
+    expect(
+      endpointSchema.safeParse({ ...base, responses: [withoutErrors] }).success,
+    ).toBe(false);
+  });
+
+  it("takes the body of a response with catalog errors from them, once each", () => {
+    const [ok] = base.responses;
+    if (!ok) throw new Error("expected a default response");
+    const notFound = { errorTypeId: "missing", examples: [] };
+
+    expect(
+      issuePaths({
+        ...base,
+        responses: [
+          { ...ok, status: "404", body: null, errors: [notFound] },
+          {
+            ...ok,
+            id: "with-body",
+            status: "410",
+            errors: [{ errorTypeId: "gone", examples: [] }],
+          },
+          {
+            ...ok,
+            id: "twice",
+            status: "4XX",
+            body: null,
+            errors: [notFound, notFound],
+          },
+        ],
+      }),
+    ).toEqual(["responses.1.body", "responses.2.errors.1.errorTypeId"]);
   });
 });
 

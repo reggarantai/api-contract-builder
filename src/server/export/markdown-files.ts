@@ -18,6 +18,7 @@ import {
 } from "../../shared/pages";
 import type { SecurityScheme } from "../../shared/projects";
 import { slugify } from "../../shared/slug";
+import { errorResponseParts } from "./error-responses";
 import {
   anchorOf,
   blocks,
@@ -88,6 +89,11 @@ export function buildMarkdownFiles(
     scope.pages.filter((page) =>
       page.endpoints.some((link) => link.endpointId === endpoint.id),
     );
+  const errorTypesById = new Map(
+    input.errorTypes.map((errorType) => [errorType.id, errorType]),
+  );
+  const errorTypeLink = (name: string, pathToRoot: string) =>
+    `${pathToRoot}error-types.md#${anchorOf(name)}`;
 
   const files: Record<string, string | Uint8Array> = {};
 
@@ -137,6 +143,56 @@ export function buildMarkdownFiles(
     ).trimEnd();
   }
 
+  /** A schema with its content type, and its fields when it has some. */
+  function schemaSection(
+    contentType: string,
+    schema: JsonSchema,
+    context: FieldContext,
+  ) {
+    const rows = fieldRows(schema, context);
+    return blocks(
+      `\`${contentType}\` — ${typeLabel(schema, context)}`,
+      rows.length > 0 && fieldTable(rows),
+    ).trimEnd();
+  }
+
+  /**
+   * The bodies of a response with catalog errors, then each error type: its
+   * title and when it happens (page files stand alone), and its examples.
+   */
+  function errorsSection(
+    response: EndpointResponse,
+    contents: ReturnType<typeof errorResponseParts>["contents"],
+    context: FieldContext,
+  ) {
+    return blocks(
+      ...contents.flatMap((content) =>
+        // One table per schema: field tables can't show "any of".
+        content.schemas.map((schema) =>
+          schemaSection(content.contentType, schema, context),
+        ),
+      ),
+      ...response.errors.flatMap((usage) => {
+        const errorType = errorTypesById.get(usage.errorTypeId);
+        if (!errorType) {
+          return [];
+        }
+        return [
+          blocks(
+            `[\`${errorType.name}\`](${errorTypeLink(errorType.name, "../")}): **${errorType.title}**`,
+            errorType.description,
+            ...(usage.examples.length > 0
+              ? usage.examples.map(
+                  (example) =>
+                    `Example \`${example.name}\`${example.summary ? ` — ${example.summary}` : ""}:\n\n${jsonBlock(example.value as JsonValue)}`,
+                )
+              : [jsonBlock(errorType.body.example)]),
+          ).trimEnd(),
+        ];
+      }),
+    ).trimEnd();
+  }
+
   function endpointSection(endpoint: Endpoint, page: Page) {
     const context = contextFor("../");
     const when = page.endpoints
@@ -161,18 +217,23 @@ export function buildMarkdownFiles(
       ),
     );
     const responseSection = (response: EndpointResponse) => {
-      const headerRows = topLevelRows(response.headers, context).map(
-        (row): [string[], string] => [
-          [
-            `\`${row.field}\``,
-            row.type,
-            row.required ? "Yes" : "",
-            row.description,
-            row.rules,
-          ],
-          row.example,
+      const parts =
+        response.errors.length > 0
+          ? errorResponseParts(response, errorTypesById)
+          : undefined;
+      const headerRows = topLevelRows(
+        parts ? parts.headers : response.headers,
+        context,
+      ).map((row): [string[], string] => [
+        [
+          `\`${row.field}\``,
+          row.type,
+          row.required ? "Yes" : "",
+          row.description,
+          row.rules,
         ],
-      );
+        row.example,
+      ]);
       return blocks(
         `##### ${response.status} ${response.description}`,
         headerRows.length > 0 &&
@@ -180,7 +241,11 @@ export function buildMarkdownFiles(
             ["Header", "Type", "Required", "Description", "Rules"],
             headerRows,
           ),
-        response.body ? bodySection(response.body, context) : "No body.",
+        parts
+          ? errorsSection(response, parts.contents, context)
+          : response.body
+            ? bodySection(response.body, context)
+            : "No body.",
       ).trimEnd();
     };
 
@@ -278,6 +343,66 @@ export function buildMarkdownFiles(
     }),
   );
 
+  // Error types
+  // Each error type has its own section here, like models in models.md.
+  if (scope.errorTypes.length > 0) {
+    // Models link to models.md instead of repeating their fields.
+    const errorTypesContext: FieldContext = {
+      ...contextFor(""),
+      expand: false,
+    };
+    const endpointLink = (endpoint: Endpoint) => {
+      const [page] = pagesUsing(endpoint);
+      const label = `\`${endpointLabel(endpoint)}\``;
+      return page
+        ? `[${label}](${pageFile(page)}#${anchorOf(endpointLabel(endpoint))})`
+        : label;
+    };
+    files["error-types.md"] = blocks(
+      "# Error types",
+      `The errors endpoints answer, each described once. Part of [${project.name}](README.md).`,
+      ...scope.errorTypes.map((errorType) => {
+        const headerRows = topLevelRows(
+          errorType.headers,
+          errorTypesContext,
+        ).map((row): [string[], string] => [
+          [
+            `\`${row.field}\``,
+            row.type,
+            row.required ? "Yes" : "",
+            row.description,
+            row.rules,
+          ],
+          row.example,
+        ]);
+        const returnedBy = scope.endpoints.filter((endpoint) =>
+          endpoint.responses.some((response) =>
+            response.errors.some((error) => error.errorTypeId === errorType.id),
+          ),
+        );
+        return blocks(
+          `## ${errorType.name}`,
+          `**${errorType.status}** — ${errorType.title}`,
+          errorType.description,
+          headerRows.length > 0 &&
+            tableWithExamples(
+              ["Header", "Type", "Required", "Description", "Rules"],
+              headerRows,
+            ),
+          schemaSection(
+            errorType.body.contentType,
+            errorType.body.schema,
+            errorTypesContext,
+          ),
+          jsonBlock(errorType.body.example),
+          returnedBy.length > 0
+            ? `Returned by ${returnedBy.map(endpointLink).join(", ")}.`
+            : "No endpoint returns it yet.",
+        ).trimEnd();
+      }),
+    );
+  }
+
   // README
   const howToSend = (scheme: SecurityScheme) => {
     switch (scheme.type) {
@@ -305,6 +430,8 @@ export function buildMarkdownFiles(
     `## Contents\n\n${[
       "- [Pages](#pages): what each screen does and which endpoints it calls",
       "- [Models](models.md): shared data shapes",
+      scope.errorTypes.length > 0 &&
+        "- [Error types](error-types.md): the errors endpoints answer, and when",
       assets.openApi &&
         `- [\`${assets.openApi.fileName}\`](${assets.openApi.fileName}): the contract for code generators and mock servers`,
     ]
@@ -370,6 +497,15 @@ export function buildMarkdownFiles(
           )
         : "_No endpoints yet._"
     }`,
+    scope.errorTypes.length > 0 &&
+      `## Error types\n\n${table(
+        ["Status", "Error type", "Title"],
+        scope.errorTypes.map((errorType) => [
+          errorType.status,
+          `[\`${errorType.name}\`](${errorTypeLink(errorType.name, "")})`,
+          cell(errorType.title),
+        ]),
+      )}`,
     assets.openApi
       ? [
           "## Mock the API",

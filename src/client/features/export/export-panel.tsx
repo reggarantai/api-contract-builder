@@ -127,8 +127,8 @@ export function ExportPanel({
             <h3 className="font-heading font-medium">Markdown</h3>
             <p className="text-sm text-muted-foreground">
               For people: a README, one file per page with its mockups and
-              endpoints, and the models. Reads well on GitHub or in any Markdown
-              viewer.
+              endpoints, the models, and the error types. Reads well on GitHub
+              or in any Markdown viewer.
             </p>
           </div>
           <div>
@@ -225,12 +225,21 @@ function WarningItem({
   projectId: string;
   warning: LintIssue;
 }) {
+  const className = "text-sm underline underline-offset-4";
   const link =
     warning.target.type === "endpoint" ? (
       <Link
         to="/projects/$projectId/endpoints/$endpointId"
         params={{ projectId, endpointId: warning.target.id }}
-        className="text-sm underline underline-offset-4"
+        className={className}
+      >
+        Open
+      </Link>
+    ) : warning.target.type === "error-type" ? (
+      <Link
+        to="/projects/$projectId/error-types/$errorTypeId"
+        params={{ projectId, errorTypeId: warning.target.id }}
+        className={className}
       >
         Open
       </Link>
@@ -238,7 +247,7 @@ function WarningItem({
       <Link
         to="/projects/$projectId/models/$modelId"
         params={{ projectId, modelId: warning.target.id }}
-        className="text-sm underline underline-offset-4"
+        className={className}
       >
         Open
       </Link>

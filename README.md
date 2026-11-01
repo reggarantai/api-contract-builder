@@ -17,9 +17,13 @@ hand the contract over as **OpenAPI 3.1** for frontend and backend tools and as
   named examples, authentication, a status (draft, in review, agreed), and notes for each
   side.
 - **Models**: reusable schemas, edited with a field builder or as JSON Schema.
+- **Error types**: each error the API answers with, like `sku-taken` or `token-expired`,
+  described once (status, title, when it happens, headers, and an example, as RFC 9457
+  problem details or any other format) and used in any endpoint's responses.
 - **Export**: OpenAPI 3.1 (YAML or JSON) and a Markdown bundle (.zip), for the whole
   project or one page. Contracts are validated before export, and warnings point at
-  missing examples and unused endpoints or models.
+  missing examples, unused endpoints, models, or error types, and problem details that
+  contradict their error type.
 
 It runs locally, for one author, as a single Docker container. Data stays on your machine.
 
@@ -76,9 +80,9 @@ The **Export** tab downloads the contract for the whole project or for one page.
 
 **Everyone else**
 
-The Markdown bundle has a README, one file per page with its mockups and endpoints, and
-the models. It reads well on GitHub, GitLab, or any Markdown viewer, and includes the
-OpenAPI file too.
+The Markdown bundle has a README, one file per page with its mockups and endpoints, the
+models, and the error types. It reads well on GitHub, GitLab, or any Markdown viewer, and
+includes the OpenAPI file too.
 
 ![An endpoint in the editor](docs/images/endpoint-editor.png)
 

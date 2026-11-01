@@ -8,6 +8,7 @@ import {
   it,
 } from "vitest";
 import { endpointSummarySchema } from "../../shared/endpoints";
+import { errorTypeSchema } from "../../shared/error-types";
 import { exportReportSchema } from "../../shared/export";
 import { modelSummarySchema } from "../../shared/models";
 import { pageSummarySchema } from "../../shared/pages";
@@ -107,6 +108,38 @@ describe("sample project", () => {
       "User",
       "ValidationProblem",
     ]);
+    const errorTypes = await get(`${base}/error-types`, (data) =>
+      errorTypeSchema.array().parse(data),
+    );
+    expect(
+      errorTypes.map((errorType) => `${errorType.status} ${errorType.name}`),
+    ).toEqual([
+      "400 idempotency-key-missing",
+      "400 idempotency-key-reused",
+      "400 invalid-credentials",
+      "400 invalid-link",
+      "400 invalid-parameters",
+      "401 session-expired",
+      "401 token-expired",
+      "401 unauthenticated",
+      "403 admins-only",
+      "403 email-not-verified",
+      "404 not-found",
+      "409 insufficient-stock",
+      "409 item-has-stock",
+      "409 request-in-progress",
+      "409 sku-taken",
+      "409 unit-locked",
+      "415 unsupported-media-type",
+      "422 validation-failed",
+      "429 too-many-attempts",
+      "429 too-many-requests",
+    ]);
+    // The token-expired and unauthenticated pair answers every bearer 401.
+    const tokenExpired = errorTypes.find(
+      (errorType) => errorType.name === "token-expired",
+    );
+    expect(tokenExpired?.endpointIds).toHaveLength(9);
   });
 
   it("exports as valid OpenAPI without warnings", async () => {
@@ -139,9 +172,13 @@ describe("sample project", () => {
       properties?: Record<string, Schema>;
     };
     type Header = { required?: boolean; schema: Schema };
+    type Example = { $ref?: string; value?: { type?: string } };
     type Response = {
       headers?: Record<string, Header>;
-      content?: Record<string, { schema: Schema }>;
+      content?: Record<
+        string,
+        { schema: Schema; examples?: Record<string, Example> }
+      >;
     };
     type Operation = {
       security?: Record<string, string[]>[];
@@ -151,6 +188,7 @@ describe("sample project", () => {
     };
     let app: ReturnType<typeof createTestApp>;
     let operations: { label: string; method: string; op: Operation }[];
+    let catalog: Record<string, Example>;
 
     beforeAll(async () => {
       app = createTestApp();
@@ -162,7 +200,11 @@ describe("sample project", () => {
           "GET",
           `/api/projects/${project.id}/export/openapi?format=json`,
         )
-      ).json()) as { paths: Record<string, Record<string, Operation>> };
+      ).json()) as {
+        paths: Record<string, Record<string, Operation>>;
+        components: { examples: Record<string, Example> };
+      };
+      catalog = doc.components.examples;
       operations = Object.entries(doc.paths).flatMap(([path, item]) =>
         Object.entries(item).map(([method, op]) => ({
           label: `${method.toUpperCase()} ${path}`,
@@ -202,6 +244,28 @@ describe("sample project", () => {
                   model(status === "422" ? "ValidationProblem" : "Problem")
               );
             }),
+        ),
+      ).toEqual([]);
+    });
+
+    it("answers every error with a type from the error catalog", () => {
+      const catalogTypes = new Set(
+        Object.values(catalog).map((example) => example.value?.type),
+      );
+      const fromCatalog = (example: Example) =>
+        example.$ref !== undefined
+          ? example.$ref.replace("#/components/examples/", "") in catalog
+          : catalogTypes.has(example.value?.type);
+
+      expect(
+        failing((op) =>
+          Object.entries(op.responses)
+            .filter(([status]) => Number(status) >= 400)
+            .every(([, response]) =>
+              Object.values(response.content ?? {}).every((media) =>
+                Object.values(media.examples ?? {}).every(fromCatalog),
+              ),
+            ),
         ),
       ).toEqual([]);
     });

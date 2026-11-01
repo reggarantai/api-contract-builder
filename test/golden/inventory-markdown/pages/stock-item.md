@@ -104,7 +104,9 @@ Example `box`:
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `token-expired`:
+[`token-expired`](../error-types.md#token-expired): **Access token expired**
+
+The access token has expired. Refresh it once with `POST /auth/refresh`, then retry the request.
 
 ```json
 {
@@ -115,7 +117,9 @@ Example `token-expired`:
 }
 ```
 
-Example `unauthenticated`:
+[`unauthenticated`](../error-types.md#unauthenticated): **Not signed in**
+
+The request has no access token. Send one in the `Authorization` header.
 
 ```json
 {
@@ -138,7 +142,9 @@ Example `unauthenticated`:
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `not-found`:
+[`not-found`](../error-types.md#not-found): **Not found**
+
+Nothing has this ID: it's unknown, malformed, or deleted.
 
 ```json
 {
@@ -262,7 +268,9 @@ Example `history`:
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `invalid-page-size`:
+[`invalid-parameters`](../error-types.md#invalid-parameters): **Invalid parameters**
+
+A query or header parameter is invalid; `detail` says which.
 
 ```json
 {
@@ -289,7 +297,9 @@ Example `invalid-page-size`:
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `token-expired`:
+[`token-expired`](../error-types.md#token-expired): **Access token expired**
+
+The access token has expired. Refresh it once with `POST /auth/refresh`, then retry the request.
 
 ```json
 {
@@ -300,7 +310,9 @@ Example `token-expired`:
 }
 ```
 
-Example `unauthenticated`:
+[`unauthenticated`](../error-types.md#unauthenticated): **Not signed in**
+
+The request has no access token. Send one in the `Authorization` header.
 
 ```json
 {
@@ -323,7 +335,9 @@ Example `unauthenticated`:
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `not-found`:
+[`not-found`](../error-types.md#not-found): **Not found**
+
+Nothing has this ID: it's unknown, malformed, or deleted.
 
 ```json
 {
@@ -448,7 +462,9 @@ Example `receipt`:
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `missing-key`:
+[`idempotency-key-missing`](../error-types.md#idempotency-key-missing): **Idempotency-Key missing**
+
+A create was sent without an `Idempotency-Key` header.
 
 ```json
 {
@@ -459,7 +475,9 @@ Example `missing-key`:
 }
 ```
 
-Example `key-reused`:
+[`idempotency-key-reused`](../error-types.md#idempotency-key-reused): **Idempotency-Key reused**
+
+The key was already used for a request with a different body. Make a new key for each new thing to create.
 
 ```json
 {
@@ -486,7 +504,9 @@ Example `key-reused`:
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `token-expired`:
+[`token-expired`](../error-types.md#token-expired): **Access token expired**
+
+The access token has expired. Refresh it once with `POST /auth/refresh`, then retry the request.
 
 ```json
 {
@@ -497,7 +517,9 @@ Example `token-expired`:
 }
 ```
 
-Example `unauthenticated`:
+[`unauthenticated`](../error-types.md#unauthenticated): **Not signed in**
+
+The request has no access token. Send one in the `Authorization` header.
 
 ```json
 {
@@ -520,7 +542,9 @@ Example `unauthenticated`:
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `not-found`:
+[`not-found`](../error-types.md#not-found): **Not found**
+
+Nothing has this ID: it's unknown, malformed, or deleted.
 
 ```json
 {
@@ -535,7 +559,7 @@ Example `not-found`:
 
 | Header | Type | Required | Description | Rules | Example |
 | --- | --- | --- | --- | --- | --- |
-| `Retry-After` | integer |  | Only with `request-in-progress`: seconds before resending | ≥ 1 | `2` |
+| `Retry-After` | integer |  | Only with `request-in-progress`: Seconds before resending | ≥ 1 | `2` |
 
 `application/problem+json` — [Problem](../models.md#problem)
 
@@ -547,7 +571,9 @@ Example `not-found`:
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `not-enough-stock`:
+[`insufficient-stock`](../error-types.md#insufficient-stock): **Not enough stock**
+
+The issue would take the quantity on hand below 0. Nothing was recorded.
 
 ```json
 {
@@ -558,7 +584,9 @@ Example `not-enough-stock`:
 }
 ```
 
-Example `in-progress`:
+[`request-in-progress`](../error-types.md#request-in-progress): **Request in progress**
+
+A request with the same `Idempotency-Key` is still running. Resend it after `Retry-After` seconds to get its result.
 
 ```json
 {
@@ -583,6 +611,10 @@ Example `in-progress`:
 | `errors` | array of object | Yes | One entry per invalid field | at least 1 item |
 | `errors[].pointer` | string | Yes | JSON Pointer (RFC 6901) to the field in the request body, as a URI fragment like `#/email` |  |
 | `errors[].detail` | string | Yes | What's wrong with it |  |
+
+[`validation-failed`](../error-types.md#validation-failed): **Validation failed**
+
+Some fields of the request body are invalid. `errors` lists each one, with a JSON Pointer to the field, so a form can show each message next to its field.
 
 Example `zero-receipt`:
 

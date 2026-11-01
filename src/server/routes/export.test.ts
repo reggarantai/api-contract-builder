@@ -197,6 +197,23 @@ describe("export API", () => {
       expect(empty.data).toMatchObject({ data: [], meta: { totalItems: 0 } });
     });
 
+    it("returns an error type from the catalog by name", async () => {
+      const client = await mockClient();
+
+      const response = await client.get(
+        "/stock-items",
+        { headers: auth },
+        { mock: { dynamic: false, code: 401, exampleKey: "unauthenticated" } },
+      );
+
+      expect(response.status).toBe(401);
+      expect(response.data).toMatchObject({
+        type: "https://api.inventory.example/problems/unauthenticated",
+        title: "Not signed in",
+      });
+      expect(response.violations.output).toEqual([]);
+    });
+
     it("returns errors as problem details", async () => {
       const client = await mockClient();
 

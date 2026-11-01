@@ -163,7 +163,9 @@ Example `empty` — Nothing matches:
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `invalid-page-size`:
+[`invalid-parameters`](../error-types.md#invalid-parameters): **Invalid parameters**
+
+A query or header parameter is invalid; `detail` says which.
 
 ```json
 {
@@ -190,7 +192,9 @@ Example `invalid-page-size`:
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `token-expired`:
+[`token-expired`](../error-types.md#token-expired): **Access token expired**
+
+The access token has expired. Refresh it once with `POST /auth/refresh`, then retry the request.
 
 ```json
 {
@@ -201,7 +205,9 @@ Example `token-expired`:
 }
 ```
 
-Example `unauthenticated`:
+[`unauthenticated`](../error-types.md#unauthenticated): **Not signed in**
+
+The request has no access token. Send one in the `Authorization` header.
 
 ```json
 {
@@ -271,7 +277,9 @@ Example `three`:
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `token-expired`:
+[`token-expired`](../error-types.md#token-expired): **Access token expired**
+
+The access token has expired. Refresh it once with `POST /auth/refresh`, then retry the request.
 
 ```json
 {
@@ -282,7 +290,9 @@ Example `token-expired`:
 }
 ```
 
-Example `unauthenticated`:
+[`unauthenticated`](../error-types.md#unauthenticated): **Not signed in**
+
+The request has no access token. Send one in the `Authorization` header.
 
 ```json
 {
@@ -331,7 +341,9 @@ No body.
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `token-expired`:
+[`token-expired`](../error-types.md#token-expired): **Access token expired**
+
+The access token has expired. Refresh it once with `POST /auth/refresh`, then retry the request.
 
 ```json
 {
@@ -342,7 +354,9 @@ Example `token-expired`:
 }
 ```
 
-Example `unauthenticated`:
+[`unauthenticated`](../error-types.md#unauthenticated): **Not signed in**
+
+The request has no access token. Send one in the `Authorization` header.
 
 ```json
 {
@@ -365,7 +379,9 @@ Example `unauthenticated`:
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `admins-only`:
+[`admins-only`](../error-types.md#admins-only): **Admins only**
+
+Only admins can do this; staff can't.
 
 ```json
 {
@@ -388,7 +404,9 @@ Example `admins-only`:
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `not-found`:
+[`not-found`](../error-types.md#not-found): **Not found**
+
+Nothing has this ID: it's unknown, malformed, or deleted.
 
 ```json
 {
@@ -411,7 +429,9 @@ Example `not-found`:
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `has-stock`:
+[`item-has-stock`](../error-types.md#item-has-stock): **Item still in stock**
+
+Only items with nothing on hand can be deleted. Issue or count the stock to 0 first.
 
 ```json
 {

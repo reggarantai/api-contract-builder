@@ -5,6 +5,7 @@ import { HTTPException } from "hono/http-exception";
 import type { ApiErrorBody } from "../shared/api-error";
 import type { Db } from "./db/client";
 import { endpointRoutes } from "./routes/endpoints";
+import { errorTypeRoutes } from "./routes/error-types";
 import { exportRoutes } from "./routes/export";
 import { healthRoutes } from "./routes/health";
 import { modelRoutes } from "./routes/models";
@@ -41,6 +42,7 @@ export function createApp({
   app.route("/api/projects", projectRoutes(db, storage));
   app.route("/api/projects", modelRoutes(db));
   app.route("/api/projects", endpointRoutes(db));
+  app.route("/api/projects", errorTypeRoutes(db));
   app.route("/api/projects", pageRoutes(db, storage, maxUploadBytes));
   app.route("/api/projects", exportRoutes(db, storage));
   app.route(

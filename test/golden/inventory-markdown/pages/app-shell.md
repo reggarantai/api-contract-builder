@@ -82,7 +82,9 @@ Example `refreshed`:
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `session-expired`:
+[`session-expired`](../error-types.md#session-expired): **Session expired**
+
+The refresh token is missing, expired, or revoked, so the session is over. Sign in again.
 
 ```json
 {
@@ -149,7 +151,9 @@ Example `ana`:
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `token-expired`:
+[`token-expired`](../error-types.md#token-expired): **Access token expired**
+
+The access token has expired. Refresh it once with `POST /auth/refresh`, then retry the request.
 
 ```json
 {
@@ -160,7 +164,9 @@ Example `token-expired`:
 }
 ```
 
-Example `unauthenticated`:
+[`unauthenticated`](../error-types.md#unauthenticated): **Not signed in**
+
+The request has no access token. Send one in the `Authorization` header.
 
 ```json
 {

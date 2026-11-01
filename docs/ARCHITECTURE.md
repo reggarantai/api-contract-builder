@@ -20,10 +20,11 @@ Ideas for later are
 
 ```
 Project
- ├─ Settings    servers, API version, security schemes, the default scheme
- ├─ Models      reusable schemas (User, StockItem, …)
- ├─ Endpoints   method and path, parameters, request body, responses, status, notes
- └─ Pages       description, acceptance criteria, mockups, and the endpoints the page calls
+ ├─ Settings      servers, API version, security schemes, the default scheme
+ ├─ Models        reusable schemas (User, StockItem, …)
+ ├─ Error types   the errors the API answers with (sku-taken, token-expired, …)
+ ├─ Endpoints     method and path, parameters, request body, responses, status, notes
+ └─ Pages         description, acceptance criteria, mockups, and the endpoints the page calls
 ```
 
 - **Endpoints belong to the project, not to a page.** A page links endpoints, each with a
@@ -39,6 +40,12 @@ Project
   path: renaming `{id}` in place keeps its schema.
 - **Examples are named** (`success`, `locked-account`, …), so a mock server can return a
   chosen scenario.
+- **Error types are described once**: a status, a title, when it happens (Markdown),
+  headers, and a body with one example, like an RFC 9457 problem type. A response lists
+  the error types it answers with, by ID, and then has no body of its own; for each it
+  uses the catalog's example, or the endpoint's own examples instead (a 422 reports the
+  fields of that endpoint's request). An error type goes in the response that answers
+  its status: OpenAPI picks an exact code over `4XX`, and `4XX` over `default`.
 
 ## Data
 
@@ -46,19 +53,22 @@ SQLite through better-sqlite3 and Drizzle, in `DATA_DIR/app.db`. Uploaded mockup
 files in `DATA_DIR/uploads/<project id>/`, named by a new ID. IDs are ULIDs. The SQL
 migrations in `drizzle/` run on startup.
 
-| Table            | Holds                                                                                                                                                                                                  |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `projects`       | name, unique slug, description (Markdown), API version, servers and security schemes (JSON, each with its own ID), the default scheme                                                                  |
-| `models`         | name (unique per project, ignoring case), description, schema (JSON)                                                                                                                                   |
-| `endpoints`      | method, path, `path_key` (the path without parameter names), operation ID, summary, description, status, deprecated, security, parameters, request body, and responses (JSON columns), FE and BE notes |
-| `pages`          | name, unique slug, description and acceptance criteria (Markdown), position                                                                                                                            |
-| `page_endpoints` | a page's links to endpoints: trigger, note, position                                                                                                                                                   |
-| `page_mockups`   | uploaded images: file name, original name, type, width and height, caption, position                                                                                                                   |
-| `app_meta`       | facts about the instance, like when its data directory was created                                                                                                                                     |
+| Table            | Holds                                                                                                                                                                                                                                     |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `projects`       | name, unique slug, description (Markdown), API version, servers and security schemes (JSON, each with its own ID), the default scheme                                                                                                     |
+| `models`         | name (unique per project, ignoring case), description, schema (JSON)                                                                                                                                                                      |
+| `endpoints`      | method, path, `path_key` (the path without parameter names), operation ID, summary, description, status, deprecated, security, parameters, request body, and responses (JSON columns, each with the error types it uses), FE and BE notes |
+| `error_types`    | name (unique per project, ignoring case), status, title, description (Markdown), headers and body (JSON)                                                                                                                                  |
+| `pages`          | name, unique slug, description and acceptance criteria (Markdown), position                                                                                                                                                               |
+| `page_endpoints` | a page's links to endpoints: trigger, note, position                                                                                                                                                                                      |
+| `page_mockups`   | uploaded images: file name, original name, type, width and height, caption, position                                                                                                                                                      |
+| `app_meta`       | facts about the instance, like when its data directory was created                                                                                                                                                                        |
 
 Deleting a project deletes everything it owns, files included. Models and security schemes
-that endpoints use, and models other models use, can't be deleted, so exports never have
-dangling references.
+that endpoints use, models other models or error types use, and error types responses use
+can't be deleted, so exports never have dangling references. For the same reason an error
+type in use can't change in a way that breaks a response using it (a status the response
+doesn't answer, an example name the response already has).
 
 ## Server
 
@@ -96,17 +106,27 @@ and the models they use, directly or through other models.
 | A page's link to it          | `x-pages: [{ page, slug, trigger, note }]`                                      |
 | Status, notes                | `x-status`, `x-notes-fe`, `x-notes-be`                                          |
 | Named examples               | `content.<type>.examples.<name>`                                                |
+| Error type                   | `components.examples.<name>`: its title as `summary`, `description`, `value`    |
+| A response's error types     | an example `$ref` each (or the endpoint's own examples); their headers merged   |
+
+A response with error types gets one body per content type, with their schema, or `anyOf`
+the schemas when they differ. Headers that several of its error types send appear once,
+with all their examples (a missing token and an expired one get different
+`WWW-Authenticate` challenges); a header is required only if every error type requires
+it, and says "Only with `x`" when only some send it.
 
 The Export tab shows **warnings** (bodies without examples, endpoints no page uses, models
-nothing uses) and **errors**. Errors come from two checks: the document against the
+or error types nothing uses, problem details whose `status` or `title` differ from their
+error type, error types sharing a `type`, a header that error types in one response
+define differently) and **errors**. Errors come from two checks: the document against the
 official OpenAPI 3.1 schema, and every schema against the JSON Schema 2020-12 meta-schema,
 because the first alone accepts schemas like `{"type": "strng"}`. A contract with errors
 can't be downloaded as OpenAPI.
 
 **Markdown** (`<project>.contract.zip`): a README (the description, servers,
-authentication, pages, endpoints, and how to mock with Prism), `models.md`, one file per
-page, the mockups as `images/<page>/NN-<name>.<ext>`, and the OpenAPI file when the
-contract is valid. Page files stand alone: referenced models are expanded in place
+authentication, pages, endpoints, error types, and how to mock with Prism), `models.md`,
+`error-types.md` when there are any, one file per page, the mockups as
+`images/<page>/NN-<name>.<ext>`, and the OpenAPI file when the contract is valid. Page files stand alone: referenced models are expanded in place
 (`data[].category.name`), stopping where a model contains itself. Tables show types and
 rules (lengths, ranges, allowed values, patterns, defaults); parameter and header tables
 add examples, and bodies show theirs as JSON.
@@ -168,8 +188,21 @@ The calls that shape the code, and why. Earlier plans and their history are in g
   each property maps to one OpenAPI parameter or header.
 - **Paths that differ only in parameter names are the same path**, as OpenAPI says:
   `/users/{id}` and `/users/{userId}` share a `path_key`, which is unique per method.
-- **Things in use can't be deleted** (models, security schemes), so an export never points
-  at something missing.
+- **Things in use can't be deleted** (models, security schemes, error types), so an export
+  never points at something missing.
+- **Errors are catalogued as types, not as shared responses.** OpenAPI's answer is
+  `components.responses`, but a 3.1 Reference Object can only override `summary` and
+  `description`, so a shared response can't take an endpoint's own examples, and
+  endpoints combine errors differently at one status (the sample's 409s: `sku-taken` with
+  `request-in-progress` on create, with `unit-locked` on update). RFC 9457 defines a
+  problem type by its type URI, title, and status, so that's the unit; responses refer to
+  it, and exports define it once in `components.examples`, which Prism serves by name.
+  The type URI lives in the example, so APIs with other error formats can use the
+  catalog too; problem details are only what a new error type starts as. Errors without
+  a body stay plain responses: nothing in the export would tell them apart.
+- **Saving a response without `errors` keeps the ones it had.** API clients from before
+  the catalog, like a browser tab left open across an upgrade, drop fields they don't
+  know, and that must not silently empty a response.
 - **Mockups are saved right away**, apart from the page's Save button, because a file
   exists as soon as it's uploaded.
 - **Markdown page files stand alone**, so someone can read one page without jumping
@@ -213,6 +246,9 @@ calls are explained here:
   succeeds. Staging is on its own site, so cookies never cross between environments.
 - **Creates take a required `Idempotency-Key`**; only successes are replayed, and a resend
   while the first request runs answers 409 `request-in-progress`.
+- **Every error is an error type in the catalog**, 20 of them. The 422s give their own
+  examples, the fields each endpoint checks, under `validation-failed`; the 415 keeps
+  `Accept-Patch` as its own header, since only the PATCH endpoint sends it.
 - **Recording a stock movement answers 201 without `Location`**, because a single movement
   has no URL of its own; the Stock item page fetches the item again for its new status.
 - Left out: `ETag` and `If-Match` on stock items (every movement changes the item, so edits

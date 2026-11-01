@@ -104,6 +104,7 @@ of the file for how to run it).
   so the browser and the server agree on what's valid.
 - **Model references** are stored as `model:<id>` and become `#/components/schemas/<Name>`
   only when shown as JSON or exported, so renaming a model never breaks a reference.
+  Responses refer to error types by ID too.
 - **Database changes**: edit `src/server/db/schema.ts`, run `pnpm db:generate`, and commit
   the SQL in `drizzle/`. Migrations run on startup.
 - **Dependencies**: `dependencies` holds only what the server needs at runtime; anything

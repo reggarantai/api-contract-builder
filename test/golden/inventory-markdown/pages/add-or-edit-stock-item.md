@@ -86,7 +86,9 @@ Example `three`:
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `token-expired`:
+[`token-expired`](../error-types.md#token-expired): **Access token expired**
+
+The access token has expired. Refresh it once with `POST /auth/refresh`, then retry the request.
 
 ```json
 {
@@ -97,7 +99,9 @@ Example `token-expired`:
 }
 ```
 
-Example `unauthenticated`:
+[`unauthenticated`](../error-types.md#unauthenticated): **Not signed in**
+
+The request has no access token. Send one in the `Authorization` header.
 
 ```json
 {
@@ -181,7 +185,9 @@ Example `box`:
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `token-expired`:
+[`token-expired`](../error-types.md#token-expired): **Access token expired**
+
+The access token has expired. Refresh it once with `POST /auth/refresh`, then retry the request.
 
 ```json
 {
@@ -192,7 +198,9 @@ Example `token-expired`:
 }
 ```
 
-Example `unauthenticated`:
+[`unauthenticated`](../error-types.md#unauthenticated): **Not signed in**
+
+The request has no access token. Send one in the `Authorization` header.
 
 ```json
 {
@@ -215,7 +223,9 @@ Example `unauthenticated`:
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `not-found`:
+[`not-found`](../error-types.md#not-found): **Not found**
+
+Nothing has this ID: it's unknown, malformed, or deleted.
 
 ```json
 {
@@ -329,7 +339,9 @@ Example `created`:
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `missing-key`:
+[`idempotency-key-missing`](../error-types.md#idempotency-key-missing): **Idempotency-Key missing**
+
+A create was sent without an `Idempotency-Key` header.
 
 ```json
 {
@@ -340,7 +352,9 @@ Example `missing-key`:
 }
 ```
 
-Example `key-reused`:
+[`idempotency-key-reused`](../error-types.md#idempotency-key-reused): **Idempotency-Key reused**
+
+The key was already used for a request with a different body. Make a new key for each new thing to create.
 
 ```json
 {
@@ -367,7 +381,9 @@ Example `key-reused`:
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `token-expired`:
+[`token-expired`](../error-types.md#token-expired): **Access token expired**
+
+The access token has expired. Refresh it once with `POST /auth/refresh`, then retry the request.
 
 ```json
 {
@@ -378,7 +394,9 @@ Example `token-expired`:
 }
 ```
 
-Example `unauthenticated`:
+[`unauthenticated`](../error-types.md#unauthenticated): **Not signed in**
+
+The request has no access token. Send one in the `Authorization` header.
 
 ```json
 {
@@ -393,7 +411,7 @@ Example `unauthenticated`:
 
 | Header | Type | Required | Description | Rules | Example |
 | --- | --- | --- | --- | --- | --- |
-| `Retry-After` | integer |  | Only with `request-in-progress`: seconds before resending | ≥ 1 | `2` |
+| `Retry-After` | integer |  | Only with `request-in-progress`: Seconds before resending | ≥ 1 | `2` |
 
 `application/problem+json` — [Problem](../models.md#problem)
 
@@ -405,7 +423,9 @@ Example `unauthenticated`:
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `sku-taken`:
+[`sku-taken`](../error-types.md#sku-taken): **SKU already used**
+
+Another stock item has this SKU. SKUs are unique, ignoring case; a deleted item's SKU can be used again.
 
 ```json
 {
@@ -416,7 +436,9 @@ Example `sku-taken`:
 }
 ```
 
-Example `in-progress`:
+[`request-in-progress`](../error-types.md#request-in-progress): **Request in progress**
+
+A request with the same `Idempotency-Key` is still running. Resend it after `Retry-After` seconds to get its result.
 
 ```json
 {
@@ -441,6 +463,10 @@ Example `in-progress`:
 | `errors` | array of object | Yes | One entry per invalid field | at least 1 item |
 | `errors[].pointer` | string | Yes | JSON Pointer (RFC 6901) to the field in the request body, as a URI fragment like `#/email` |  |
 | `errors[].detail` | string | Yes | What's wrong with it |  |
+
+[`validation-failed`](../error-types.md#validation-failed): **Validation failed**
+
+Some fields of the request body are invalid. `errors` lists each one, with a JSON Pointer to the field, so a form can show each message next to its field.
 
 Example `unknown-category`:
 
@@ -557,7 +583,9 @@ Example `updated`:
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `token-expired`:
+[`token-expired`](../error-types.md#token-expired): **Access token expired**
+
+The access token has expired. Refresh it once with `POST /auth/refresh`, then retry the request.
 
 ```json
 {
@@ -568,7 +596,9 @@ Example `token-expired`:
 }
 ```
 
-Example `unauthenticated`:
+[`unauthenticated`](../error-types.md#unauthenticated): **Not signed in**
+
+The request has no access token. Send one in the `Authorization` header.
 
 ```json
 {
@@ -591,7 +621,9 @@ Example `unauthenticated`:
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `not-found`:
+[`not-found`](../error-types.md#not-found): **Not found**
+
+Nothing has this ID: it's unknown, malformed, or deleted.
 
 ```json
 {
@@ -614,7 +646,9 @@ Example `not-found`:
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
-Example `sku-taken`:
+[`sku-taken`](../error-types.md#sku-taken): **SKU already used**
+
+Another stock item has this SKU. SKUs are unique, ignoring case; a deleted item's SKU can be used again.
 
 ```json
 {
@@ -625,7 +659,9 @@ Example `sku-taken`:
 }
 ```
 
-Example `unit-locked`:
+[`unit-locked`](../error-types.md#unit-locked): **Unit can't change**
+
+The item already has stock movements, so its unit can't change.
 
 ```json
 {
@@ -652,6 +688,10 @@ Example `unit-locked`:
 | `detail` | string |  | What went wrong this time, in words for people |  |
 | `instance` | string (uri-reference) |  | Identifies this occurrence. Quote it when reporting a problem. |  |
 
+[`unsupported-media-type`](../error-types.md#unsupported-media-type): **Unsupported media type**
+
+The request body isn't in a content type the endpoint takes.
+
 Example `not-merge-patch`:
 
 ```json
@@ -677,6 +717,10 @@ Example `not-merge-patch`:
 | `errors` | array of object | Yes | One entry per invalid field | at least 1 item |
 | `errors[].pointer` | string | Yes | JSON Pointer (RFC 6901) to the field in the request body, as a URI fragment like `#/email` |  |
 | `errors[].detail` | string | Yes | What's wrong with it |  |
+
+[`validation-failed`](../error-types.md#validation-failed): **Validation failed**
+
+Some fields of the request body are invalid. `errors` lists each one, with a JSON Pointer to the field, so a form can show each message next to its field.
 
 Example `negative-reorder-point`:
 
