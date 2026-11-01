@@ -4,7 +4,7 @@ All notable changes to this project are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.3.0] - 2026-11-01
 
 ### Added
 
@@ -114,6 +114,7 @@ The first release.
 - **Docker image** `reggarantai/api-contract-builder` for `linux/amd64` and `linux/arm64`:
   runs as a non-root user, keeps everything in the `/data` volume, and has a healthcheck.
 
+[0.3.0]: https://github.com/reggarantai/api-contract-builder/releases/tag/v0.3.0
 [0.2.0]: https://github.com/reggarantai/api-contract-builder/releases/tag/v0.2.0
 [0.1.1]: https://github.com/reggarantai/api-contract-builder/releases/tag/v0.1.1
 [0.1.0]: https://github.com/reggarantai/api-contract-builder/releases/tag/v0.1.0
