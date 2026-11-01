@@ -11,7 +11,7 @@ import { endpointSummarySchema } from "../../shared/endpoints";
 import { errorTypeSchema } from "../../shared/error-types";
 import { exportReportSchema } from "../../shared/export";
 import { modelSummarySchema } from "../../shared/models";
-import { pageSummarySchema } from "../../shared/pages";
+import { pageSchema, pageSummarySchema } from "../../shared/pages";
 import { projectSchema } from "../../shared/projects";
 import { createTestApp } from "../test-utils";
 
@@ -56,7 +56,7 @@ describe("sample project", () => {
       ["Forgot password", 1, 1],
       ["Reset password", 1, 1],
       ["App shell", 1, 4],
-      ["Stock list", 1, 3],
+      ["Stock list", 4, 3],
       ["Stock item", 2, 3],
       ["Add or edit stock item", 1, 4],
     ]);
@@ -140,6 +140,87 @@ describe("sample project", () => {
       (errorType) => errorType.name === "token-expired",
     );
     expect(tokenExpired?.endpointIds).toHaveLength(9);
+  });
+
+  it("describes the states of every page, with their mockups", async () => {
+    const project = await createSample();
+    const base = `/api/projects/${project.id}`;
+    const summaries = await get(`${base}/pages`, (data) =>
+      pageSummarySchema.array().parse(data),
+    );
+    const pages = [];
+    for (const summary of summaries) {
+      pages.push(
+        await get(`${base}/pages/${summary.id}`, (data) =>
+          pageSchema.parse(data),
+        ),
+      );
+    }
+
+    expect(
+      pages.filter((page) => page.states.length === 0).map((page) => page.name),
+    ).toEqual([]);
+    // Every mockup shows a state.
+    expect(
+      pages.flatMap((page) =>
+        page.mockups
+          .filter(
+            (mockup) =>
+              !page.states.some((state) => state.mockupIds.includes(mockup.id)),
+          )
+          .map((mockup) => `${page.name}: ${mockup.originalName}`),
+      ),
+    ).toEqual([]);
+    // The issue's example: the `empty` list example leads to the empty
+    // state, and a 409 to an error message.
+    const stockList = pages.find((page) => page.name === "Stock list");
+    const mockupName = (id: string) =>
+      stockList?.mockups.find((mockup) => mockup.id === id)?.originalName;
+    expect(
+      stockList?.states.map((state) => ({
+        kind: state.kind,
+        name: state.name,
+        causes: state.causes.map((cause) =>
+          cause.type === "request"
+            ? "request"
+            : cause.type === "response"
+              ? `${cause.responseId} ${cause.exampleId}`
+              : `error ${cause.exampleId}`,
+        ),
+        mockups: state.mockupIds.map(mockupName),
+      })),
+    ).toEqual([
+      {
+        kind: "loading",
+        name: "Loading items",
+        causes: ["request"],
+        mockups: ["stock-list-loading.png"],
+      },
+      {
+        kind: "success",
+        name: "Items",
+        causes: ["200 first-page"],
+        mockups: ["stock-list.png"],
+      },
+      {
+        kind: "empty",
+        name: "No matching items",
+        causes: ["200 empty"],
+        mockups: ["stock-list-empty.png"],
+      },
+      {
+        kind: "error",
+        name: "Can't delete",
+        causes: ["error null"],
+        mockups: ["stock-list-delete-error.png"],
+      },
+      {
+        kind: "success",
+        name: "Deleted",
+        causes: ["204 null"],
+        mockups: [],
+      },
+    ]);
   });
 
   it("exports as valid OpenAPI without warnings", async () => {

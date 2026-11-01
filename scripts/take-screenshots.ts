@@ -1,6 +1,7 @@
 /**
  * Takes the README screenshots from a running app: creates the sample project
- * and captures a page view, an endpoint, and the export tab into docs/images/.
+ * and captures a page view, two of its states, an endpoint, and the export tab
+ * into docs/images/.
  *
  *   pnpm build && PORT=3100 DATA_DIR=$(mktemp -d) pnpm start &
  *   pnpm exec tsx scripts/take-screenshots.ts http://127.0.0.1:3100
@@ -36,6 +37,28 @@ await page.goto(`${base}/projects/${project.id}/pages/${stockList?.id}`);
 await page.getByRole("link", { name: "Edit page" }).waitFor();
 await page.screenshot({ path: out("page-view") });
 
+// The issue's example: the `empty` example leads to the empty state, and a
+// 409 to an error message.
+const empty = page.getByRole("region", { name: "No matching items" });
+const cantDelete = page.getByRole("region", { name: "Can't delete" });
+await cantDelete.getByText("Prefer: code=409").waitFor();
+// Unscrolled, so the boxes are page coordinates, as a full-page clip wants.
+const top = await empty.boundingBox();
+const bottom = await cantDelete.boundingBox();
+if (!top || !bottom) {
+  throw new Error("The states aren't on the page");
+}
+await page.screenshot({
+  path: out("page-states"),
+  fullPage: true,
+  clip: {
+    x: top.x - 24,
+    y: top.y - 24,
+    width: top.width + 48,
+    height: bottom.y + bottom.height - top.y + 48,
+  },
+});
+
 await page.goto(
   `${base}/projects/${project.id}/endpoints/${recordMovement?.id}`,
 );
@@ -47,4 +70,6 @@ await page.getByText("Valid OpenAPI 3.1").waitFor();
 await page.screenshot({ path: out("export") });
 
 await browser.close();
-console.log("Wrote docs/images/{page-view,endpoint-editor,export}.png");
+console.log(
+  "Wrote docs/images/{page-view,page-states,endpoint-editor,export}.png",
+);

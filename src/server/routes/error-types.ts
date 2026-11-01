@@ -20,7 +20,12 @@ import {
   endpointsUsingErrorType,
 } from "../db/references";
 import { type ErrorTypeRow, errorTypes } from "../db/schema";
-import { jsonBody, toApiIssues, validationFailed } from "../validation";
+import {
+  jsonBody,
+  staleRevision,
+  toApiIssues,
+  validationFailed,
+} from "../validation";
 
 function fieldsOf(row: ErrorTypeRow): ErrorTypeFields {
   return {
@@ -42,6 +47,7 @@ export function toErrorType(
     id: row.id,
     projectId: row.projectId,
     endpointIds,
+    revision: row.revision,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -258,7 +264,16 @@ export function errorTypeRoutes(db: Db) {
         if (!existing) {
           return errorTypeNotFound(c);
         }
-        const input = c.req.valid("json");
+        const { revision, ...input } = c.req.valid("json");
+        const stale = staleRevision(
+          c,
+          "error type",
+          revision,
+          existing.revision,
+        );
+        if (stale) {
+          return stale;
+        }
         const result = errorTypeFieldsSchema.safeParse({
           ...fieldsOf(existing),
           ...input,
@@ -288,7 +303,7 @@ export function errorTypeRoutes(db: Db) {
         const now = new Date();
         const row = db
           .update(errorTypes)
-          .set({ ...fields, updatedAt: now })
+          .set({ ...fields, revision: existing.revision + 1, updatedAt: now })
           .where(eq(errorTypes.id, existing.id))
           .returning()
           .get();

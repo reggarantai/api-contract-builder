@@ -7,6 +7,7 @@ import {
 } from "./endpoints";
 import type { JsonSchema, JsonValue } from "./json-schema";
 import { jsonSchemaSchema } from "./models";
+import { revisionInputSchema, revisionSchema } from "./revision";
 
 // The error catalog: each error type is defined once, like an RFC 9457
 // problem type (status, title, when it happens), and endpoint responses use
@@ -59,13 +60,16 @@ export const createErrorTypeInputSchema = errorTypeFieldsSchema.extend({
   headers: errorTypeHeadersSchema.default(EMPTY_HEADERS),
 });
 
-export const updateErrorTypeInputSchema = errorTypeFieldsSchema.partial();
+export const updateErrorTypeInputSchema = errorTypeFieldsSchema
+  .partial()
+  .extend({ revision: revisionInputSchema });
 
 export const errorTypeSchema = errorTypeFieldsSchema.extend({
   id: z.string(),
   projectId: z.string(),
   /** Endpoints with a response that uses the error, in endpoint order. */
   endpointIds: z.array(z.string()),
+  revision: revisionSchema,
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });

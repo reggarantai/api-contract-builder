@@ -13,15 +13,77 @@ One item, with its movement history. The warehouse records deliveries, issues, a
 - [ ] The history shows the newest movement first, 20 per page
 - [ ] Saving twice (e.g. a double click) records the movement once: both requests send the same `Idempotency-Key`
 
-## Mockups
+## States
+
+### Loading: Loading the item
+
+While [`GET /stock-items/{itemId}`](#get-stock-itemsitemid) and [`GET /stock-items/{itemId}/movements`](#get-stock-itemsitemidmovements) run.
+
+Grey blocks stand in for the details and the history.
+
+### Success: Item and history
+
+The quantity on hand, the stock status, and the movements, newest first.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`GET /stock-items/{itemId}`](#get-stock-itemsitemid) | 200 OK, example `box` | `Prefer: code=200, example=box` |
+| [`GET /stock-items/{itemId}/movements`](#get-stock-itemsitemidmovements) | 200 OK, example `history` | `Prefer: code=200, example=history` |
 
 ![Details and movement history](../images/stock-item/01-stock-item.png)
 
 _Details and movement history_
 
+### Error: Item not found
+
+Says the item doesn't exist or was deleted, with a link back to Stock list.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`GET /stock-items/{itemId}`](#get-stock-itemsitemid) | 404 [`not-found`](../error-types.md#not-found) | `Prefer: code=404, example=not-found`<br>`Accept: application/problem+json` |
+| [`GET /stock-items/{itemId}/movements`](#get-stock-itemsitemidmovements) | 404 [`not-found`](../error-types.md#not-found) | `Prefer: code=404, example=not-found`<br>`Accept: application/problem+json` |
+
+### Idle: Record movement dialog
+
+Receipt, Issue, or Count, with the quantity, a reference, and a note.
+
 ![Record movement dialog](../images/stock-item/02-record-movement.png)
 
 _Record movement dialog_
+
+### Loading: Recording
+
+While [`POST /stock-items/{itemId}/movements`](#post-stock-itemsitemidmovements) runs.
+
+The Record button shows a spinner. A `request-in-progress` answer means the first request still runs: send it again after `Retry-After` seconds, with the same key.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`POST /stock-items/{itemId}/movements`](#post-stock-itemsitemidmovements) | 409 [`request-in-progress`](../error-types.md#request-in-progress) | `Prefer: code=409, example=request-in-progress`<br>`Accept: application/problem+json` |
+
+### Error: Not enough stock
+
+The dialog shows the API's `detail` and stays open.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`POST /stock-items/{itemId}/movements`](#post-stock-itemsitemidmovements) | 409 [`insufficient-stock`](../error-types.md#insufficient-stock) | `Prefer: code=409, example=insufficient-stock`<br>`Accept: application/problem+json` |
+
+### Error: Invalid movement
+
+The message shows under the quantity.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`POST /stock-items/{itemId}/movements`](#post-stock-itemsitemidmovements) | 422 [`validation-failed`](../error-types.md#validation-failed), example `zero-receipt` | `Prefer: code=422, example=zero-receipt`<br>`Accept: application/problem+json` |
+
+### Success: Movement recorded
+
+The dialog closes, and the item and its history load again.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`POST /stock-items/{itemId}/movements`](#post-stock-itemsitemidmovements) | 201 Created, example `receipt` | `Prefer: code=201, example=receipt` |
 
 ## Endpoints
 

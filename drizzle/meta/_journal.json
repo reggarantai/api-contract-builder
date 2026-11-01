@@ -50,6 +50,20 @@
       "when": 1793492601894,
       "tag": "0006_error_types",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1793534799697,
+      "tag": "0007_page_states",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1793536061237,
+      "tag": "0008_revisions",
+      "breakpoints": true
     }
   ]
 }

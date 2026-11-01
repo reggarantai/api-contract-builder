@@ -13,7 +13,7 @@ import type { Db } from "../db/client";
 import { findProject, touchProject } from "../db/projects";
 import { checkModelRefs, usersOfModel } from "../db/references";
 import { type ModelRow, models } from "../db/schema";
-import { jsonBody, validationFailed } from "../validation";
+import { jsonBody, staleRevision, validationFailed } from "../validation";
 
 function toSummary(row: ModelRow): ModelSummary {
   return {
@@ -27,7 +27,7 @@ function toSummary(row: ModelRow): ModelSummary {
 }
 
 export function toModel(row: ModelRow): Model {
-  return { ...toSummary(row), schema: row.schema };
+  return { ...toSummary(row), schema: row.schema, revision: row.revision };
 }
 
 function projectNotFound(c: Context) {
@@ -145,7 +145,11 @@ export function modelRoutes(db: Db) {
         if (!existing) {
           return modelNotFound(c);
         }
-        const input = c.req.valid("json");
+        const { revision, ...input } = c.req.valid("json");
+        const stale = staleRevision(c, "model", revision, existing.revision);
+        if (stale) {
+          return stale;
+        }
         if (
           input.name !== undefined &&
           isNameTaken(db, existing.projectId, input.name, existing.id)
@@ -168,7 +172,7 @@ export function modelRoutes(db: Db) {
         const now = new Date();
         const row = db
           .update(models)
-          .set({ ...input, updatedAt: now })
+          .set({ ...input, revision: existing.revision + 1, updatedAt: now })
           .where(eq(models.id, existing.id))
           .returning()
           .get();

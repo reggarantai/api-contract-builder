@@ -12,6 +12,15 @@ import {
   type JsonValue,
 } from "../../shared/json-schema";
 import {
+  PAGE_STATE_KIND_LABELS,
+  type PageState,
+  prismHeaderLines,
+  type ResolvedCause,
+  resolveCause,
+  type StateCause,
+} from "../../shared/page-states";
+import {
+  linkLabel,
   type Mockup,
   PAGE_TRIGGER_LABELS,
   type Page,
@@ -64,6 +73,13 @@ function tableWithExamples(
       );
 }
 
+/** "`a`", "`a` and `b`", "`a`, `b`, and `c`" */
+function andList(items: string[]) {
+  return items.length <= 2
+    ? items.join(" and ")
+    : `${items.slice(0, -1).join(", ")}, and ${items.at(-1)}`;
+}
+
 /**
  * The Markdown bundle for people: a README, one file per page, the models,
  * and the mockup images. Paths are relative to the bundle's folder.
@@ -94,6 +110,9 @@ export function buildMarkdownFiles(
   );
   const errorTypeLink = (name: string, pathToRoot: string) =>
     `${pathToRoot}error-types.md#${anchorOf(name)}`;
+  const endpointsById = new Map(
+    input.endpoints.map((endpoint) => [endpoint.id, endpoint]),
+  );
 
   const files: Record<string, string | Uint8Array> = {};
 
@@ -193,6 +212,104 @@ export function buildMarkdownFiles(
     ).trimEnd();
   }
 
+  /** A mockup as an image in a page file, with its caption below. */
+  function mockupImage(mockup: Mockup) {
+    const imagePath = imagePaths.get(mockup.id);
+    const label = mockup.caption || mockup.originalName;
+    return imagePath
+      ? [
+          `![${label}](../${imagePath})${mockup.caption ? `\n\n_${mockup.caption}_` : ""}`,
+        ]
+      : [];
+  }
+
+  /**
+   * Each state: the calls it waits for, what it shows, the responses that
+   * lead to it with the Prism headers that answer with each (when the bundle
+   * has the OpenAPI file to mock), and its mockups.
+   */
+  function statesSection(page: Page) {
+    const call = ({ link, endpoint }: ResolvedCause) => {
+      const label = endpointLabel(endpoint);
+      const trigger = linkLabel(link, endpoint, page.endpoints).slice(
+        label.length,
+      );
+      return `[\`${label}\`](#${anchorOf(label)})${trigger}`;
+    };
+    const response = (cause: StateCause, resolved: ResolvedCause) => {
+      const { errorType, example } = resolved;
+      if (errorType) {
+        const named =
+          cause.type === "error" && cause.exampleId !== null && example
+            ? `, example \`${example.name}\``
+            : "";
+        return `${errorType.status} [\`${errorType.name}\`](${errorTypeLink(errorType.name, "../")})${named}`;
+      }
+      const status = `${resolved.response?.status} ${cell(resolved.response?.description ?? "")}`;
+      return example ? `${status}, example \`${example.name}\`` : status;
+    };
+    const stateSection = (state: PageState) => {
+      const causes = state.causes.flatMap((cause) => {
+        const resolved = resolveCause(
+          cause,
+          page.endpoints,
+          endpointsById,
+          errorTypesById,
+        );
+        return "error" in resolved ? [] : [{ cause, resolved }];
+      });
+      const calls = causes.filter(({ cause }) => cause.type === "request");
+      const responses = causes.filter(({ cause }) => cause.type !== "request");
+      return blocks(
+        `### ${PAGE_STATE_KIND_LABELS[state.kind]}: ${state.name}`,
+        calls.length > 0 &&
+          `While ${andList(calls.map(({ resolved }) => call(resolved)))} ${calls.length === 1 ? "runs" : "run"}.`,
+        state.description,
+        responses.length > 0 &&
+          table(
+            [
+              "Comes from",
+              "Response",
+              ...(assets.openApi ? ["Prism headers"] : []),
+            ],
+            responses.map(({ cause, resolved }) => [
+              call(resolved),
+              response(cause, resolved),
+              ...(assets.openApi
+                ? [
+                    resolved.mock
+                      ? prismHeaderLines(resolved.mock)
+                          .map((line) => `\`${line}\``)
+                          .join("<br>")
+                      : "—",
+                  ]
+                : []),
+            ]),
+          ),
+        ...page.mockups
+          .filter((mockup) => state.mockupIds.includes(mockup.id))
+          .flatMap(mockupImage),
+      ).trimEnd();
+    };
+    return `## States\n\n${page.states.map(stateSection).join("\n\n")}`;
+  }
+
+  /**
+   * Mockups, or with states, those no state shows: the others are with their
+   * states. Null when every mockup is.
+   */
+  function mockupsSection(page: Page) {
+    const shown = new Set(page.states.flatMap((state) => state.mockupIds));
+    const rest = page.mockups.filter((mockup) => !shown.has(mockup.id));
+    const images = rest.flatMap(mockupImage);
+    if (shown.size === 0) {
+      return `## Mockups\n\n${images.length > 0 ? images.join("\n\n") : "_No mockups yet._"}`;
+    }
+    return images.length > 0
+      ? `## Other mockups\n\n${images.join("\n\n")}`
+      : null;
+  }
+
   function endpointSection(endpoint: Endpoint, page: Page) {
     const context = contextFor("../");
     const when = page.endpoints
@@ -285,22 +402,14 @@ export function buildMarkdownFiles(
       return endpoint ? [{ link, endpoint }] : [];
     });
     const endpoints = [...new Set(links.map(({ endpoint }) => endpoint))];
-    const mockups = page.mockups.flatMap((mockup) => {
-      const imagePath = imagePaths.get(mockup.id);
-      const label = mockup.caption || mockup.originalName;
-      return imagePath
-        ? [
-            `![${label}](../${imagePath})${mockup.caption ? `\n\n_${mockup.caption}_` : ""}`,
-          ]
-        : [];
-    });
 
     files[pageFile(page)] = blocks(
       `# ${page.name}`,
       `Part of [${project.name}](../README.md).`,
       `## Description\n\n${page.description || "_No description yet._"}`,
       `## Acceptance criteria\n\n${page.acceptanceCriteria || "_None yet._"}`,
-      `## Mockups\n\n${mockups.length > 0 ? mockups.join("\n\n") : "_No mockups yet._"}`,
+      page.states.length > 0 && statesSection(page),
+      mockupsSection(page),
       `## Endpoints\n\n${
         links.length > 0
           ? table(
@@ -522,6 +631,11 @@ export function buildMarkdownFiles(
             'curl -H "Prefer: example=<example name>" http://127.0.0.1:4010/<path>',
             "```",
           ].join("\n"),
+          ...(scope.pages.some((page) => page.states.length > 0)
+            ? [
+                "Page files list each state with the headers that make Prism answer with it. Separate preferences with a comma, as in `Prefer: code=404, example=<example name>`: after a semicolon, Prism ignores the example. Loading states have none, since Prism answers right away; slow the network down in the browser's developer tools to see them.",
+              ]
+            : []),
         ].join("\n\n")
       : "> This contract isn't valid OpenAPI yet, so the bundle has no OpenAPI file. Fix the problems listed on the Export tab and export again.",
   );

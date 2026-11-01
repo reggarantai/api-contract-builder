@@ -72,7 +72,9 @@ export function useUpdateModel(projectId: string, modelId: string) {
       apiPatch(modelsPath(projectId, modelId), input, modelSchema),
     onSuccess: (model) => {
       queryClient.setQueryData(modelKeys.detail(projectId, model.id), model);
-      return invalidateLists();
+      // Lists refresh in the background: the editor resets from the saved
+      // item, and doesn't wait for them.
+      void invalidateLists();
     },
   });
 }

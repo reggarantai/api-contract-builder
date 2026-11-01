@@ -45,6 +45,16 @@ export const SAMPLE_MOCKUPS = {
   stockItemForm: [{ name: "stock-item-form", caption: "Edit mode" }],
 };
 
+/** Mockups of Stock list's states, uploaded with them. */
+export const SAMPLE_STATE_MOCKUPS = [
+  { name: "stock-list-loading", caption: "Grey rows while the items load" },
+  { name: "stock-list-empty", caption: "Nothing matches the search" },
+  {
+    name: "stock-list-delete-error",
+    caption: "The item still has stock, so it can't be deleted",
+  },
+];
+
 const DESCRIPTION = `Stock tracking for the warehouse team: accounts and sign-in, stock items, and stock movements.
 
 Every endpoint follows these conventions:
@@ -310,6 +320,8 @@ export async function buildInventorySample(
   client: { request: Request; upload: Upload },
   readMockup: (name: string) => Uint8Array,
   onProjectCreated: (projectId: string) => void = () => {},
+  /** `states: false` leaves out the page states, as the sample was before them. */
+  options: { states?: boolean } = {},
 ) {
   const { request, upload } = client;
   const project = await send<{ id: string; slug: string }>(
@@ -1731,6 +1743,483 @@ export async function buildInventorySample(
     ],
     SAMPLE_MOCKUPS.stockItemForm,
   );
+
+  // --- Page states ------------------------------------------------------------
+  // What each page shows, and the calls and responses that lead there. A
+  // separate step, so tests can build the sample as it was before states.
+  if (options.states !== false) {
+    await upload(
+      `${base}/pages/${stockListPage.id}/mockups`,
+      SAMPLE_STATE_MOCKUPS.map((mockup) => ({
+        name: `${mockup.name}.png`,
+        type: "image/png",
+        data: readMockup(mockup.name),
+      })),
+    );
+    const stockListPath = `${base}/pages/${stockListPage.id}`;
+    const stockListMockups = (
+      await send<{ mockups: { id: string; originalName: string }[] }>(
+        request,
+        "GET",
+        stockListPath,
+      )
+    ).mockups;
+    for (const mockup of SAMPLE_STATE_MOCKUPS) {
+      const uploaded = stockListMockups.find(
+        (item) => item.originalName === `${mockup.name}.png`,
+      );
+      await send(request, "PATCH", `${stockListPath}/mockups/${uploaded?.id}`, {
+        caption: mockup.caption,
+      });
+    }
+
+    type Kind = "idle" | "loading" | "success" | "empty" | "error";
+    type Cause = Record<string, string | null>;
+    async function states(
+      pageId: string,
+      list: (call: {
+        /** The page's call to an endpoint (with its trigger, when it calls it twice). */
+        to: (endpoint: { id: string }, trigger?: string) => string;
+        /** A mockup of the page, by file name without .png. */
+        mockup: (name: string) => string;
+      }) => [Kind, string, string, Cause[], string[]?][],
+    ) {
+      const path = `${base}/pages/${pageId}`;
+      const page = await send<{
+        endpoints: { id: string; endpointId: string; trigger: string }[];
+        mockups: { id: string; originalName: string }[];
+      }>(request, "GET", path);
+      const to = (endpoint: { id: string }, trigger?: string) =>
+        page.endpoints.find(
+          (link) =>
+            link.endpointId === endpoint.id &&
+            (trigger === undefined || link.trigger === trigger),
+        )?.id ?? "";
+      const mockup = (name: string) =>
+        page.mockups.find((item) => item.originalName === `${name}.png`)?.id ??
+        "";
+      await send(request, "PATCH", path, {
+        states: list({ to, mockup }).map(
+          ([kind, name, description, causes, mockupNames = []], index) => ({
+            id: `s${index + 1}`,
+            kind,
+            name,
+            description,
+            causes,
+            mockupIds: mockupNames,
+          }),
+        ),
+      });
+    }
+    /** The call itself, while it runs. */
+    const running = (linkId: string): Cause => ({ type: "request", linkId });
+    /** A response, or one of its examples. */
+    const answered = (
+      linkId: string,
+      status: string,
+      example: string | null = null,
+    ): Cause => ({
+      type: "response",
+      linkId,
+      responseId: status,
+      exampleId: example,
+    });
+    /** An error type, or one of the endpoint's own examples of it. */
+    const failed = (
+      linkId: string,
+      error: { id: string },
+      example: string | null = null,
+    ): Cause => ({
+      type: "error",
+      linkId,
+      errorTypeId: error.id,
+      exampleId: example,
+    });
+    const fieldErrors =
+      "Each error in `errors` shows under the field its `pointer` names.";
+    const retryLater = "Says when the user can try again, from `Retry-After`.";
+
+    await states(loginPage.id, ({ to, mockup }) => [
+      [
+        "idle",
+        "Sign-in form",
+        "Email, password, and *Keep me signed in*, with links to Registration and Forgot password.",
+        [],
+        [mockup("login-form")],
+      ],
+      [
+        "loading",
+        "Signing in",
+        "The button shows a spinner, and the form can't be sent again until the answer comes.",
+        [running(to(login))],
+      ],
+      [
+        "error",
+        "Wrong email or password",
+        "The API's `detail` shows above the form. The email stays filled in; the password is cleared.",
+        [failed(to(login), catalog.invalidCredentials)],
+        [mockup("login-error")],
+      ],
+      [
+        "error",
+        "Invalid email",
+        "The message shows under the email field.",
+        [failed(to(login), catalog.validationFailed, "invalid-email")],
+      ],
+      [
+        "error",
+        "Email not verified",
+        "The API's `detail` shows above the form, with a button that sends a new verification email.",
+        [failed(to(login), catalog.emailNotVerified)],
+      ],
+      [
+        "success",
+        "Verification email sent",
+        "The button turns into “Sent. Check your email.”",
+        [answered(to(resendVerification), "202")],
+      ],
+      [
+        "error",
+        "Too many attempts",
+        "The button stays disabled, with a countdown, until the `Retry-After` time has passed.",
+        [failed(to(login), catalog.tooManyAttempts)],
+      ],
+      [
+        "success",
+        "Signed in",
+        "Goes to the page the user asked for (only paths within this app), or to Stock list.",
+        [answered(to(login), "200", "signed-in")],
+      ],
+    ]);
+    await states(registrationPage.id, ({ to, mockup }) => [
+      [
+        "idle",
+        "Registration form",
+        "Name, work email, and password.",
+        [],
+        [mockup("registration-form")],
+      ],
+      [
+        "loading",
+        "Creating the account",
+        "The button shows a spinner.",
+        [running(to(register))],
+      ],
+      [
+        "error",
+        "Field errors",
+        fieldErrors,
+        [failed(to(register), catalog.validationFailed)],
+      ],
+      [
+        "error",
+        "Too many emails",
+        retryLater,
+        [failed(to(register), catalog.tooManyRequests)],
+      ],
+      [
+        "success",
+        "Check your email",
+        "Asks the user to check their email and shows the address, whether or not it already had an account.",
+        [answered(to(register), "202")],
+        [mockup("registration-check-email")],
+      ],
+    ]);
+    await states(verifyEmailPage.id, ({ to, mockup }) => [
+      [
+        "loading",
+        "Verifying",
+        "A spinner, while the token from the link is checked.",
+        [running(to(verifyEmail))],
+      ],
+      [
+        "success",
+        "Email verified",
+        "Says the email is verified, with a button to sign in.",
+        [answered(to(verifyEmail), "204")],
+      ],
+      [
+        "error",
+        "Invalid or expired link",
+        "Shows a form to send a new link.",
+        [
+          failed(to(verifyEmail), catalog.invalidLink),
+          failed(to(verifyEmail), catalog.validationFailed, "missing-token"),
+        ],
+        [mockup("verify-email-expired")],
+      ],
+      [
+        "success",
+        "New link sent",
+        "Says to check the email, whether or not the address has an account.",
+        [answered(to(resendVerification), "202")],
+      ],
+      [
+        "error",
+        "Too many emails",
+        retryLater,
+        [failed(to(resendVerification), catalog.tooManyRequests)],
+      ],
+    ]);
+    await states(forgotPasswordPage.id, ({ to, mockup }) => [
+      ["idle", "Email form", "One email field, and Send link.", []],
+      [
+        "loading",
+        "Sending",
+        "The button shows a spinner.",
+        [running(to(forgotPassword))],
+      ],
+      [
+        "success",
+        "Link sent",
+        "Always says “If an account exists for this email, we sent a link”, even for unknown emails.",
+        [answered(to(forgotPassword), "202")],
+        [mockup("forgot-password")],
+      ],
+      [
+        "error",
+        "Invalid email",
+        "The message shows under the email field.",
+        [failed(to(forgotPassword), catalog.validationFailed, "invalid-email")],
+      ],
+      [
+        "error",
+        "Too many emails",
+        retryLater,
+        [failed(to(forgotPassword), catalog.tooManyRequests)],
+      ],
+    ]);
+    await states(resetPasswordPage.id, ({ to, mockup }) => [
+      [
+        "idle",
+        "New password form",
+        "The new password, twice.",
+        [],
+        [mockup("reset-password")],
+      ],
+      [
+        "loading",
+        "Saving",
+        "The button shows a spinner.",
+        [running(to(resetPassword))],
+      ],
+      [
+        "success",
+        "Password changed",
+        "Goes to Login, which says the password was changed and other devices were signed out.",
+        [answered(to(resetPassword), "204")],
+      ],
+      [
+        "error",
+        "Invalid or expired link",
+        "Shows a link to Forgot password.",
+        [failed(to(resetPassword), catalog.invalidLink)],
+      ],
+      [
+        "error",
+        "Weak password",
+        "The message shows under the password field.",
+        [failed(to(resetPassword), catalog.validationFailed)],
+      ],
+    ]);
+    await states(appShellPage.id, ({ to, mockup }) => [
+      [
+        "loading",
+        "Restoring the session",
+        "The navigation shows, and the page waits until the user is known.",
+        [running(to(refresh, "on_load")), running(to(me))],
+      ],
+      [
+        "success",
+        "Signed in",
+        "The user menu shows the user's name and role, and Sign out.",
+        [answered(to(me), "200", "ana")],
+        [mockup("app-shell")],
+      ],
+      [
+        "error",
+        "Session ended",
+        "Goes to Login, and back to this page after signing in.",
+        [
+          failed(to(refresh, "on_load"), catalog.sessionExpired),
+          failed(to(refresh, "other"), catalog.sessionExpired),
+        ],
+      ],
+      [
+        "success",
+        "Signed out",
+        "Goes to Login. It would even if the request failed: the access token is dropped anyway.",
+        [answered(to(logout), "204")],
+      ],
+    ]);
+    await states(stockListPage.id, ({ to, mockup }) => [
+      [
+        "loading",
+        "Loading items",
+        "Grey rows stand in for the items; search and filters stay usable.",
+        [running(to(listItems))],
+        [mockup("stock-list-loading")],
+      ],
+      [
+        "success",
+        "Items",
+        "Low stock shows an amber badge, out of stock a red one.",
+        [answered(to(listItems), "200", "first-page")],
+        [mockup("stock-list")],
+      ],
+      [
+        "empty",
+        "No matching items",
+        "Says that nothing matches, with a button that clears the search and filters.",
+        [answered(to(listItems), "200", "empty")],
+        [mockup("stock-list-empty")],
+      ],
+      [
+        "error",
+        "Can't delete",
+        "The confirmation dialog shows the API's `detail`, and the item stays.",
+        [failed(to(deleteItem), catalog.itemHasStock)],
+        [mockup("stock-list-delete-error")],
+      ],
+      [
+        "success",
+        "Deleted",
+        "The dialog closes, and the list loads again.",
+        [answered(to(deleteItem), "204")],
+      ],
+    ]);
+    await states(stockItemPage.id, ({ to, mockup }) => [
+      [
+        "loading",
+        "Loading the item",
+        "Grey blocks stand in for the details and the history.",
+        [running(to(getItem)), running(to(listMovements))],
+      ],
+      [
+        "success",
+        "Item and history",
+        "The quantity on hand, the stock status, and the movements, newest first.",
+        [
+          answered(to(getItem), "200", "box"),
+          answered(to(listMovements), "200", "history"),
+        ],
+        [mockup("stock-item")],
+      ],
+      [
+        "error",
+        "Item not found",
+        "Says the item doesn't exist or was deleted, with a link back to Stock list.",
+        [
+          failed(to(getItem), catalog.notFound),
+          failed(to(listMovements), catalog.notFound),
+        ],
+      ],
+      [
+        "idle",
+        "Record movement dialog",
+        "Receipt, Issue, or Count, with the quantity, a reference, and a note.",
+        [],
+        [mockup("record-movement")],
+      ],
+      [
+        "loading",
+        "Recording",
+        "The Record button shows a spinner. A `request-in-progress` answer means the first request still runs: send it again after `Retry-After` seconds, with the same key.",
+        [
+          running(to(recordMovement)),
+          failed(to(recordMovement), catalog.requestInProgress),
+        ],
+      ],
+      [
+        "error",
+        "Not enough stock",
+        "The dialog shows the API's `detail` and stays open.",
+        [failed(to(recordMovement), catalog.insufficientStock)],
+      ],
+      [
+        "error",
+        "Invalid movement",
+        "The message shows under the quantity.",
+        [failed(to(recordMovement), catalog.validationFailed, "zero-receipt")],
+      ],
+      [
+        "success",
+        "Movement recorded",
+        "The dialog closes, and the item and its history load again.",
+        [answered(to(recordMovement), "201", "receipt")],
+      ],
+    ]);
+    await states(stockItemFormPage.id, ({ to, mockup }) => [
+      [
+        "loading",
+        "Loading",
+        "The form waits for the categories, and when editing, for the item.",
+        [running(to(categories)), running(to(getItem))],
+      ],
+      [
+        "idle",
+        "New item",
+        "Empty fields; the category select lists the categories.",
+        [],
+      ],
+      [
+        "success",
+        "Editing an item",
+        "The fields hold the item's values.",
+        [answered(to(getItem), "200", "box")],
+        [mockup("stock-item-form")],
+      ],
+      [
+        "error",
+        "Item not found",
+        "When editing: says the item doesn't exist or was deleted.",
+        [failed(to(getItem), catalog.notFound)],
+      ],
+      [
+        "loading",
+        "Saving",
+        "The Save button shows a spinner. A `request-in-progress` answer means the first request still runs: send it again after `Retry-After` seconds, with the same key.",
+        [
+          running(to(createItem)),
+          running(to(updateItem)),
+          failed(to(createItem), catalog.requestInProgress),
+        ],
+      ],
+      [
+        "error",
+        "SKU already used",
+        "The API's `detail` shows under the SKU field.",
+        [
+          failed(to(createItem), catalog.skuTaken),
+          failed(to(updateItem), catalog.skuTaken),
+        ],
+      ],
+      [
+        "error",
+        "Unit can't change",
+        "The API's `detail` shows under the unit field.",
+        [failed(to(updateItem), catalog.unitLocked)],
+      ],
+      [
+        "error",
+        "Field errors",
+        fieldErrors,
+        [
+          failed(to(createItem), catalog.validationFailed),
+          failed(to(updateItem), catalog.validationFailed),
+        ],
+      ],
+      [
+        "success",
+        "Saved",
+        "Goes to the item's page.",
+        [
+          answered(to(createItem), "201", "created"),
+          answered(to(updateItem), "200", "updated"),
+        ],
+      ],
+    ]);
+  }
 
   return {
     projectId: project.id,

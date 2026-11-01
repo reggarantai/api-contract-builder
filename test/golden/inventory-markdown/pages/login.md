@@ -13,15 +13,73 @@ Everyone who works with stock signs in here. Links to Registration and Forgot pa
 - [ ] After too many attempts, the button stays disabled until the time from `Retry-After` has passed
 - [ ] After signing in, the user lands on the page they asked for (only paths within this app), or on Stock list
 
-## Mockups
+## States
+
+### Idle: Sign-in form
+
+Email, password, and *Keep me signed in*, with links to Registration and Forgot password.
 
 ![Sign-in form](../images/login/01-login-form.png)
 
 _Sign-in form_
 
+### Loading: Signing in
+
+While [`POST /auth/login`](#post-authlogin) runs.
+
+The button shows a spinner, and the form can't be sent again until the answer comes.
+
+### Error: Wrong email or password
+
+The API's `detail` shows above the form. The email stays filled in; the password is cleared.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`POST /auth/login`](#post-authlogin) | 400 [`invalid-credentials`](../error-types.md#invalid-credentials) | `Prefer: code=400, example=invalid-credentials`<br>`Accept: application/problem+json` |
+
 ![Wrong email or password](../images/login/02-login-error.png)
 
 _Wrong email or password_
+
+### Error: Invalid email
+
+The message shows under the email field.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`POST /auth/login`](#post-authlogin) | 422 [`validation-failed`](../error-types.md#validation-failed), example `invalid-email` | `Prefer: code=422, example=invalid-email`<br>`Accept: application/problem+json` |
+
+### Error: Email not verified
+
+The API's `detail` shows above the form, with a button that sends a new verification email.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`POST /auth/login`](#post-authlogin) | 403 [`email-not-verified`](../error-types.md#email-not-verified) | `Prefer: code=403, example=email-not-verified`<br>`Accept: application/problem+json` |
+
+### Success: Verification email sent
+
+The button turns into “Sent. Check your email.”
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`POST /auth/verify-email/resend`](#post-authverify-emailresend) | 202 Accepted | `Prefer: code=202` |
+
+### Error: Too many attempts
+
+The button stays disabled, with a countdown, until the `Retry-After` time has passed.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`POST /auth/login`](#post-authlogin) | 429 [`too-many-attempts`](../error-types.md#too-many-attempts) | `Prefer: code=429, example=too-many-attempts`<br>`Accept: application/problem+json` |
+
+### Success: Signed in
+
+Goes to the page the user asked for (only paths within this app), or to Stock list.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`POST /auth/login`](#post-authlogin) | 200 OK, example `signed-in` | `Prefer: code=200, example=signed-in` |
 
 ## Endpoints
 

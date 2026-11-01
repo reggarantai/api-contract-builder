@@ -48,7 +48,7 @@ Unless an endpoint says otherwise, requests use **bearerAuth**.
 | [Forgot password](pages/forgot-password.md) | 1 | 1 |
 | [Reset password](pages/reset-password.md) | 1 | 1 |
 | [App shell](pages/app-shell.md) | 3 | 1 |
-| [Stock list](pages/stock-list.md) | 3 | 1 |
+| [Stock list](pages/stock-list.md) | 3 | 4 |
 | [Stock item](pages/stock-item.md) | 3 | 2 |
 | [Add or edit stock item](pages/add-or-edit-stock-item.md) | 4 | 1 |
 
@@ -113,3 +113,5 @@ Ask for a specific response or a named example with the `Prefer` header:
 curl -H "Prefer: code=404" http://127.0.0.1:4010/<path>
 curl -H "Prefer: example=<example name>" http://127.0.0.1:4010/<path>
 ```
+
+Page files list each state with the headers that make Prism answer with it. Separate preferences with a comma, as in `Prefer: code=404, example=<example name>`: after a semicolon, Prism ignores the example. Loading states have none, since Prism answers right away; slow the network down in the browser's developer tools to see them.

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { revisionInputSchema, revisionSchema } from "./revision";
 import { SLUG_MAX_LENGTH, SLUG_PATTERN } from "./slug";
 
 export const projectNameSchema = z
@@ -185,10 +186,13 @@ export const createProjectInputSchema = z.object({
   apiVersion: apiVersionSchema.default(DEFAULT_API_VERSION),
 });
 
-export const updateProjectInputSchema = projectSettingsFieldsSchema.partial();
+export const updateProjectInputSchema = projectSettingsFieldsSchema
+  .partial()
+  .extend({ revision: revisionInputSchema });
 
 export const projectSchema = projectSettingsFieldsSchema.extend({
   id: z.string(),
+  revision: revisionSchema,
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });

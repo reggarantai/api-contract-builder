@@ -1,5 +1,8 @@
 import { z } from "zod";
+import { type EndpointFields, endpointLabel } from "./endpoints";
+import { addPageStateIssues, pageStatesSchema } from "./page-states";
 import { slugSchema } from "./projects";
+import { revisionInputSchema, revisionSchema } from "./revision";
 
 /** When a page calls an endpoint. */
 export const PAGE_TRIGGERS = [
@@ -49,12 +52,23 @@ const pageFieldsBaseSchema = z.object({
   acceptanceCriteria: markdownSchema,
   /** The endpoints the page calls, in the order it calls them. */
   endpoints: z.array(pageEndpointLinkSchema).max(50),
+  /** What the page shows, and what leads to each state. */
+  states: pageStatesSchema,
 });
 
 export const pageFieldsSchema = pageFieldsBaseSchema.superRefine(
   (page, ctx) => {
     const seen = new Set<string>();
+    const ids = new Set<string>();
     page.endpoints.forEach((link, index) => {
+      if (ids.has(link.id)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["endpoints", index, "id"],
+          message: "Another link has this ID",
+        });
+      }
+      ids.add(link.id);
       const key = `${link.endpointId} ${link.trigger}`;
       if (seen.has(key)) {
         ctx.addIssue({
@@ -65,6 +79,7 @@ export const pageFieldsSchema = pageFieldsBaseSchema.superRefine(
       }
       seen.add(key);
     });
+    addPageStateIssues(ctx, page);
   },
 );
 
@@ -74,7 +89,9 @@ export const createPageInputSchema = z.object({
   slug: slugSchema.optional(),
 });
 
-export const updatePageInputSchema = pageFieldsBaseSchema.partial();
+export const updatePageInputSchema = pageFieldsBaseSchema
+  .partial()
+  .extend({ revision: revisionInputSchema });
 
 export const pageOrderInputSchema = z.object({
   pageIds: z.array(z.string()),
@@ -105,6 +122,8 @@ export const pageSchema = pageFieldsBaseSchema.extend({
   id: z.string(),
   projectId: z.string(),
   mockups: z.array(mockupSchema),
+  /** Counts saves of the page's fields; mockups, saved apart, don't count. */
+  revision: revisionSchema,
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
@@ -119,6 +138,22 @@ export const pageSummarySchema = z.object({
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
+
+/**
+ * "GET /stock-items", and the trigger too when the page makes the same call
+ * more than once: "POST /auth/refresh (When the page loads)".
+ */
+export function linkLabel(
+  link: PageEndpointLink,
+  endpoint: Pick<EndpointFields, "method" | "path">,
+  links: PageEndpointLink[],
+) {
+  const label = endpointLabel(endpoint);
+  const calls = links.filter((item) => item.endpointId === link.endpointId);
+  return calls.length > 1
+    ? `${label} (${PAGE_TRIGGER_LABELS[link.trigger]})`
+    : label;
+}
 
 export type PageFields = z.infer<typeof pageFieldsBaseSchema>;
 export type PageEndpointLink = z.infer<typeof pageEndpointLinkSchema>;

@@ -12,11 +12,82 @@ One form for both: `/stock-items/new` adds an item and `/stock-items/{id}/edit` 
 - [ ] A 409 shows its `detail` under the field it's about: SKU or unit
 - [ ] After saving, the user goes to the item's page
 
-## Mockups
+## States
+
+### Loading: Loading
+
+While [`GET /categories`](#get-categories) and [`GET /stock-items/{itemId}`](#get-stock-itemsitemid) run.
+
+The form waits for the categories, and when editing, for the item.
+
+### Idle: New item
+
+Empty fields; the category select lists the categories.
+
+### Success: Editing an item
+
+The fields hold the item's values.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`GET /stock-items/{itemId}`](#get-stock-itemsitemid) | 200 OK, example `box` | `Prefer: code=200, example=box` |
 
 ![Edit mode](../images/add-or-edit-stock-item/01-stock-item-form.png)
 
 _Edit mode_
+
+### Error: Item not found
+
+When editing: says the item doesn't exist or was deleted.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`GET /stock-items/{itemId}`](#get-stock-itemsitemid) | 404 [`not-found`](../error-types.md#not-found) | `Prefer: code=404, example=not-found`<br>`Accept: application/problem+json` |
+
+### Loading: Saving
+
+While [`POST /stock-items`](#post-stock-items) and [`PATCH /stock-items/{itemId}`](#patch-stock-itemsitemid) run.
+
+The Save button shows a spinner. A `request-in-progress` answer means the first request still runs: send it again after `Retry-After` seconds, with the same key.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`POST /stock-items`](#post-stock-items) | 409 [`request-in-progress`](../error-types.md#request-in-progress) | `Prefer: code=409, example=request-in-progress`<br>`Accept: application/problem+json` |
+
+### Error: SKU already used
+
+The API's `detail` shows under the SKU field.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`POST /stock-items`](#post-stock-items) | 409 [`sku-taken`](../error-types.md#sku-taken) | `Prefer: code=409, example=sku-taken`<br>`Accept: application/problem+json` |
+| [`PATCH /stock-items/{itemId}`](#patch-stock-itemsitemid) | 409 [`sku-taken`](../error-types.md#sku-taken) | `Prefer: code=409, example=sku-taken`<br>`Accept: application/problem+json` |
+
+### Error: Unit can't change
+
+The API's `detail` shows under the unit field.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`PATCH /stock-items/{itemId}`](#patch-stock-itemsitemid) | 409 [`unit-locked`](../error-types.md#unit-locked) | `Prefer: code=409, example=unit-locked`<br>`Accept: application/problem+json` |
+
+### Error: Field errors
+
+Each error in `errors` shows under the field its `pointer` names.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`POST /stock-items`](#post-stock-items) | 422 [`validation-failed`](../error-types.md#validation-failed) | `Prefer: code=422, example=unknown-category`<br>`Accept: application/problem+json` |
+| [`PATCH /stock-items/{itemId}`](#patch-stock-itemsitemid) | 422 [`validation-failed`](../error-types.md#validation-failed) | `Prefer: code=422, example=negative-reorder-point`<br>`Accept: application/problem+json` |
+
+### Success: Saved
+
+Goes to the item's page.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`POST /stock-items`](#post-stock-items) | 201 Created, example `created` | `Prefer: code=201, example=created` |
+| [`PATCH /stock-items/{itemId}`](#patch-stock-itemsitemid) | 200 OK, example `updated` | `Prefer: code=200, example=updated` |
 
 ## Endpoints
 

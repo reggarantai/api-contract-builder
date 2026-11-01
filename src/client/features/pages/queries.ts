@@ -88,7 +88,9 @@ export function useUpdatePage(projectId: string, pageId: string) {
       apiPatch(pagesPath(projectId, pageId), input, pageSchema),
     onSuccess: (page) => {
       queryClient.setQueryData(pageKeys.detail(projectId, page.id), page);
-      return invalidateLists();
+      // Lists refresh in the background: the editor resets from the saved
+      // item, and doesn't wait for them.
+      void invalidateLists();
     },
   });
 }
@@ -210,14 +212,24 @@ export function useReorderMockups(projectId: string, pageId: string) {
 }
 
 export function useDeleteMockup(projectId: string, pageId: string) {
-  const setMockups = useSetMockups(projectId, pageId);
+  const queryClient = useQueryClient();
   const invalidateLists = useInvalidateLists(projectId);
   return useMutation({
     mutationFn: (mockupId: string) =>
       apiDelete(mockupsPath(projectId, pageId, mockupId)),
     onSuccess: (_result, mockupId) => {
-      setMockups((mockups) =>
-        mockups.filter((mockup) => mockup.id !== mockupId),
+      // The server takes it out of the states that showed it, too.
+      queryClient.setQueryData(
+        pageKeys.detail(projectId, pageId),
+        (page: Page | undefined) =>
+          page && {
+            ...page,
+            mockups: page.mockups.filter((mockup) => mockup.id !== mockupId),
+            states: page.states.map((state) => ({
+              ...state,
+              mockupIds: state.mockupIds.filter((id) => id !== mockupId),
+            })),
+          },
       );
       return invalidateLists();
     },

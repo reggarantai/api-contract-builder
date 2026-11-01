@@ -24,3 +24,27 @@ export function jsonBody<T extends z.ZodType>(schema: T) {
     return result.data as z.output<T>;
   });
 }
+
+/**
+ * A 409 for a save based on an older revision than the stored one, so it
+ * doesn't overwrite a save made since (RFC 9110 gives this as its example of
+ * a conflict). Undefined when the save is current, or names no revision, like
+ * saves from clients that predate revisions.
+ */
+export function staleRevision(
+  c: Context,
+  what: string,
+  sent: number | undefined,
+  current: number,
+) {
+  if (sent === undefined || sent === current) {
+    return undefined;
+  }
+  return c.json<ApiErrorBody>(
+    {
+      error: `This ${what} was saved again since revision ${sent}. It's at revision ${current} now: load it, or send that revision to save over it.`,
+      revision: current,
+    },
+    409,
+  );
+}

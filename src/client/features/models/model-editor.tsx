@@ -12,6 +12,7 @@ import { useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
+import { ConflictDialog } from "@/components/conflict-dialog";
 import { SaveButtons } from "@/components/save-buttons";
 import {
   AlertDialog,
@@ -36,9 +37,11 @@ import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { showRequestError } from "@/lib/forms";
+import { useSavedForm } from "@/lib/saved-form";
 import { SchemaEditor } from "../schema-editor/schema-editor";
 import {
   modelKeys,
+  modelQueryOptions,
   modelsQueryOptions,
   useDeleteModel,
   useUpdateModel,
@@ -52,6 +55,14 @@ const formSchema = z.object({
 
 type FormValues = z.input<typeof formSchema>;
 
+function fieldsOf(model: Model): FormValues {
+  return {
+    name: model.name,
+    description: model.description,
+    schema: model.schema,
+  };
+}
+
 export function ModelEditor({
   projectId,
   model,
@@ -61,20 +72,18 @@ export function ModelEditor({
 }) {
   const models = useQuery(modelsQueryOptions(projectId)).data ?? [];
   const updateModel = useUpdateModel(projectId, model.id);
-  const values = useMemo<FormValues>(
-    () => ({
-      name: model.name,
-      description: model.description,
-      schema: model.schema,
-    }),
-    [model.name, model.description, model.schema],
-  );
+  const values = useMemo<FormValues>(() => fieldsOf(model), [model]);
+  // The first values only: `useSavedForm` decides when later ones replace the
+  // form. (`defaultValues` would do, but its deep-partial type makes
+  // TypeScript expand the recursive JSON Schema type until it gives up.)
+  const [initialValues] = useState(values);
   const form = useForm<FormValues, unknown, z.output<typeof formSchema>>({
     resolver: zodResolver(formSchema),
-    values,
+    values: initialValues,
   });
   const [schemaValid, setSchemaValid] = useState(true);
-  // Remounts the schema editor on discard, so JSON mode reloads its text.
+  // Remounts the schema editor when the form gets other values, so JSON mode
+  // reloads its text.
   const [editorKey, setEditorKey] = useState(0);
   // JSON that doesn't parse yet is an unsaved change too.
   const hasChanges = form.formState.isDirty || !schemaValid;
@@ -85,21 +94,37 @@ export function ModelEditor({
     enableBeforeUnload: () => hasChanges,
   });
 
-  function discard() {
-    form.reset(values);
-    setSchemaValid(true);
-    setEditorKey((key) => key + 1);
-  }
+  const queryClient = useQueryClient();
+  const saved = useSavedForm<FormValues, z.output<typeof formSchema>>({
+    values,
+    revision: model.revision,
+    hasChanges: () => form.formState.isDirty || !schemaValid,
+    reset: (next, reason) => {
+      form.reset(next);
+      if (reason !== "saved") {
+        setSchemaValid(true);
+        setEditorKey((key) => key + 1);
+      }
+    },
+    send: async (input, revision) => {
+      const saved = await updateModel.mutateAsync({ ...input, revision });
+      return { values: fieldsOf(saved), revision: saved.revision };
+    },
+    load: async () => {
+      const current = await queryClient.fetchQuery({
+        ...modelQueryOptions(projectId, model.id),
+        staleTime: 0,
+      });
+      return { values: fieldsOf(current), revision: current.revision };
+    },
+    onSaved: () => toast.success("Model saved"),
+    onError: (error) => showRequestError(error, form.setError),
+  });
 
-  const onSubmit = form.handleSubmit((input) =>
-    updateModel.mutate(input, {
-      onSuccess: () => toast.success("Model saved"),
-      onError: (error) => showRequestError(error, form.setError),
-    }),
-  );
+  const onSubmit = form.handleSubmit((input) => saved.save(input));
 
   return (
-    <form onSubmit={onSubmit}>
+    <form onSubmit={onSubmit} inert={saved.busy}>
       <Card>
         <CardHeader>
           <CardTitle className="font-mono">{model.name}</CardTitle>
@@ -172,10 +197,11 @@ export function ModelEditor({
             isDirty={hasChanges}
             isSaving={updateModel.isPending}
             canSave={schemaValid}
-            onReset={discard}
+            onReset={saved.discard}
           />
         </CardFooter>
       </Card>
+      <ConflictDialog what="model" {...saved.conflict} />
     </form>
   );
 }

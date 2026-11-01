@@ -81,7 +81,9 @@ export function useUpdateErrorType(projectId: string, errorTypeId: string) {
         errorTypeKeys.detail(projectId, errorType.id),
         errorType,
       );
-      return invalidateLists();
+      // Lists refresh in the background: the editor resets from the saved
+      // item, and doesn't wait for them.
+      void invalidateLists();
     },
   });
 }

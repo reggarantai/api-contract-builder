@@ -6,6 +6,7 @@ import { ArrowLeftIcon, EyeIcon, Trash2Icon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { ConflictDialog } from "@/components/conflict-dialog";
 import { MarkdownField } from "@/components/markdown-field";
 import { SaveButtons } from "@/components/save-buttons";
 import {
@@ -27,10 +28,28 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { showRequestError } from "@/lib/forms";
+import { useSavedForm } from "@/lib/saved-form";
 import { endpointsQueryOptions } from "../endpoints/queries";
 import { EndpointLinksEditor } from "./endpoint-links-editor";
 import { MockupsManager } from "./mockups-manager";
-import { pageKeys, useDeletePage, useUpdatePage } from "./queries";
+import {
+  pageKeys,
+  pageQueryOptions,
+  useDeletePage,
+  useUpdatePage,
+} from "./queries";
+import { StatesEditor } from "./states-editor";
+
+function fieldsOf(page: Page): PageFields {
+  return {
+    name: page.name,
+    slug: page.slug,
+    description: page.description,
+    acceptanceCriteria: page.acceptanceCriteria,
+    endpoints: page.endpoints,
+    states: page.states,
+  };
+}
 
 export function PageEditor({ page }: { page: Page }) {
   const projectId = page.projectId;
@@ -43,16 +62,55 @@ export function PageEditor({ page }: { page: Page }) {
     description,
     acceptanceCriteria,
     endpoints: links,
+    states,
   } = page;
   const values = useMemo<PageFields>(
-    () => ({ name, slug, description, acceptanceCriteria, endpoints: links }),
-    [name, slug, description, acceptanceCriteria, links],
+    () => ({
+      name,
+      slug,
+      description,
+      acceptanceCriteria,
+      endpoints: links,
+      states,
+    }),
+    [name, slug, description, acceptanceCriteria, links, states],
   );
   const form = useForm<PageFields, unknown, PageFields>({
     resolver: zodResolver(pageFieldsSchema),
-    values,
+    defaultValues: values,
   });
   const { isDirty } = form.formState;
+  const queryClient = useQueryClient();
+  // The page changes outside this form too: deleting a mockup takes it out of
+  // states, and another tab may save it.
+  const saved = useSavedForm<PageFields, PageFields>({
+    values,
+    revision: page.revision,
+    hasChanges: () => form.formState.isDirty,
+    reset: (next) => form.reset(next),
+    send: async (input, revision) => {
+      // States may still list a mockup deleted since the form loaded.
+      const mockupIds = new Set(page.mockups.map((mockup) => mockup.id));
+      const saved = await updatePage.mutateAsync({
+        ...input,
+        states: input.states.map((state) => ({
+          ...state,
+          mockupIds: state.mockupIds.filter((id) => mockupIds.has(id)),
+        })),
+        revision,
+      });
+      return { values: fieldsOf(saved), revision: saved.revision };
+    },
+    load: async () => {
+      const current = await queryClient.fetchQuery({
+        ...pageQueryOptions(projectId, page.id),
+        staleTime: 0,
+      });
+      return { values: fieldsOf(current), revision: current.revision };
+    },
+    onSaved: () => toast.success("Page saved"),
+    onError: (error) => showRequestError(error, form.setError),
+  });
 
   useBlocker({
     shouldBlockFn: () =>
@@ -60,15 +118,10 @@ export function PageEditor({ page }: { page: Page }) {
     enableBeforeUnload: () => isDirty,
   });
 
-  const onSubmit = form.handleSubmit((input) =>
-    updatePage.mutate(input, {
-      onSuccess: () => toast.success("Page saved"),
-      onError: (error) => showRequestError(error, form.setError),
-    }),
-  );
+  const onSubmit = form.handleSubmit((input) => saved.save(input));
 
   return (
-    <form onSubmit={onSubmit} className="grid gap-6">
+    <form onSubmit={onSubmit} inert={saved.busy} className="grid gap-6">
       <div className="flex items-center justify-between gap-4">
         <Button asChild variant="ghost" size="sm" className="-ml-2">
           <Link to="/projects/$projectId/pages" params={{ projectId }}>
@@ -164,11 +217,15 @@ export function PageEditor({ page }: { page: Page }) {
         endpoints={endpoints}
       />
 
+      <StatesEditor form={form} page={page} />
+
+      <ConflictDialog what="page" {...saved.conflict} />
+
       <div className="sticky bottom-0 -mx-2 flex items-center justify-end gap-2 border-t bg-background/95 px-2 py-3 backdrop-blur">
         <SaveButtons
           isDirty={isDirty}
           isSaving={updatePage.isPending}
-          onReset={() => form.reset(values)}
+          onReset={saved.discard}
         />
       </div>
     </form>

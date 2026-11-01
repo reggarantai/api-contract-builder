@@ -12,6 +12,7 @@ import { SparklesIcon, Trash2Icon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { ConflictDialog } from "@/components/conflict-dialog";
 import { SaveButtons } from "@/components/save-buttons";
 import {
   AlertDialog,
@@ -36,12 +37,14 @@ import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { showRequestError } from "@/lib/forms";
+import { useSavedForm } from "@/lib/saved-form";
 import { errorAt } from "../endpoints/editor/form-errors";
 import { endpointsQueryOptions } from "../endpoints/queries";
 import { modelsQueryOptions, useLoadModelSchemas } from "../models/queries";
 import { SchemaEditor } from "../schema-editor/schema-editor";
 import {
   errorTypeKeys,
+  errorTypeQueryOptions,
   useDeleteErrorType,
   useUpdateErrorType,
 } from "./queries";
@@ -72,9 +75,13 @@ export function ErrorTypeEditor({
   const updateErrorType = useUpdateErrorType(projectId, errorType.id);
   const loadModelSchemas = useLoadModelSchemas(projectId);
   const values = useMemo(() => fieldsOf(errorType), [errorType]);
+  // The first values only: `useSavedForm` decides when later ones replace the
+  // form. (`defaultValues` would do, but its deep-partial type makes
+  // TypeScript expand the recursive JSON Schema type until it gives up.)
+  const [initialValues] = useState(values);
   const form = useForm<ErrorTypeFields, unknown, ErrorTypeFields>({
     resolver: zodResolver(errorTypeFieldsSchema),
-    values,
+    values: initialValues,
   });
   // Text that doesn't parse yet (the schemas, the example) can't be saved.
   const [invalid, setInvalid] = useState<ReadonlySet<string>>(new Set());
@@ -94,7 +101,8 @@ export function ErrorTypeEditor({
   const [exampleText, setExampleText] = useState(() =>
     formatValue(errorType.body.example),
   );
-  // Remounts the schema editors on discard, so JSON mode reloads its text.
+  // Remounts the schema editors when the form gets other values, so JSON mode
+  // reloads its text.
   const [editorKey, setEditorKey] = useState(0);
   const hasChanges = form.formState.isDirty || invalid.size > 0;
 
@@ -104,12 +112,33 @@ export function ErrorTypeEditor({
     enableBeforeUnload: () => hasChanges,
   });
 
-  function discard() {
-    form.reset(values);
-    setInvalid(new Set());
-    setExampleText(formatValue(values.body.example));
-    setEditorKey((key) => key + 1);
-  }
+  const queryClient = useQueryClient();
+  const saved = useSavedForm<ErrorTypeFields, ErrorTypeFields>({
+    values,
+    revision: errorType.revision,
+    hasChanges: () => form.formState.isDirty || invalid.size > 0,
+    reset: (next, reason) => {
+      form.reset(next);
+      if (reason !== "saved") {
+        setInvalid(new Set());
+        setExampleText(formatValue(next.body.example));
+        setEditorKey((key) => key + 1);
+      }
+    },
+    send: async (input, revision) => {
+      const saved = await updateErrorType.mutateAsync({ ...input, revision });
+      return { values: fieldsOf(saved), revision: saved.revision };
+    },
+    load: async () => {
+      const current = await queryClient.fetchQuery({
+        ...errorTypeQueryOptions(projectId, errorType.id),
+        staleTime: 0,
+      });
+      return { values: fieldsOf(current), revision: current.revision };
+    },
+    onSaved: () => toast.success("Error type saved"),
+    onError: (error) => showRequestError(error, form.setError),
+  });
 
   function changeExample(text: string) {
     setExampleText(text);
@@ -133,16 +162,11 @@ export function ErrorTypeEditor({
     form.setValue("body.example", example, { shouldDirty: true });
   }
 
-  const onSubmit = form.handleSubmit((input) =>
-    updateErrorType.mutate(input, {
-      onSuccess: () => toast.success("Error type saved"),
-      onError: (error) => showRequestError(error, form.setError),
-    }),
-  );
+  const onSubmit = form.handleSubmit((input) => saved.save(input));
   const { errors } = form.formState;
 
   return (
-    <form onSubmit={onSubmit}>
+    <form onSubmit={onSubmit} inert={saved.busy}>
       <Card>
         <CardHeader>
           <CardTitle className="font-mono">{errorType.name}</CardTitle>
@@ -337,10 +361,11 @@ export function ErrorTypeEditor({
             isDirty={hasChanges}
             isSaving={updateErrorType.isPending}
             canSave={invalid.size === 0}
-            onReset={discard}
+            onReset={saved.discard}
           />
         </CardFooter>
       </Card>
+      <ConflictDialog what="error type" {...saved.conflict} />
     </form>
   );
 }

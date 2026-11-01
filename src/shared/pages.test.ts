@@ -7,6 +7,7 @@ const base: PageFields = {
   description: "",
   acceptanceCriteria: "",
   endpoints: [],
+  states: [],
 };
 
 function issuePaths(page: PageFields) {
@@ -61,6 +62,18 @@ describe("pageFieldsSchema", () => {
         ],
       }),
     ).toEqual(["endpoints.1.endpointId"]);
+  });
+
+  it("rejects two links with the same ID", () => {
+    expect(
+      issuePaths({
+        ...base,
+        endpoints: [
+          { id: "1", endpointId: "stocks", trigger: "on_load", note: "" },
+          { id: "1", endpointId: "me", trigger: "on_load", note: "" },
+        ],
+      }),
+    ).toEqual(["endpoints.1.id"]);
   });
 
   it("requires a name and a valid slug", () => {

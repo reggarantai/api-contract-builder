@@ -12,9 +12,43 @@ New staff create an account with their work email.
 - [ ] After sending, the page asks the user to check their email and shows the address, whether or not it already had an account
 - [ ] A 429 shows when the user can try again
 
-## Mockups
+## States
+
+### Idle: Registration form
+
+Name, work email, and password.
 
 ![registration-form.png](../images/registration/01-registration-form.png)
+
+### Loading: Creating the account
+
+While [`POST /auth/register`](#post-authregister) runs.
+
+The button shows a spinner.
+
+### Error: Field errors
+
+Each error in `errors` shows under the field its `pointer` names.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`POST /auth/register`](#post-authregister) | 422 [`validation-failed`](../error-types.md#validation-failed) | `Prefer: code=422, example=short-password`<br>`Accept: application/problem+json` |
+
+### Error: Too many emails
+
+Says when the user can try again, from `Retry-After`.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`POST /auth/register`](#post-authregister) | 429 [`too-many-requests`](../error-types.md#too-many-requests) | `Prefer: code=429, example=too-many-requests`<br>`Accept: application/problem+json` |
+
+### Success: Check your email
+
+Asks the user to check their email and shows the address, whether or not it already had an account.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`POST /auth/register`](#post-authregister) | 202 Accepted | `Prefer: code=202` |
 
 ![After sending the form](../images/registration/02-registration-check-email.png)
 

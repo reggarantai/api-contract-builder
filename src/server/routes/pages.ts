@@ -4,12 +4,14 @@ import { bodyLimit } from "hono/body-limit";
 import { imageSize } from "image-size";
 import { ulid } from "ulid";
 import type { ApiErrorBody, ApiIssue } from "../../shared/api-error";
+import { checkPageStates, type PageState } from "../../shared/page-states";
 import {
   createPageInputSchema,
   MOCKUP_MIME_TYPES,
   type Mockup,
   mockupOrderInputSchema,
   type Page,
+  type PageFields,
   type PageSummary,
   pageFieldsSchema,
   pageOrderInputSchema,
@@ -21,6 +23,7 @@ import type { Db } from "../db/client";
 import { findProject, touchProject } from "../db/projects";
 import {
   endpoints,
+  errorTypes,
   type PageMockupRow,
   type PageRow,
   pageEndpoints,
@@ -28,7 +31,13 @@ import {
   pages,
 } from "../db/schema";
 import type { UploadStorage } from "../storage/uploads";
-import { jsonBody, toApiIssues, validationFailed } from "../validation";
+import {
+  jsonBody,
+  staleRevision,
+  toApiIssues,
+  validationFailed,
+} from "../validation";
+import { toEndpoint } from "./endpoints";
 
 const MAX_FILES_PER_UPLOAD = 20;
 
@@ -106,6 +115,8 @@ export function pageFromRow(
     mockups: mockupRowsOfPage(db, row.id).map((mockup) =>
       mockupFromRow(storage, mockup, row.projectId),
     ),
+    states: row.states,
+    revision: row.revision,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -146,6 +157,81 @@ export function pageRoutes(
       },
       409,
     );
+  }
+
+  /**
+   * A save from a client that doesn't send `states` (one from before them)
+   * can't show issues on them, so it gets one message naming the states.
+   */
+  function statesInTheWay(c: Context, states: PageState[], issues: ApiIssue[]) {
+    const names = [
+      ...new Set(
+        issues.flatMap((issue) => {
+          const index = /^states\.(\d+)/.exec(issue.path)?.[1];
+          const state = index === undefined ? undefined : states[Number(index)];
+          return state ? [state.name] : [];
+        }),
+      ),
+    ];
+    return c.json<ApiErrorBody>(
+      {
+        error: `Page states come from calls this change removes: ${names.join(", ")}. Change those states first.`,
+      },
+      409,
+    );
+  }
+
+  /**
+   * States without mockups that no longer exist: a window opened before one
+   * was deleted still lists it, and the delete already took it out of the
+   * states. Mockups of other pages stay, to be refused.
+   */
+  function withoutDeletedMockups(states: PageState[]): PageState[] {
+    const listed = [...new Set(states.flatMap((state) => state.mockupIds))];
+    if (listed.length === 0) {
+      return states;
+    }
+    const existing = new Set(
+      db
+        .select({ id: pageMockups.id })
+        .from(pageMockups)
+        .where(inArray(pageMockups.id, listed))
+        .all()
+        .map((row) => row.id),
+    );
+    return states.map((state) => ({
+      ...state,
+      mockupIds: state.mockupIds.filter((id) => existing.has(id)),
+    }));
+  }
+
+  /** Issues with what the states point at: the project's endpoints and error types, the page's mockups. */
+  function stateIssues(page: PageRow, fields: PageFields) {
+    if (fields.states.length === 0) {
+      return [];
+    }
+    const endpointsById = new Map(
+      db
+        .select()
+        .from(endpoints)
+        .where(eq(endpoints.projectId, page.projectId))
+        .all()
+        .map((row) => [row.id, toEndpoint(row)]),
+    );
+    const errorTypesById = new Map(
+      db
+        .select()
+        .from(errorTypes)
+        .where(eq(errorTypes.projectId, page.projectId))
+        .all()
+        .map((row) => [row.id, row]),
+    );
+    const mockupIds = new Set(mockupRowsOf(page.id).map((mockup) => mockup.id));
+    return checkPageStates(fields, {
+      endpointsById,
+      errorTypesById,
+      mockupIds,
+    });
   }
 
   function touch(page: PageRow, now = new Date()) {
@@ -279,16 +365,29 @@ export function pageRoutes(
             return notFound(c, "Page");
           }
           const current = toPage(existing);
+          const { revision, ...input } = c.req.valid("json");
+          const stale = staleRevision(c, "page", revision, existing.revision);
+          if (stale) {
+            return stale;
+          }
           const result = pageFieldsSchema.safeParse({
             name: current.name,
             slug: current.slug,
             description: current.description,
             acceptanceCriteria: current.acceptanceCriteria,
             endpoints: current.endpoints,
-            ...c.req.valid("json"),
+            states: current.states,
+            ...input,
+            ...(input.states && {
+              states: withoutDeletedMockups(input.states),
+            }),
           });
           if (!result.success) {
-            return validationFailed(c, toApiIssues(result.error));
+            const issues = toApiIssues(result.error);
+            return input.states === undefined &&
+              issues.some((issue) => issue.path.startsWith("states."))
+              ? statesInTheWay(c, current.states, issues)
+              : validationFailed(c, issues);
           }
           const fields = result.data;
 
@@ -314,6 +413,12 @@ export function pageRoutes(
           if (linkIssues.length > 0) {
             return validationFailed(c, linkIssues);
           }
+          const issues = stateIssues(existing, fields);
+          if (issues.length > 0) {
+            return input.states === undefined
+              ? statesInTheWay(c, fields.states, issues)
+              : validationFailed(c, issues);
+          }
           if (
             fields.slug !== existing.slug &&
             isSlugTaken(existing.projectId, fields.slug, existing.id)
@@ -329,6 +434,8 @@ export function pageRoutes(
                 slug: fields.slug,
                 description: fields.description,
                 acceptanceCriteria: fields.acceptanceCriteria,
+                states: fields.states,
+                revision: existing.revision + 1,
                 updatedAt: now,
               })
               .where(eq(pages.id, existing.id))
@@ -553,18 +660,35 @@ export function pageRoutes(
       )
       .delete("/:projectId/pages/:pageId/mockups/:mockupId", (c) => {
         const page = findPage(c.req.param("projectId"), c.req.param("pageId"));
+        // The states that showed it stay, without it.
         const mockup =
           page &&
-          db
-            .delete(pageMockups)
-            .where(
-              and(
-                eq(pageMockups.id, c.req.param("mockupId")),
-                eq(pageMockups.pageId, page.id),
-              ),
-            )
-            .returning()
-            .get();
+          db.transaction((tx) => {
+            const deleted = tx
+              .delete(pageMockups)
+              .where(
+                and(
+                  eq(pageMockups.id, c.req.param("mockupId")),
+                  eq(pageMockups.pageId, page.id),
+                ),
+              )
+              .returning()
+              .get();
+            if (deleted) {
+              tx.update(pages)
+                .set({
+                  states: page.states.map((state) => ({
+                    ...state,
+                    mockupIds: state.mockupIds.filter(
+                      (id) => id !== deleted.id,
+                    ),
+                  })),
+                })
+                .where(eq(pages.id, page.id))
+                .run();
+            }
+            return deleted;
+          });
         if (!page || !mockup) {
           return notFound(c, "Mockup");
         }

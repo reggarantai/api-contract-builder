@@ -5,6 +5,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildSample, createTestApp, readSampleMockup } from "../test-utils";
 
 const GOLDEN_DIR = path.resolve("test/golden/inventory-markdown");
+// What 0.2.0 exported, before page states. Projects that don't use them must
+// keep exporting exactly this, so never regenerate it.
+const WITHOUT_STATES_DIR = path.resolve(
+  "test/golden/inventory-markdown-without-states",
+);
 const OPENAPI_GOLDEN = path.resolve("test/golden/inventory.openapi.yaml");
 
 describe("Markdown export", () => {
@@ -59,6 +64,9 @@ describe("Markdown export", () => {
       "inventory-app/images/stock-item/01-stock-item.png",
       "inventory-app/images/stock-item/02-record-movement.png",
       "inventory-app/images/stock-list/01-stock-list.png",
+      "inventory-app/images/stock-list/02-stock-list-loading.png",
+      "inventory-app/images/stock-list/03-stock-list-empty.png",
+      "inventory-app/images/stock-list/04-stock-list-delete-error.png",
       "inventory-app/images/verify-email/01-verify-email-expired.png",
       "inventory-app/inventory-app.openapi.yaml",
       "inventory-app/models.md",
@@ -134,6 +142,9 @@ describe("Markdown export", () => {
       "inventory-app/README.md",
       "inventory-app/error-types.md",
       "inventory-app/images/stock-list/01-stock-list.png",
+      "inventory-app/images/stock-list/02-stock-list-loading.png",
+      "inventory-app/images/stock-list/03-stock-list-empty.png",
+      "inventory-app/images/stock-list/04-stock-list-delete-error.png",
       "inventory-app/inventory-app.stock-list.openapi.yaml",
       "inventory-app/models.md",
       "inventory-app/pages/stock-list.md",
@@ -168,5 +179,59 @@ describe("Markdown export", () => {
     expect(
       (await t.request("GET", "/api/projects/nope/export/markdown")).status,
     ).toBe(404);
+  });
+
+  it("exports a project without page states exactly as before them", async () => {
+    const plain = createTestApp();
+    try {
+      const sample = await buildSample(plain, { states: false });
+      const response = await plain.request(
+        "GET",
+        `/api/projects/${sample.projectId}/export/markdown`,
+      );
+      const files = unzipSync(new Uint8Array(await response.arrayBuffer()));
+      const names = Object.keys(files).sort();
+      const markdown = names.filter((name) => name.endsWith(".md"));
+
+      expect(
+        markdown.map((name) => name.replace(/^inventory-app\//, "")),
+      ).toEqual(
+        fs
+          .readdirSync(WITHOUT_STATES_DIR, {
+            recursive: true,
+            encoding: "utf8",
+          })
+          .filter((name) => name.endsWith(".md"))
+          .sort(),
+      );
+      for (const name of markdown) {
+        expect(text(files, name), name).toBe(
+          fs.readFileSync(
+            path.join(WITHOUT_STATES_DIR, name.replace(/^inventory-app\//, "")),
+            "utf8",
+          ),
+        );
+      }
+      expect(names.filter((name) => name.endsWith(".png"))).toEqual([
+        "inventory-app/images/add-or-edit-stock-item/01-stock-item-form.png",
+        "inventory-app/images/app-shell/01-app-shell.png",
+        "inventory-app/images/forgot-password/01-forgot-password.png",
+        "inventory-app/images/login/01-login-form.png",
+        "inventory-app/images/login/02-login-error.png",
+        "inventory-app/images/registration/01-registration-form.png",
+        "inventory-app/images/registration/02-registration-check-email.png",
+        "inventory-app/images/reset-password/01-reset-password.png",
+        "inventory-app/images/stock-item/01-stock-item.png",
+        "inventory-app/images/stock-item/02-record-movement.png",
+        "inventory-app/images/stock-list/01-stock-list.png",
+        "inventory-app/images/verify-email/01-verify-email-expired.png",
+      ]);
+      // Page states never reach the OpenAPI document.
+      expect(text(files, "inventory-app/inventory-app.openapi.yaml")).toBe(
+        fs.readFileSync(OPENAPI_GOLDEN, "utf8"),
+      );
+    } finally {
+      plain.close();
+    }
   });
 });

@@ -14,6 +14,7 @@ import type {
 } from "../../shared/endpoints";
 import type { ErrorTypeBody } from "../../shared/error-types";
 import type { JsonSchema } from "../../shared/json-schema";
+import type { PageState } from "../../shared/page-states";
 import type { MOCKUP_MIME_TYPES, PageTrigger } from "../../shared/pages";
 import type { SecurityScheme, Server } from "../../shared/projects";
 
@@ -34,6 +35,8 @@ export const projects = sqliteTable("projects", {
     .$type<SecurityScheme[]>()
     .notNull(),
   defaultSecuritySchemeId: text("default_security_scheme_id"),
+  /** Counts saves of the settings, so a save can't overwrite a newer one. */
+  revision: integer("revision").notNull().default(0),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 });
@@ -51,6 +54,8 @@ export const models = sqliteTable(
     description: text("description").notNull(),
     /** JSON Schema; references to other models are stored as `model:<id>`. */
     schema: text("schema", { mode: "json" }).$type<JsonSchema>().notNull(),
+    /** Counts saves, so a save can't overwrite a newer one. */
+    revision: integer("revision").notNull().default(0),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },
@@ -94,6 +99,8 @@ export const endpoints = sqliteTable(
       .notNull(),
     notesFe: text("notes_fe").notNull(),
     notesBe: text("notes_be").notNull(),
+    /** Counts saves, so a save can't overwrite a newer one. */
+    revision: integer("revision").notNull().default(0),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },
@@ -122,6 +129,8 @@ export const errorTypes = sqliteTable(
     description: text("description").notNull(),
     headers: text("headers", { mode: "json" }).$type<JsonSchema>().notNull(),
     body: text("body", { mode: "json" }).$type<ErrorTypeBody>().notNull(),
+    /** Counts saves, so a save can't overwrite a newer one. */
+    revision: integer("revision").notNull().default(0),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },
@@ -146,6 +155,13 @@ export const pages = sqliteTable(
     slug: text("slug").notNull(),
     description: text("description").notNull(),
     acceptanceCriteria: text("acceptance_criteria").notNull(),
+    /** Saved with the page as a whole, like an endpoint's responses. */
+    states: text("states", { mode: "json" })
+      .$type<PageState[]>()
+      .notNull()
+      .default([]),
+    /** Counts saves of the page's fields, so a save can't overwrite a newer one. */
+    revision: integer("revision").notNull().default(0),
     sortOrder: integer("sort_order").notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),

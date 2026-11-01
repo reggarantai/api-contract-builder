@@ -54,7 +54,9 @@ export function useUpdateProject(id: string) {
       apiPatch(projectPath(id), input, projectSchema),
     onSuccess: (project) => {
       queryClient.setQueryData(projectKeys.detail(project.id), project);
-      return queryClient.invalidateQueries({ queryKey: projectKeys.list() });
+      // Lists refresh in the background: the editor resets from the saved
+      // item, and doesn't wait for them.
+      void queryClient.invalidateQueries({ queryKey: projectKeys.list() });
     },
   });
 }

@@ -18,6 +18,7 @@ import { ArrowLeftIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
+import { ConflictDialog } from "@/components/conflict-dialog";
 import { SaveButtons } from "@/components/save-buttons";
 import {
   AlertDialog,
@@ -41,12 +42,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { ApiError } from "@/lib/api";
 import { showRequestError } from "@/lib/forms";
+import { useSavedForm } from "@/lib/saved-form";
 import { errorTypesQueryOptions } from "../../error-types/queries";
 import { modelsQueryOptions } from "../../models/queries";
 import { SchemaEditor } from "../../schema-editor/schema-editor";
 import { StatusLabel } from "../badges";
-import { endpointKeys, useDeleteEndpoint, useUpdateEndpoint } from "../queries";
+import {
+  endpointKeys,
+  endpointQueryOptions,
+  useDeleteEndpoint,
+  useUpdateEndpoint,
+} from "../queries";
 import { BodyEditor } from "./body-editor";
 import { EditorSection } from "./editor-section";
 import { bodyErrorsAt, errorAt } from "./form-errors";
@@ -84,9 +92,13 @@ export function EndpointEditor({
   const errorTypes = useQuery(errorTypesQueryOptions(projectId)).data ?? [];
   const updateEndpoint = useUpdateEndpoint(projectId, endpoint.id);
   const values = useMemo(() => fieldsOf(endpoint), [endpoint]);
+  // The first values only: `useSavedForm` decides when later ones replace the
+  // form. (`defaultValues` would do, but its deep-partial type makes
+  // TypeScript expand the recursive JSON Schema type until it gives up.)
+  const [initialValues] = useState(values);
   const form = useForm<EndpointFields, unknown, EndpointFields>({
     resolver: zodResolver(endpointSchema),
-    values,
+    values: initialValues,
   });
   const { errors } = form.formState;
 
@@ -107,7 +119,8 @@ export function EndpointEditor({
       return next;
     });
   }, []);
-  // Remounts nested editors on discard so their text reloads.
+  // Remounts nested editors when the form gets other values, so their text
+  // reloads.
   const [editorKey, setEditorKey] = useState(0);
   const hasChanges = form.formState.isDirty || invalidKeys.size > 0;
 
@@ -120,22 +133,67 @@ export function EndpointEditor({
   const method = useWatch({ control: form.control, name: "method" });
   const path = useWatch({ control: form.control, name: "path" });
 
-  function discard() {
-    form.reset(values);
-    setInvalidKeys(new Set());
-    setEditorKey((key) => key + 1);
-  }
+  // Page states that come from what a save would remove, so the user can
+  // remove it from them too.
+  const [detaching, setDetaching] = useState<{
+    input: EndpointFields;
+    pageStates: ApiError["pageStates"];
+  } | null>(null);
+
+  const queryClient = useQueryClient();
+  const saved = useSavedForm<
+    EndpointFields,
+    { input: EndpointFields; detachStates: boolean }
+  >({
+    values,
+    revision: endpoint.revision,
+    hasChanges: () => form.formState.isDirty || invalidKeys.size > 0,
+    reset: (next, reason) => {
+      form.reset(next);
+      if (reason !== "saved") {
+        setInvalidKeys(new Set());
+        setEditorKey((key) => key + 1);
+        // What it would have saved is gone.
+        setDetaching(null);
+      }
+    },
+    send: async ({ input, detachStates }, revision) => {
+      const saved = await updateEndpoint.mutateAsync({
+        input: { ...input, revision },
+        detachStates,
+      });
+      return { values: fieldsOf(saved), revision: saved.revision };
+    },
+    load: async () => {
+      const current = await queryClient.fetchQuery({
+        ...endpointQueryOptions(projectId, endpoint.id),
+        staleTime: 0,
+      });
+      return { values: fieldsOf(current), revision: current.revision };
+    },
+    onSaved: () => {
+      setDetaching(null);
+      toast.success("Endpoint saved");
+    },
+    // The conflict dialog asks first; a save from there starts over.
+    onConflict: () => setDetaching(null),
+    onError: (error, { input }) => {
+      if (error instanceof ApiError && error.pageStates.length > 0) {
+        setDetaching({ input, pageStates: error.pageStates });
+        return;
+      }
+      setDetaching(null);
+      showRequestError(error, form.setError);
+    },
+  });
 
   const onSubmit = form.handleSubmit((input) =>
-    updateEndpoint.mutate(input, {
-      onSuccess: () => toast.success("Endpoint saved"),
-      onError: (error) => showRequestError(error, form.setError),
-    }),
+    saved.save({ input, detachStates: false }),
   );
 
   return (
     <ValidityContext.Provider value={reportValidity}>
-      <form onSubmit={onSubmit} className="grid gap-6">
+      <form onSubmit={onSubmit} inert={saved.busy} className="grid gap-6">
         <div className="flex items-center justify-between gap-4">
           <Button asChild variant="ghost" size="sm" className="-ml-2">
             <Link to="/projects/$projectId/endpoints" params={{ projectId }}>
@@ -145,6 +203,52 @@ export function EndpointEditor({
           </Button>
           <DeleteEndpointButton projectId={projectId} endpoint={endpoint} />
         </div>
+
+        <ConflictDialog what="endpoint" {...saved.conflict} />
+
+        <AlertDialog
+          open={detaching !== null}
+          onOpenChange={(open) => !open && setDetaching(null)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                Page states use what you're removing
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                These states come from a response or example this change
+                removes. Saving removes it from them too; the states stay.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <ul className="grid gap-1 text-sm">
+              {detaching?.pageStates.map((state) => (
+                <li key={`${state.pageId} ${state.stateId}`}>
+                  <Link
+                    to="/projects/$projectId/pages/$pageId"
+                    params={{ projectId, pageId: state.pageId }}
+                    className="underline-offset-4 hover:underline"
+                  >
+                    {state.pageName} › {state.stateName}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+            <AlertDialogFooter>
+              <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={updateEndpoint.isPending}
+                onClick={() =>
+                  detaching &&
+                  saved.save({ input: detaching.input, detachStates: true })
+                }
+              >
+                Remove from states and save
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         <div className="grid gap-4 rounded-xl border p-4">
           <div className="grid gap-3 sm:grid-cols-[8rem_1fr_10rem]">
@@ -552,7 +656,7 @@ export function EndpointEditor({
             isDirty={hasChanges}
             isSaving={updateEndpoint.isPending}
             canSave={invalidKeys.size === 0}
-            onReset={discard}
+            onReset={saved.discard}
           />
         </div>
       </form>
@@ -604,7 +708,8 @@ function DeleteEndpointButton({
         <AlertDialogHeader>
           <AlertDialogTitle>Delete {label}?</AlertDialogTitle>
           <AlertDialogDescription>
-            This can't be undone. Pages that use it will lose the reference.
+            This can't be undone. Pages that call it lose their link to it, and
+            their states what came from it.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

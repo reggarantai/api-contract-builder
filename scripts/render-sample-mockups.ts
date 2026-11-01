@@ -1,6 +1,8 @@
 /**
  * Renders the wireframe mockups of the sample project to PNG files in
- * samples/mockups/. Run after changing them: `pnpm exec tsx scripts/render-sample-mockups.ts`.
+ * samples/mockups/. Run after changing them: `pnpm exec tsx scripts/render-sample-mockups.ts`,
+ * or name the ones to render, so the others keep their bytes:
+ * `pnpm exec tsx scripts/render-sample-mockups.ts stock-list-empty`.
  */
 import path from "node:path";
 import { chromium } from "@playwright/test";
@@ -54,6 +56,8 @@ const style = `
   .menu { position: absolute; top: 48px; right: 16px; width: 220px; background: #fff; border: 1px solid #e4e4e7; border-radius: 10px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); padding: 12px; display: grid; gap: 8px; font-size: 13px; }
   .divider { border-top: 1px solid #e4e4e7; }
   .overlay { position: absolute; inset: 0; background: rgb(24 24 27 / 0.45); display: flex; align-items: center; justify-content: center; }
+  .skeleton { background: #e4e4e7; border-radius: 6px; height: 12px; }
+  .empty { display: grid; justify-items: center; gap: 8px; padding: 36px 0 28px; text-align: center; }
 `;
 
 const mockups: Record<string, string> = {
@@ -157,6 +161,58 @@ const mockups: Record<string, string> = {
       </table>
       <div class="row between"><span class="muted">1–3 of 3</span><div class="row"><div class="button outline">Previous</div><div class="button outline">Next</div></div></div>
     </div>`,
+  "stock-list-loading": `
+    <div class="card wide">
+      <div class="row between">
+        <h1>Stock</h1>
+        <div class="button">Add item</div>
+      </div>
+      <div class="row">
+        <div class="input grow">Search SKU or name</div>
+        <div class="input filled">All categories ▾</div>
+        <div class="input filled">Any status ▾</div>
+      </div>
+      <table>
+        <tr><th>SKU</th><th>Name</th><th>Category</th><th>On hand</th><th>Status</th><th></th></tr>
+        <tr><td><div class="skeleton" style="width: 70px"></div></td><td><div class="skeleton" style="width: 140px"></div></td><td><div class="skeleton" style="width: 70px"></div></td><td><div class="skeleton" style="width: 30px"></div></td><td><div class="skeleton" style="width: 60px"></div></td><td></td></tr>
+        <tr><td><div class="skeleton" style="width: 70px"></div></td><td><div class="skeleton" style="width: 120px"></div></td><td><div class="skeleton" style="width: 70px"></div></td><td><div class="skeleton" style="width: 30px"></div></td><td><div class="skeleton" style="width: 60px"></div></td><td></td></tr>
+        <tr><td><div class="skeleton" style="width: 70px"></div></td><td><div class="skeleton" style="width: 150px"></div></td><td><div class="skeleton" style="width: 70px"></div></td><td><div class="skeleton" style="width: 30px"></div></td><td><div class="skeleton" style="width: 60px"></div></td><td></td></tr>
+      </table>
+      <div class="row between"><div class="skeleton" style="width: 60px"></div><div class="row"><div class="button outline">Previous</div><div class="button outline">Next</div></div></div>
+    </div>`,
+  "stock-list-empty": `
+    <div class="card wide">
+      <div class="row between">
+        <h1>Stock</h1>
+        <div class="button">Add item</div>
+      </div>
+      <div class="row">
+        <div class="input filled grow">pallet wrap</div>
+        <div class="input filled">Packaging ▾</div>
+        <div class="input filled">Any status ▾</div>
+      </div>
+      <table>
+        <tr><th>SKU</th><th>Name</th><th>Category</th><th>On hand</th><th>Status</th><th></th></tr>
+      </table>
+      <div class="empty">
+        <h2>No items match</h2>
+        <p class="muted">Nothing matches “pallet wrap” in Packaging.</p>
+        <div class="button outline">Clear search and filters</div>
+      </div>
+    </div>`,
+  "stock-list-delete-error": `
+    <div class="card wide" style="filter: blur(1px)">
+      <h1>Stock</h1>
+      <div class="block" style="height: 36px"></div>
+      <div class="block" style="height: 150px"></div>
+    </div>
+    <div class="overlay">
+      <div class="card">
+        <h2>Delete Shipping box, small?</h2>
+        <div class="alert">Shipping box, small still has 340 on hand. Issue or count them to 0 first.</div>
+        <div class="row end"><div class="button outline">Close</div></div>
+      </div>
+    </div>`,
   "stock-item": `
     <div class="card wide">
       <div class="row between">
@@ -214,7 +270,11 @@ const browser = await chromium.launch();
 const page = await browser.newPage({
   viewport: { width: WIDTH, height: HEIGHT },
 });
+const only = process.argv.slice(2);
 for (const [name, body] of Object.entries(mockups)) {
+  if (only.length > 0 && !only.includes(name)) {
+    continue;
+  }
   await page.setContent(
     `<!doctype html><style>${style}</style><body>${body}</body>`,
   );

@@ -3,12 +3,15 @@ import {
   createEndpointDefaults,
   type EndpointFields,
   endpointSchema,
+  newBody,
+  newResponse,
   parsePathTemplate,
   pathMatchKey,
   schemasOfEndpoint,
   suggestOperationId,
   syncPathParameters,
   updateEndpointInputSchema,
+  withUniqueIds,
 } from "./endpoints";
 
 describe("parsePathTemplate", () => {
@@ -357,5 +360,116 @@ describe("schemasOfEndpoint", () => {
       "responses.0.headers",
       "responses.0.body.schema",
     ]);
+  });
+});
+
+// Page states refer to responses and examples by ID, so IDs must be unique
+// where a reference looks them up.
+describe("endpointSchema IDs", () => {
+  const example = (id: string, name: string) => ({
+    id,
+    name,
+    summary: "",
+    value: {},
+  });
+
+  function issuePaths(fields: EndpointFields) {
+    const result = endpointSchema.safeParse(fields);
+    return result.success
+      ? []
+      : result.error.issues.map((issue) => issue.path.join("."));
+  }
+
+  it("rejects two responses with the same ID", () => {
+    const endpoint = createEndpointDefaults("GET", "/items", "", () => "r1");
+    endpoint.responses.push(newResponse("r1", "404"));
+
+    expect(issuePaths(endpoint)).toEqual(["responses.1.id"]);
+  });
+
+  it("rejects two examples with the same ID in one body or one error", () => {
+    const endpoint = createEndpointDefaults("POST", "/items", "", () => "r1");
+    const [created] = endpoint.responses;
+    if (!endpoint.requestBody || !created?.body) {
+      throw new Error("A POST has a body and a 201 with one");
+    }
+    // The request body and a response may share IDs: they're looked up apart.
+    endpoint.requestBody.examples = [example("x1", "new")];
+    created.body.examples = [example("x1", "created"), example("x1", "again")];
+    endpoint.responses.push({
+      ...newResponse("r2", "422"),
+      body: null,
+      errors: [
+        {
+          errorTypeId: "et1",
+          examples: [example("o1", "short"), example("o1", "long")],
+        },
+      ],
+    });
+
+    expect(issuePaths(endpoint)).toEqual([
+      "responses.0.body.examples.1.id",
+      "responses.1.errors.0.examples.1.id",
+    ]);
+  });
+});
+
+// Data saved before IDs had to be unique can have duplicates; reading it
+// renames the later ones, so references and saves keep working.
+describe("withUniqueIds", () => {
+  const example = (id: string, name: string) => ({
+    id,
+    name,
+    summary: "",
+    value: {},
+  });
+
+  it("renames later duplicates and leaves the first and unique IDs alone", () => {
+    const responses = [
+      {
+        ...newResponse("r", "200"),
+        body: {
+          ...newBody(),
+          examples: [example("x", "a"), example("x", "b"), example("x-2", "c")],
+        },
+      },
+      newResponse("r", "404"),
+      {
+        ...newResponse("e", "409"),
+        body: null,
+        errors: [
+          {
+            errorTypeId: "t",
+            examples: [example("o", "p"), example("o", "q")],
+          },
+        ],
+      },
+    ];
+
+    const fixed = withUniqueIds(responses);
+
+    expect(fixed.map((response) => response.id)).toEqual(["r", "r-2", "e"]);
+    expect(fixed[0]?.body?.examples.map((item) => item.id)).toEqual([
+      "x",
+      "x-3",
+      "x-2",
+    ]);
+    expect(fixed[2]?.errors[0]?.examples.map((item) => item.id)).toEqual([
+      "o",
+      "o-2",
+    ]);
+    const clean = [newResponse("a", "200"), newResponse("b", "404")];
+    expect(withUniqueIds(clean)).toEqual(clean);
+  });
+
+  it("keeps renamed IDs within 64 characters", () => {
+    const long = "r".repeat(64);
+
+    const fixed = withUniqueIds([
+      newResponse(long, "200"),
+      newResponse(long, "404"),
+    ]);
+
+    expect(fixed[1]?.id).toBe(`${"r".repeat(62)}-2`);
   });
 });

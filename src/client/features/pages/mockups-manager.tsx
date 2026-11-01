@@ -230,7 +230,13 @@ function MockupCard({
             <AlertDialogHeader>
               <AlertDialogTitle>Delete {name}?</AlertDialogTitle>
               <AlertDialogDescription>
-                The image is removed right away. This can't be undone.
+                The image is removed right away
+                {page.states.some((state) =>
+                  state.mockupIds.includes(mockup.id),
+                )
+                  ? ", also from the states that show it"
+                  : ""}
+                . This can't be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

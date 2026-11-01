@@ -75,22 +75,39 @@ export function useCreateEndpoint(projectId: string) {
   });
 }
 
+/**
+ * Saves an endpoint. With `detachStates`, page states that come from what the
+ * change removes lose those causes instead of refusing the save.
+ */
 export function useUpdateEndpoint(projectId: string, endpointId: string) {
   const queryClient = useQueryClient();
   const invalidateLists = useInvalidateLists(projectId);
   return useMutation({
-    mutationFn: (input: UpdateEndpointInput) =>
+    mutationFn: ({
+      input,
+      detachStates = false,
+    }: {
+      input: UpdateEndpointInput;
+      detachStates?: boolean;
+    }) =>
       apiPatch(
-        endpointsPath(projectId, endpointId),
+        `${endpointsPath(projectId, endpointId)}${detachStates ? "?detachStates=true" : ""}`,
         input,
         endpointResponseFieldsSchema,
       ),
-    onSuccess: (endpoint) => {
+    onSuccess: (endpoint, { detachStates }) => {
       queryClient.setQueryData(
         endpointKeys.detail(projectId, endpoint.id),
         endpoint,
       );
-      return invalidateLists();
+      // Lists refresh in the background: the editor resets from the saved
+      // item, and doesn't wait for them.
+      void invalidateLists();
+      if (detachStates) {
+        void queryClient.invalidateQueries({
+          queryKey: [...projectKeys.detail(projectId), "pages"],
+        });
+      }
     },
   });
 }
@@ -105,7 +122,8 @@ export function useDeleteEndpoint(projectId: string) {
     onSuccess: () =>
       Promise.all([
         invalidateLists(),
-        // Pages drop their links to the deleted endpoint.
+        // Pages drop their links to the deleted endpoint, and their states
+        // what came from them.
         queryClient.invalidateQueries({
           queryKey: [...projectKeys.detail(projectId), "pages"],
         }),

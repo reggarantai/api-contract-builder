@@ -6,11 +6,13 @@ import {
   type SecuritySchemeType,
   securitySettingsSchema,
 } from "@shared/projects";
+import { useQueryClient } from "@tanstack/react-query";
 import { PlusIcon, Trash2Icon } from "lucide-react";
 import { useMemo } from "react";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import type { z } from "zod";
+import { ConflictDialog } from "@/components/conflict-dialog";
 import { SaveButtons } from "@/components/save-buttons";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,7 +30,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { showRequestError } from "@/lib/forms";
-import { useUpdateProject } from "../queries";
+import { useSavedForm } from "@/lib/saved-form";
+import { projectQueryOptions, useUpdateProject } from "../queries";
 import {
   changeSecuritySchemeType,
   newSecurityScheme,
@@ -41,22 +44,23 @@ type FormValues = z.input<typeof securitySettingsSchema>;
 // Radix Select can't use an empty string as an item value.
 const NO_DEFAULT = "none";
 
+function valuesOf(project: Project): FormValues {
+  return {
+    securitySchemes: project.securitySchemes,
+    defaultSecuritySchemeId: project.defaultSecuritySchemeId,
+  };
+}
+
 export function AuthSettings({ project }: { project: Project }) {
   const updateProject = useUpdateProject(project.id);
-  const values = useMemo<FormValues>(
-    () => ({
-      securitySchemes: project.securitySchemes,
-      defaultSecuritySchemeId: project.defaultSecuritySchemeId,
-    }),
-    [project.securitySchemes, project.defaultSecuritySchemeId],
-  );
+  const values = useMemo(() => valuesOf(project), [project]);
   const form = useForm<
     FormValues,
     unknown,
     z.output<typeof securitySettingsSchema>
   >({
     resolver: zodResolver(securitySettingsSchema),
-    values,
+    defaultValues: values,
   });
   // `keyName` keeps React keys apart from the schemes' own `id` field.
   const schemes = useFieldArray({
@@ -86,15 +90,36 @@ export function AuthSettings({ project }: { project: Project }) {
     }
   }
 
-  const onSubmit = form.handleSubmit((input) =>
-    updateProject.mutate(input, {
-      onSuccess: () => toast.success("Authentication saved"),
-      onError: (error) => showRequestError(error, form.setError),
-    }),
-  );
+  const queryClient = useQueryClient();
+  // Other sections save the same project; only changes to this section's
+  // fields made elsewhere count as a conflict.
+  const saved = useSavedForm<
+    FormValues,
+    z.output<typeof securitySettingsSchema>
+  >({
+    values,
+    revision: project.revision,
+    hasChanges: () => form.formState.isDirty,
+    reset: (next) => form.reset(next),
+    send: async (input, revision) => {
+      const saved = await updateProject.mutateAsync({ ...input, revision });
+      return { values: valuesOf(saved), revision: saved.revision };
+    },
+    load: async () => {
+      const current = await queryClient.fetchQuery({
+        ...projectQueryOptions(project.id),
+        staleTime: 0,
+      });
+      return { values: valuesOf(current), revision: current.revision };
+    },
+    onSaved: () => toast.success("Authentication saved"),
+    onError: (error) => showRequestError(error, form.setError),
+  });
+
+  const onSubmit = form.handleSubmit((input) => saved.save(input));
 
   return (
-    <form onSubmit={onSubmit}>
+    <form onSubmit={onSubmit} inert={saved.busy}>
       <SettingsSection
         title="Authentication"
         description="How clients authenticate. Endpoints use the default scheme unless they say otherwise."
@@ -102,7 +127,7 @@ export function AuthSettings({ project }: { project: Project }) {
           <SaveButtons
             isDirty={form.formState.isDirty}
             isSaving={updateProject.isPending}
-            onReset={() => form.reset(values)}
+            onReset={saved.discard}
           />
         }
       >
@@ -324,6 +349,7 @@ export function AuthSettings({ project }: { project: Project }) {
           />
         </div>
       </SettingsSection>
+      <ConflictDialog what="project" {...saved.conflict} />
     </form>
   );
 }

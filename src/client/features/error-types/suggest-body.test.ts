@@ -19,6 +19,7 @@ function existing(
     headers: { type: "object", properties: {} },
     body,
     endpointIds: [],
+    revision: 0,
     createdAt: updatedAt,
     updatedAt,
   };

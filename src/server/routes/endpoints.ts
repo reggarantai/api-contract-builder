@@ -17,18 +17,32 @@ import {
   schemasOfEndpoint,
   type UpdateEndpointInput,
   updateEndpointInputSchema,
+  withUniqueIds,
 } from "../../shared/endpoints";
 import { checkResponseErrors } from "../../shared/error-types";
+import { resolveCause } from "../../shared/page-states";
 import type { Db } from "../db/client";
 import { findProject, touchProject } from "../db/projects";
-import { checkModelRefs, pageIdsByEndpoint } from "../db/references";
+import {
+  checkModelRefs,
+  pageIdsByEndpoint,
+  pagesWithStatesFrom,
+  statesWithout,
+} from "../db/references";
 import {
   type EndpointRow,
   endpoints,
   errorTypes,
+  type PageRow,
   type ProjectRow,
+  pages,
 } from "../db/schema";
-import { jsonBody, toApiIssues, validationFailed } from "../validation";
+import {
+  jsonBody,
+  staleRevision,
+  toApiIssues,
+  validationFailed,
+} from "../validation";
 
 function fieldsOf(row: EndpointRow): EndpointFields {
   return {
@@ -42,7 +56,7 @@ function fieldsOf(row: EndpointRow): EndpointFields {
     security: row.security,
     parameters: row.parameters,
     requestBody: row.requestBody ?? null,
-    responses: row.responses,
+    responses: withUniqueIds(row.responses),
     notesFe: row.notesFe,
     notesBe: row.notesBe,
   };
@@ -53,6 +67,7 @@ export function toEndpoint(row: EndpointRow): Endpoint {
     ...fieldsOf(row),
     id: row.id,
     projectId: row.projectId,
+    revision: row.revision,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -204,6 +219,52 @@ function withStoredErrors(
   }));
 }
 
+/**
+ * Page states with causes that the changed endpoint no longer answers, and
+ * the states of each page without those causes.
+ */
+function statesBrokenBy(db: Db, project: ProjectRow, endpoint: Endpoint) {
+  const errorTypesById = new Map(
+    db
+      .select()
+      .from(errorTypes)
+      .where(eq(errorTypes.projectId, project.id))
+      .all()
+      .map((row) => [row.id, row]),
+  );
+  const endpointsById = new Map([[endpoint.id, endpoint]]);
+  return pagesWithStatesFrom(db, project.id, endpoint.id).flatMap(
+    ({ page, links, comesFrom }) => {
+      const broken = (cause: Parameters<typeof comesFrom>[0]) =>
+        comesFrom(cause) &&
+        "error" in resolveCause(cause, links, endpointsById, errorTypesById);
+      const states = statesWithout(page, broken);
+      return states
+        ? [
+            {
+              page,
+              states,
+              used: page.states.filter((state) => state.causes.some(broken)),
+            },
+          ]
+        : [];
+    },
+  );
+}
+
+function saveStates(
+  tx: Pick<Db, "update">,
+  changes: { page: PageRow; states: PageRow["states"] }[],
+  now: Date,
+) {
+  for (const { page, states } of changes) {
+    tx.update(pages)
+      .set({ states, updatedAt: now })
+      .where(eq(pages.id, page.id))
+      .run();
+  }
+}
+
 export function endpointRoutes(db: Db) {
   return new Hono()
     .get("/:projectId/endpoints", (c) => {
@@ -278,12 +339,20 @@ export function endpointRoutes(db: Db) {
           return endpointNotFound(c);
         }
 
-        const input = c.req.valid("json");
+        const { revision, ...input } = c.req.valid("json");
+        const stale = staleRevision(c, "endpoint", revision, existing.revision);
+        if (stale) {
+          return stale;
+        }
         const result = endpointSchema.safeParse({
           ...fieldsOf(existing),
           ...input,
           ...(input.responses && {
-            responses: withStoredErrors(input.responses, existing.responses),
+            // By the IDs clients read, which are unique.
+            responses: withStoredErrors(
+              input.responses,
+              fieldsOf(existing).responses,
+            ),
           }),
         });
         if (!result.success) {
@@ -321,17 +390,44 @@ export function endpointRoutes(db: Db) {
           });
         }
 
+        // Page states come from its responses and examples by ID.
+        const broken = statesBrokenBy(db, project, {
+          ...toEndpoint(existing),
+          ...fields,
+        });
+        if (broken.length > 0 && c.req.query("detachStates") !== "true") {
+          const pageStates = broken.flatMap(({ page, used }) =>
+            used.map((state) => ({
+              pageId: page.id,
+              pageName: page.name,
+              stateId: state.id,
+              stateName: state.name,
+            })),
+          );
+          return c.json<ApiErrorBody>(
+            {
+              error: `Page states come from what this change removes: ${pageStates.map((state) => `${state.pageName} › ${state.stateName}`).join(", ")}. Change those states first, or remove it from them.`,
+              pageStates,
+            },
+            409,
+          );
+        }
+
         const now = new Date();
-        const row = db
-          .update(endpoints)
-          .set({
-            ...fields,
-            pathKey: pathMatchKey(fields.path),
-            updatedAt: now,
-          })
-          .where(eq(endpoints.id, existing.id))
-          .returning()
-          .get();
+        const row = db.transaction((tx) => {
+          saveStates(tx, broken, now);
+          return tx
+            .update(endpoints)
+            .set({
+              ...fields,
+              pathKey: pathMatchKey(fields.path),
+              revision: existing.revision + 1,
+              updatedAt: now,
+            })
+            .where(eq(endpoints.id, existing.id))
+            .returning()
+            .get();
+        });
         touchProject(db, project.id, now);
 
         return c.json(toEndpoint(row ?? existing));
@@ -346,8 +442,21 @@ export function endpointRoutes(db: Db) {
       if (!endpoint) {
         return endpointNotFound(c);
       }
-      db.delete(endpoints).where(eq(endpoints.id, endpoint.id)).run();
-      touchProject(db, endpoint.projectId);
+      // Pages lose their calls to it, and their states what came from them.
+      const now = new Date();
+      const changed = pagesWithStatesFrom(
+        db,
+        endpoint.projectId,
+        endpoint.id,
+      ).flatMap(({ page, comesFrom }) => {
+        const states = statesWithout(page, comesFrom);
+        return states ? [{ page, states }] : [];
+      });
+      db.transaction((tx) => {
+        saveStates(tx, changed, now);
+        tx.delete(endpoints).where(eq(endpoints.id, endpoint.id)).run();
+      });
+      touchProject(db, endpoint.projectId, now);
       return c.body(null, 204);
     });
 }

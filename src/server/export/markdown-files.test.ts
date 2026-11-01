@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { Page } from "../../shared/pages";
 import { buildMarkdownFiles } from "./markdown-files";
 import {
   testEndpoint,
@@ -363,6 +364,280 @@ describe("buildMarkdownFiles", () => {
       );
 
       expect(files["error-types.md"]).toBeUndefined();
+    });
+  });
+
+  describe("with page states", () => {
+    const itemHasStock = testErrorType("stock", "item-has-stock", "409", {
+      title: "Item still in stock",
+    });
+    const listItems = testEndpoint("e1", "GET", "/items", {
+      responses: [
+        {
+          id: "r200",
+          status: "200",
+          description: "OK",
+          headers: noHeaders,
+          body: {
+            contentType: "application/json",
+            schema: { type: "object" },
+            examples: [
+              { id: "x1", name: "first-page", summary: "", value: [1] },
+              { id: "x2", name: "empty", summary: "", value: [] },
+            ],
+          },
+          errors: [],
+        },
+      ],
+    });
+    const deleteItem = testEndpoint("e2", "DELETE", "/items/{id}", {
+      responses: [
+        {
+          id: "r204",
+          status: "204",
+          description: "No Content",
+          headers: noHeaders,
+          body: null,
+          errors: [],
+        },
+        testErrorResponse("409", "Conflict", ["stock"]),
+      ],
+    });
+    const mockup = (id: string, originalName: string, caption: string) => ({
+      id,
+      pageId: "p1",
+      url: `/uploads/p1/${id}.png`,
+      originalName,
+      mimeType: "image/png" as const,
+      width: 4,
+      height: 3,
+      caption,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    const links = [
+      { endpointId: "e1", trigger: "on_load" as const, note: "" },
+      { endpointId: "e2", trigger: "on_action" as const, note: "" },
+    ];
+    const states: Page["states"] = [
+      {
+        id: "s1",
+        kind: "loading",
+        name: "Loading items",
+        description: "Grey rows; the filters stay usable.",
+        causes: [{ type: "request", linkId: "p1-l0" }],
+        mockupIds: ["m1"],
+      },
+      {
+        id: "s2",
+        kind: "empty",
+        name: "No items",
+        description: "Offers to clear the filters.",
+        causes: [
+          {
+            type: "response",
+            linkId: "p1-l0",
+            responseId: "r200",
+            exampleId: "x2",
+          },
+        ],
+        mockupIds: ["m2"],
+      },
+      {
+        id: "s3",
+        kind: "error",
+        name: "Can't delete",
+        description: "",
+        causes: [
+          {
+            type: "error",
+            linkId: "p1-l1",
+            errorTypeId: "stock",
+            exampleId: null,
+          },
+          {
+            type: "response",
+            linkId: "p1-l1",
+            responseId: "r204",
+            exampleId: null,
+          },
+        ],
+        mockupIds: [],
+      },
+    ];
+    const stockList = testPage("p1", "Stock list", links, {
+      mockups: [
+        mockup("m1", "loading.png", "Grey rows"),
+        mockup("m2", "empty.png", ""),
+        mockup("m3", "list.png", "The list"),
+      ],
+      states,
+    });
+    const input = testInput({
+      errorTypes: [itemHasStock],
+      endpoints: [listItems, deleteItem],
+      pages: [stockList],
+    });
+    const openApi = { fileName: "inventory-app.openapi.yaml", content: "" };
+
+    function filesOf(
+      exportInput: ReturnType<typeof testInput>,
+      withOpenApi = true,
+    ) {
+      return buildMarkdownFiles(
+        exportInput,
+        {},
+        {
+          readImage: () => new Uint8Array([1]),
+          openApi: withOpenApi ? openApi : null,
+        },
+      );
+    }
+
+    it("describes each state, what leads to it, its mockups, and the Prism headers", () => {
+      const page = filesOf(input)["pages/stock-list.md"] as string;
+
+      expect(page).toContain(
+        [
+          "## Acceptance criteria",
+          "",
+          "_None yet._",
+          "",
+          "## States",
+          "",
+          "### Loading: Loading items",
+          "",
+          "While [`GET /items`](#get-items) runs.",
+          "",
+          "Grey rows; the filters stay usable.",
+          "",
+          "![Grey rows](../images/stock-list/01-loading.png)",
+          "",
+          "_Grey rows_",
+          "",
+          "### Empty: No items",
+          "",
+          "Offers to clear the filters.",
+          "",
+          "| Comes from | Response | Prism headers |",
+          "| --- | --- | --- |",
+          "| [`GET /items`](#get-items) | 200 OK, example `empty` | `Prefer: code=200, example=empty` |",
+          "",
+          "![empty.png](../images/stock-list/02-empty.png)",
+          "",
+          "### Error: Can't delete",
+          "",
+          "| Comes from | Response | Prism headers |",
+          "| --- | --- | --- |",
+          "| [`DELETE /items/{id}`](#delete-itemsid) | 409 [`item-has-stock`](../error-types.md#item-has-stock) | `Prefer: code=409, example=item-has-stock`<br>`Accept: application/problem+json` |",
+          "| [`DELETE /items/{id}`](#delete-itemsid) | 204 No Content | `Prefer: code=204` |",
+          "",
+          "## Other mockups",
+          "",
+          "![The list](../images/stock-list/03-list.png)",
+          "",
+          "_The list_",
+          "",
+          "## Endpoints",
+        ].join("\n"),
+      );
+      expect(page).not.toContain("## Mockups");
+    });
+
+    it("leaves out the Prism headers while the bundle has no OpenAPI file", () => {
+      const page = filesOf(input, false)["pages/stock-list.md"] as string;
+
+      expect(page).toContain(
+        [
+          "| Comes from | Response |",
+          "| --- | --- |",
+          "| [`GET /items`](#get-items) | 200 OK, example `empty` |",
+        ].join("\n"),
+      );
+      expect(page).not.toContain("Prefer:");
+    });
+
+    it("says which call it is when the page makes the same one twice", () => {
+      const twice = testPage(
+        "p1",
+        "Stock list",
+        [
+          ...links,
+          { endpointId: "e1", trigger: "other", note: "Every minute" },
+        ],
+        {
+          states: [
+            {
+              id: "s1",
+              kind: "loading",
+              name: "Loading items",
+              description: "",
+              causes: [{ type: "request", linkId: "p1-l0" }],
+              mockupIds: [],
+            },
+          ],
+        },
+      );
+
+      const page = filesOf(testInput({ ...input, pages: [twice] }))[
+        "pages/stock-list.md"
+      ] as string;
+
+      expect(page).toContain(
+        "While [`GET /items`](#get-items) (When the page loads) runs.",
+      );
+    });
+
+    it("keeps the Mockups section when no state shows a mockup", () => {
+      const page = filesOf(
+        testInput({
+          ...input,
+          pages: [
+            {
+              ...stockList,
+              states: states.map((state) => ({ ...state, mockupIds: [] })),
+            },
+          ],
+        }),
+      )["pages/stock-list.md"] as string;
+
+      expect(page).toMatch(
+        /## States\n[\s\S]*\n## Mockups\n\n!\[Grey rows\]\(\.\.\/images\/stock-list\/01-loading\.png\)[\s\S]*\n## Endpoints/,
+      );
+    });
+
+    it("tells how to mock states in the README, only when a page has some", () => {
+      const without = testInput({
+        ...input,
+        pages: [{ ...stockList, states: [] }],
+      });
+
+      expect(filesOf(without)["README.md"]).not.toContain("states");
+      expect(filesOf(input)["README.md"]).toContain(
+        [
+          '```bash\ncurl -H "Prefer: code=404" http://127.0.0.1:4010/<path>\ncurl -H "Prefer: example=<example name>" http://127.0.0.1:4010/<path>\n```',
+          "",
+          "Page files list each state with the headers that make Prism answer with it. Separate preferences with a comma, as in `Prefer: code=404, example=<example name>`: after a semicolon, Prism ignores the example. Loading states have none, since Prism answers right away; slow the network down in the browser's developer tools to see them.",
+        ].join("\n"),
+      );
+    });
+
+    it("leaves pages without states as they were, even next to pages with states", () => {
+      const settings = testPage("p2", "Settings", [
+        { endpointId: "e1", trigger: "on_load", note: "" },
+      ]);
+      const alone = filesOf(
+        testInput({
+          ...input,
+          pages: [{ ...stockList, states: [] }, settings],
+        }),
+      );
+      const together = filesOf(
+        testInput({ ...input, pages: [stockList, settings] }),
+      );
+
+      expect(together["pages/settings.md"]).toBe(alone["pages/settings.md"]);
+      expect(together["models.md"]).toBe(alone["models.md"]);
+      expect(together["error-types.md"]).toBe(alone["error-types.md"]);
     });
   });
 });

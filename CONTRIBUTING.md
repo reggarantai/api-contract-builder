@@ -81,6 +81,11 @@ git diff test/golden
 
 `test/golden` is excluded from Biome so formatting never changes them.
 
+`test/golden/inventory-markdown-without-states` is different: it's what 0.2.0 exported,
+before page states, and the sample built without its states must still export exactly
+that. Don't regenerate it to make a test pass; a change there means projects that don't
+use states see a different export.
+
 ### The sample project
 
 `src/server/samples/inventory.ts` builds the sample through the API, so it doubles as the
@@ -93,7 +98,13 @@ every schema in it. Its mockups are rendered from HTML by
 
 ```bash
 pnpm exec tsx scripts/render-sample-mockups.ts
+# Only some of them, so the others keep their bytes:
+pnpm exec tsx scripts/render-sample-mockups.ts stock-list-empty
 ```
+
+`src/server/export/prism-states.test.ts` sends the headers of every state of the sample
+to Prism's HTTP server and checks the answer, so a state whose `Prefer` header doesn't
+reproduce it fails there.
 
 The README screenshots come from `scripts/take-screenshots.ts` (see the comment at the top
 of the file for how to run it).

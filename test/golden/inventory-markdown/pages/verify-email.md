@@ -13,11 +13,50 @@ Opens from the link in the verification email: `/verify-email?token=…`.
 - [ ] On success, the page says the email is verified and offers to sign in
 - [ ] An invalid or expired link shows a form to send a new one
 
-## Mockups
+## States
+
+### Loading: Verifying
+
+While [`POST /auth/verify-email`](#post-authverify-email) runs.
+
+A spinner, while the token from the link is checked.
+
+### Success: Email verified
+
+Says the email is verified, with a button to sign in.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`POST /auth/verify-email`](#post-authverify-email) | 204 No Content | `Prefer: code=204` |
+
+### Error: Invalid or expired link
+
+Shows a form to send a new link.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`POST /auth/verify-email`](#post-authverify-email) | 400 [`invalid-link`](../error-types.md#invalid-link) | `Prefer: code=400, example=invalid-link`<br>`Accept: application/problem+json` |
+| [`POST /auth/verify-email`](#post-authverify-email) | 422 [`validation-failed`](../error-types.md#validation-failed), example `missing-token` | `Prefer: code=422, example=missing-token`<br>`Accept: application/problem+json` |
 
 ![The link has expired](../images/verify-email/01-verify-email-expired.png)
 
 _The link has expired_
+
+### Success: New link sent
+
+Says to check the email, whether or not the address has an account.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`POST /auth/verify-email/resend`](#post-authverify-emailresend) | 202 Accepted | `Prefer: code=202` |
+
+### Error: Too many emails
+
+Says when the user can try again, from `Retry-After`.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`POST /auth/verify-email/resend`](#post-authverify-emailresend) | 429 [`too-many-requests`](../error-types.md#too-many-requests) | `Prefer: code=429, example=too-many-requests`<br>`Accept: application/problem+json` |
 
 ## Endpoints
 

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { MethodBadge, StatusLabel } from "@/features/endpoints/badges";
 import { endpointsQueryOptions } from "@/features/endpoints/queries";
 import { MockupGallery } from "@/features/pages/mockup-gallery";
+import { PageStatesView } from "@/features/pages/page-states-view";
 import { pageQueryOptions } from "@/features/pages/queries";
 import { ensureFound } from "@/lib/router";
 
@@ -45,6 +46,12 @@ function PageView() {
   const { data: page } = useSuspenseQuery(pageQueryOptions(projectId, pageId));
   const { data: endpoints } = useSuspenseQuery(
     endpointsQueryOptions(projectId),
+  );
+  const shownByStates = new Set(
+    page.states.flatMap((state) => state.mockupIds),
+  );
+  const otherMockups = page.mockups.filter(
+    (mockup) => !shownByStates.has(mockup.id),
   );
   const links = page.endpoints.flatMap((link) => {
     const endpoint = endpoints.find((item) => item.id === link.endpointId);
@@ -94,13 +101,28 @@ function PageView() {
         )}
       </ViewSection>
 
-      <ViewSection title="Mockups">
-        {page.mockups.length > 0 ? (
-          <MockupGallery mockups={page.mockups} />
-        ) : (
-          <Empty>No mockups yet.</Empty>
-        )}
-      </ViewSection>
+      {page.states.length > 0 && (
+        <ViewSection title="States">
+          <PageStatesView page={page} />
+        </ViewSection>
+      )}
+
+      {/* With states, mockups show with their states; the rest stay here. */}
+      {shownByStates.size === 0 ? (
+        <ViewSection title="Mockups">
+          {page.mockups.length > 0 ? (
+            <MockupGallery mockups={page.mockups} />
+          ) : (
+            <Empty>No mockups yet.</Empty>
+          )}
+        </ViewSection>
+      ) : (
+        otherMockups.length > 0 && (
+          <ViewSection title="Other mockups">
+            <MockupGallery mockups={otherMockups} />
+          </ViewSection>
+        )
+      )}
 
       <ViewSection title="Endpoints">
         {links.length > 0 ? (

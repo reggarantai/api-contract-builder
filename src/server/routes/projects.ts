@@ -16,7 +16,12 @@ import { findProject } from "../db/projects";
 import { endpointsUsingScheme } from "../db/references";
 import { type ProjectRow, projects } from "../db/schema";
 import type { UploadStorage } from "../storage/uploads";
-import { jsonBody, toApiIssues, validationFailed } from "../validation";
+import {
+  jsonBody,
+  staleRevision,
+  toApiIssues,
+  validationFailed,
+} from "../validation";
 
 function toSummary(row: ProjectRow): ProjectSummary {
   return {
@@ -33,6 +38,7 @@ function toSummary(row: ProjectRow): ProjectSummary {
 export function toProject(row: ProjectRow): Project {
   return {
     ...toSummary(row),
+    revision: row.revision,
     servers: row.servers,
     securitySchemes: row.securitySchemes,
     defaultSecuritySchemeId: row.defaultSecuritySchemeId,
@@ -131,10 +137,16 @@ export function projectRoutes(db: Db, storage: UploadStorage) {
         return projectNotFound(c);
       }
 
+      const { revision, ...input } = c.req.valid("json");
+      const stale = staleRevision(c, "project", revision, existing.revision);
+      if (stale) {
+        return stale;
+      }
+
       // Cross-field rules (unique keys, default scheme) need the full settings.
       const result = projectSettingsSchema.safeParse({
         ...settingsOf(existing),
-        ...c.req.valid("json"),
+        ...input,
       });
       if (!result.success) {
         return validationFailed(c, toApiIssues(result.error));
@@ -176,7 +188,11 @@ export function projectRoutes(db: Db, storage: UploadStorage) {
 
       const row = db
         .update(projects)
-        .set({ ...settings, updatedAt: new Date() })
+        .set({
+          ...settings,
+          revision: existing.revision + 1,
+          updatedAt: new Date(),
+        })
         .where(eq(projects.id, existing.id))
         .returning()
         .get();

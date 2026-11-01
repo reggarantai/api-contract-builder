@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { apiErrorSchema } from "../../shared/api-error";
 import {
@@ -7,6 +8,7 @@ import {
 } from "../../shared/endpoints";
 import { modelSchema } from "../../shared/models";
 import { projectSchema } from "../../shared/projects";
+import { endpoints } from "../db/schema";
 import { createTestApp } from "../test-utils";
 
 const bearer = {
@@ -273,6 +275,128 @@ describe("endpoints API", () => {
       "parameters.query",
       "responses.0.headers",
       "responses.0.body.schema",
+    ]);
+  });
+
+  it("gives responses and examples saved with the same ID unique ones", async () => {
+    // Only API clients could send duplicates before IDs had to be unique.
+    const endpoint = await createEndpoint({ method: "GET", path: "/stocks" });
+    const example = (id: string, name: string) => ({
+      id,
+      name,
+      summary: "",
+      value: {},
+    });
+    const body = {
+      contentType: "application/json",
+      schema: { type: "object" },
+      examples: [example("x", "first"), example("x", "second")],
+    };
+    const noHeaders = { type: "object", properties: {} };
+    t.db
+      .update(endpoints)
+      .set({
+        responses: [
+          {
+            id: "r",
+            status: "200",
+            description: "OK",
+            headers: noHeaders,
+            body,
+            errors: [],
+          },
+          {
+            id: "r",
+            status: "404",
+            description: "Not Found",
+            headers: noHeaders,
+            body: null,
+            errors: [],
+          },
+        ],
+      })
+      .where(eq(endpoints.id, endpoint.id))
+      .run();
+
+    const read = endpointResponseFieldsSchema.parse(
+      await (await t.request("GET", `${endpointsUrl()}/${endpoint.id}`)).json(),
+    );
+    // A client from before page states saves one field.
+    const saved = await patchEndpoint(endpoint.id, { status: "agreed" });
+
+    expect(read.responses.map((response) => response.id)).toEqual(["r", "r-2"]);
+    expect(read.responses[0]?.body?.examples.map((item) => item.id)).toEqual([
+      "x",
+      "x-2",
+    ]);
+    expect(saved.status).toBe(200);
+    const [row] = t.db
+      .select()
+      .from(endpoints)
+      .where(eq(endpoints.id, endpoint.id))
+      .all();
+    expect(row?.responses.map((response) => response.id)).toEqual(["r", "r-2"]);
+  });
+
+  it("keeps the error types of a renamed duplicate when an old client saves", async () => {
+    const endpoint = await createEndpoint({ method: "GET", path: "/stocks" });
+    const missing = (await (
+      await t.request("POST", `/api/projects/${projectId}/error-types`, {
+        name: "not-found",
+        status: "404",
+        title: "Not found",
+        body: {
+          contentType: "application/json",
+          schema: { type: "object" },
+          example: {},
+        },
+      })
+    ).json()) as { id: string };
+    const noHeaders = { type: "object", properties: {} };
+    const errors = [{ errorTypeId: missing.id, examples: [] }];
+    t.db
+      .update(endpoints)
+      .set({
+        responses: [
+          {
+            id: "r",
+            status: "200",
+            description: "OK",
+            headers: noHeaders,
+            body: null,
+            errors: [],
+          },
+          {
+            id: "r",
+            status: "404",
+            description: "Not Found",
+            headers: noHeaders,
+            body: null,
+            errors,
+          },
+        ],
+      })
+      .where(eq(endpoints.id, endpoint.id))
+      .run();
+    const read = endpointResponseFieldsSchema.parse(
+      await (await t.request("GET", `${endpointsUrl()}/${endpoint.id}`)).json(),
+    );
+
+    // A client from before error types sends the responses it read, without them.
+    const saved = await patchEndpoint(endpoint.id, {
+      responses: read.responses.map(
+        ({ errors: _errors, ...response }) => response,
+      ),
+    });
+
+    expect(saved.status).toBe(200);
+    expect(
+      endpointResponseFieldsSchema
+        .parse(await saved.json())
+        .responses.map((response) => [response.id, response.errors]),
+    ).toEqual([
+      ["r", []],
+      ["r-2", errors],
     ]);
   });
 

@@ -1,15 +1,25 @@
-import { type ApiIssue, apiErrorSchema } from "@shared/api-error";
+import {
+  type ApiErrorBody,
+  type ApiIssue,
+  apiErrorSchema,
+} from "@shared/api-error";
 import type { z } from "zod";
 
 export class ApiError extends Error {
   readonly status: number;
   readonly issues: ApiIssue[];
+  /** Page states that come from what a refused change would remove. */
+  readonly pageStates: NonNullable<ApiErrorBody["pageStates"]>;
+  /** The current revision, when a save was based on an older one. */
+  readonly revision: number | undefined;
 
-  constructor(status: number, message: string, issues: ApiIssue[] = []) {
-    super(message);
+  constructor(status: number, body: ApiErrorBody) {
+    super(body.error);
     this.name = "ApiError";
     this.status = status;
-    this.issues = issues;
+    this.issues = body.issues ?? [];
+    this.pageStates = body.pageStates ?? [];
+    this.revision = body.revision;
   }
 }
 
@@ -26,12 +36,14 @@ async function request(method: string, path: string, body?: unknown) {
     const parsed = apiErrorSchema.safeParse(
       await response.json().catch(() => null),
     );
-    throw parsed.success
-      ? new ApiError(response.status, parsed.data.error, parsed.data.issues)
-      : new ApiError(
-          response.status,
-          `${method} /api${path} failed with status ${response.status}`,
-        );
+    throw new ApiError(
+      response.status,
+      parsed.success
+        ? parsed.data
+        : {
+            error: `${method} /api${path} failed with status ${response.status}`,
+          },
+    );
   }
   return response;
 }

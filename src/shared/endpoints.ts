@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { isJsonObject, type JsonSchema, type JsonValue } from "./json-schema";
 import { jsonSchemaSchema } from "./models";
+import { revisionInputSchema, revisionSchema } from "./revision";
 
 export const HTTP_METHODS = [
   "GET",
@@ -453,6 +454,46 @@ function refineEndpoint(endpoint: EndpointFields, ctx: z.RefinementCtx) {
     (index) => ["responses", index, "status"],
     (status) => `${status} is already used`,
   );
+  // Page states refer to responses and examples by ID.
+  addDuplicateIssues(
+    ctx,
+    endpoint.responses.map((response) => response.id),
+    (index) => ["responses", index, "id"],
+    () => "Another response has this ID",
+  );
+  endpoint.responses.forEach((response, index) => {
+    if (response.body) {
+      addDuplicateIssues(
+        ctx,
+        response.body.examples.map((example) => example.id),
+        (exampleIndex) => [
+          "responses",
+          index,
+          "body",
+          "examples",
+          exampleIndex,
+          "id",
+        ],
+        () => "Another example has this ID",
+      );
+    }
+    response.errors.forEach((usage, usageIndex) => {
+      addDuplicateIssues(
+        ctx,
+        usage.examples.map((example) => example.id),
+        (exampleIndex) => [
+          "responses",
+          index,
+          "errors",
+          usageIndex,
+          "examples",
+          exampleIndex,
+          "id",
+        ],
+        () => "Another example has this ID",
+      );
+    });
+  });
 
   const bodies: [(string | number)[], EndpointBody | null][] = [
     [["requestBody"], endpoint.requestBody],
@@ -486,11 +527,13 @@ export const createEndpointInputSchema = z.object({
 
 export const updateEndpointInputSchema = endpointFieldsSchema
   .extend({ responses: responsesSchema(responseInputSchema) })
-  .partial();
+  .partial()
+  .extend({ revision: revisionInputSchema });
 
 export const endpointResponseFieldsSchema = endpointFieldsSchema.extend({
   id: z.string(),
   projectId: z.string(),
+  revision: revisionSchema,
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
@@ -552,6 +595,50 @@ export function endpointLabel(
   endpoint: Pick<EndpointFields, "method" | "path">,
 ) {
   return `${endpoint.method} ${endpoint.path}`;
+}
+
+/**
+ * IDs that are unique where references look them up: among the responses,
+ * and among the examples of each body and of each error. Data saved before
+ * they had to be (through the API) may repeat one; the first keeps it, and
+ * later ones get a suffix, so what referred to it still does.
+ */
+export function withUniqueIds(
+  responses: EndpointResponse[],
+): EndpointResponse[] {
+  function unique<T extends { id: string }>(items: T[]): T[] {
+    const taken = new Set(items.map((item) => item.id));
+    if (taken.size === items.length) {
+      return items;
+    }
+    const seen = new Set<string>();
+    return items.map((item) => {
+      if (!seen.has(item.id)) {
+        seen.add(item.id);
+        return item;
+      }
+      let id = item.id;
+      for (let n = 2; taken.has(id); n++) {
+        const suffix = `-${n}`;
+        id = `${item.id.slice(0, 64 - suffix.length)}${suffix}`;
+      }
+      taken.add(id);
+      seen.add(id);
+      return { ...item, id };
+    });
+  }
+
+  return unique(responses).map((response) => ({
+    ...response,
+    body: response.body && {
+      ...response.body,
+      examples: unique(response.body.examples),
+    },
+    errors: response.errors.map((usage) => ({
+      ...usage,
+      examples: unique(usage.examples),
+    })),
+  }));
 }
 
 // --- Defaults ---------------------------------------------------------------

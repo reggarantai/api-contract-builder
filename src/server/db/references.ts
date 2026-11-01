@@ -13,8 +13,17 @@ import {
   modelIdOfRef,
   modelRef,
 } from "../../shared/json-schema";
+import type { PageState, StateCause } from "../../shared/page-states";
+import type { PageEndpointLink } from "../../shared/pages";
 import type { Db } from "./client";
-import { endpoints, errorTypes, models, pageEndpoints, pages } from "./schema";
+import {
+  endpoints,
+  errorTypes,
+  models,
+  type PageRow,
+  pageEndpoints,
+  pages,
+} from "./schema";
 
 function byName(a: string, b: string) {
   return a.localeCompare(b, undefined, { sensitivity: "base" });
@@ -183,4 +192,65 @@ export function pageIdsByEndpoint(db: Db, projectId: string) {
     byEndpoint.set(endpointId, pageIds);
   }
   return byEndpoint;
+}
+
+/** A page's links, in order. */
+export function linksOfPage(db: Db, pageId: string): PageEndpointLink[] {
+  return db
+    .select({
+      id: pageEndpoints.id,
+      endpointId: pageEndpoints.endpointId,
+      trigger: pageEndpoints.trigger,
+      note: pageEndpoints.note,
+    })
+    .from(pageEndpoints)
+    .where(eq(pageEndpoints.pageId, pageId))
+    .orderBy(asc(pageEndpoints.sortOrder))
+    .all();
+}
+
+/**
+ * Pages whose states come from a call to the endpoint, in page order, with
+ * their links and a test for causes that do.
+ */
+export function pagesWithStatesFrom(
+  db: Db,
+  projectId: string,
+  endpointId: string,
+) {
+  return db
+    .select()
+    .from(pages)
+    .where(eq(pages.projectId, projectId))
+    .orderBy(asc(pages.sortOrder))
+    .all()
+    .flatMap((page) => {
+      if (page.states.length === 0) {
+        return [];
+      }
+      const links = linksOfPage(db, page.id);
+      const calls = new Set(
+        links
+          .filter((link) => link.endpointId === endpointId)
+          .map((link) => link.id),
+      );
+      const comesFrom = (cause: StateCause) => calls.has(cause.linkId);
+      return page.states.some((state) => state.causes.some(comesFrom))
+        ? [{ page, links, comesFrom }]
+        : [];
+    });
+}
+
+/** The page's states without the causes `remove` picks; null when none is picked. */
+export function statesWithout(
+  page: PageRow,
+  remove: (cause: StateCause) => boolean,
+): PageState[] | null {
+  let removed = false;
+  const states = page.states.map((state) => {
+    const causes = state.causes.filter((cause) => !remove(cause));
+    removed ||= causes.length < state.causes.length;
+    return { ...state, causes };
+  });
+  return removed ? states : null;
 }

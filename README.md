@@ -9,10 +9,14 @@ describe what it does, attach its mockups, and list the endpoints it calls and w
 hand the contract over as **OpenAPI 3.1** for frontend and backend tools and as
 **Markdown** for everyone else, so frontend and backend can build in parallel.
 
-![A page with its description, acceptance criteria, and mockups](docs/images/page-view.png)
+![A page with its description, acceptance criteria, and states](docs/images/page-view.png)
 
 - **Pages**: description and acceptance criteria in Markdown, mockup images, and the
   endpoints the page calls, each with a trigger (on load, on submit, on an action).
+- **Page states**: what a page shows while it loads, when there's nothing to show, when a
+  call fails, and so on, each with its mockups and the responses that lead to it, like
+  the `empty` list example or a 409 `item-has-stock`. Each comes with the Prism `Prefer`
+  header that makes the mock server answer with it.
 - **Endpoints**: parameters, request bodies, responses per status code with their headers,
   named examples, authentication, a status (draft, in review, agreed), and notes for each
   side.
@@ -66,6 +70,12 @@ The **Export** tab downloads the contract for the whole project or for one page.
     http://127.0.0.1:4010/stock-items/1e3a5c7e-9b2d-4f6a-8c0e-3b5d7f9a1c2e
   ```
 
+  Each page state lists the headers that reproduce it, like
+  `Prefer: code=409, example=item-has-stock` for the Stock list's "Can't delete". Separate
+  preferences with a comma: after a semicolon, Prism ignores the example.
+
+  ![Two states of the Stock list, with the responses that lead to them and their Prism headers](docs/images/page-states.png)
+
 - Generate types or a client, for example with
   [openapi-typescript](https://openapi-ts.dev) or [Orval](https://orval.dev).
 
@@ -80,8 +90,8 @@ The **Export** tab downloads the contract for the whole project or for one page.
 
 **Everyone else**
 
-The Markdown bundle has a README, one file per page with its mockups and endpoints, the
-models, and the error types. It reads well on GitHub, GitLab, or any Markdown viewer, and
+The Markdown bundle has a README, one file per page with its states, mockups, and
+endpoints, the models, and the error types. It reads well on GitHub, GitLab, or any Markdown viewer, and
 includes the OpenAPI file too.
 
 ![An endpoint in the editor](docs/images/endpoint-editor.png)

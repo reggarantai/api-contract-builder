@@ -1,9 +1,11 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { type Project, projectSettingsFieldsSchema } from "@shared/projects";
+import { useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import type { z } from "zod";
+import { ConflictDialog } from "@/components/conflict-dialog";
 import { SaveButtons } from "@/components/save-buttons";
 import {
   Field,
@@ -15,7 +17,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { showRequestError } from "@/lib/forms";
-import { useUpdateProject } from "../queries";
+import { useSavedForm } from "@/lib/saved-form";
+import { projectQueryOptions, useUpdateProject } from "../queries";
 import { SettingsSection } from "./settings-section";
 
 const formSchema = projectSettingsFieldsSchema.pick({
@@ -27,31 +30,50 @@ const formSchema = projectSettingsFieldsSchema.pick({
 
 type FormValues = z.input<typeof formSchema>;
 
+function valuesOf(project: Project): FormValues {
+  return {
+    name: project.name,
+    slug: project.slug,
+    description: project.description,
+    apiVersion: project.apiVersion,
+  };
+}
+
 export function GeneralSettings({ project }: { project: Project }) {
   const updateProject = useUpdateProject(project.id);
-  const values = useMemo<FormValues>(
-    () => ({
-      name: project.name,
-      slug: project.slug,
-      description: project.description,
-      apiVersion: project.apiVersion,
-    }),
-    [project.name, project.slug, project.description, project.apiVersion],
-  );
+  const values = useMemo(() => valuesOf(project), [project]);
   const form = useForm<FormValues, unknown, z.output<typeof formSchema>>({
     resolver: zodResolver(formSchema),
-    values,
+    defaultValues: values,
   });
 
-  const onSubmit = form.handleSubmit((input) =>
-    updateProject.mutate(input, {
-      onSuccess: () => toast.success("General settings saved"),
-      onError: (error) => showRequestError(error, form.setError),
-    }),
-  );
+  const queryClient = useQueryClient();
+  // Other sections save the same project; only changes to this section's
+  // fields made elsewhere count as a conflict.
+  const saved = useSavedForm<FormValues, z.output<typeof formSchema>>({
+    values,
+    revision: project.revision,
+    hasChanges: () => form.formState.isDirty,
+    reset: (next) => form.reset(next),
+    send: async (input, revision) => {
+      const saved = await updateProject.mutateAsync({ ...input, revision });
+      return { values: valuesOf(saved), revision: saved.revision };
+    },
+    load: async () => {
+      const current = await queryClient.fetchQuery({
+        ...projectQueryOptions(project.id),
+        staleTime: 0,
+      });
+      return { values: valuesOf(current), revision: current.revision };
+    },
+    onSaved: () => toast.success("General settings saved"),
+    onError: (error) => showRequestError(error, form.setError),
+  });
+
+  const onSubmit = form.handleSubmit((input) => saved.save(input));
 
   return (
-    <form onSubmit={onSubmit}>
+    <form onSubmit={onSubmit} inert={saved.busy}>
       <SettingsSection
         title="General"
         description="How the project is named and versioned in exports."
@@ -59,7 +81,7 @@ export function GeneralSettings({ project }: { project: Project }) {
           <SaveButtons
             isDirty={form.formState.isDirty}
             isSaving={updateProject.isPending}
-            onReset={() => form.reset(values)}
+            onReset={saved.discard}
           />
         }
       >
@@ -141,6 +163,7 @@ export function GeneralSettings({ project }: { project: Project }) {
           />
         </FieldGroup>
       </SettingsSection>
+      <ConflictDialog what="project" {...saved.conflict} />
     </form>
   );
 }

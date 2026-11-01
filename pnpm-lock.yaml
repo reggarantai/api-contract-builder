@@ -230,6 +230,9 @@ importers:
       '@stoplight/prism-http':
         specifier: 5.16.0
         version: 5.16.0(supports-color@10.2.2)
+      '@stoplight/prism-http-server':
+        specifier: 5.16.0
+        version: 5.16.0(supports-color@10.2.2)
       '@tailwindcss/typography':
         specifier: ^0.5.20
         version: 0.5.20(tailwindcss@4.3.3)

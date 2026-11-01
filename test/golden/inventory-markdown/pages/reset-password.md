@@ -13,9 +13,43 @@ Opens from the link in the reset email: `/reset-password?token=…`.
 - [ ] On success, the user goes to Login, which says the password was changed and other devices were signed out
 - [ ] An invalid or expired link shows a link to Forgot password
 
-## Mockups
+## States
+
+### Idle: New password form
+
+The new password, twice.
 
 ![reset-password.png](../images/reset-password/01-reset-password.png)
+
+### Loading: Saving
+
+While [`POST /auth/reset-password`](#post-authreset-password) runs.
+
+The button shows a spinner.
+
+### Success: Password changed
+
+Goes to Login, which says the password was changed and other devices were signed out.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`POST /auth/reset-password`](#post-authreset-password) | 204 No Content | `Prefer: code=204` |
+
+### Error: Invalid or expired link
+
+Shows a link to Forgot password.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`POST /auth/reset-password`](#post-authreset-password) | 400 [`invalid-link`](../error-types.md#invalid-link) | `Prefer: code=400, example=invalid-link`<br>`Accept: application/problem+json` |
+
+### Error: Weak password
+
+The message shows under the password field.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`POST /auth/reset-password`](#post-authreset-password) | 422 [`validation-failed`](../error-types.md#validation-failed) | `Prefer: code=422, example=short-password`<br>`Accept: application/problem+json` |
 
 ## Endpoints
 

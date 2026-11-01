@@ -11,9 +11,43 @@ Sends a link to set a new password.
 - [ ] After sending, the page always says "If an account exists for this email, we sent a link", even for unknown emails
 - [ ] A 429 shows when the user can ask again
 
-## Mockups
+## States
+
+### Idle: Email form
+
+One email field, and Send link.
+
+### Loading: Sending
+
+While [`POST /auth/forgot-password`](#post-authforgot-password) runs.
+
+The button shows a spinner.
+
+### Success: Link sent
+
+Always says “If an account exists for this email, we sent a link”, even for unknown emails.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`POST /auth/forgot-password`](#post-authforgot-password) | 202 Accepted | `Prefer: code=202` |
 
 ![forgot-password.png](../images/forgot-password/01-forgot-password.png)
+
+### Error: Invalid email
+
+The message shows under the email field.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`POST /auth/forgot-password`](#post-authforgot-password) | 422 [`validation-failed`](../error-types.md#validation-failed), example `invalid-email` | `Prefer: code=422, example=invalid-email`<br>`Accept: application/problem+json` |
+
+### Error: Too many emails
+
+Says when the user can try again, from `Retry-After`.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`POST /auth/forgot-password`](#post-authforgot-password) | 429 [`too-many-requests`](../error-types.md#too-many-requests) | `Prefer: code=429, example=too-many-requests`<br>`Accept: application/problem+json` |
 
 ## Endpoints
 

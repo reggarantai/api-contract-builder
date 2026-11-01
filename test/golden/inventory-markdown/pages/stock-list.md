@@ -13,11 +13,61 @@ All stock items, with search, filters, and pages. Items low on stock or out of s
 - [ ] Only admins see Delete, and it asks for confirmation first
 - [ ] A 409 when deleting shows the `detail` from the API
 
-## Mockups
+## States
+
+### Loading: Loading items
+
+While [`GET /stock-items`](#get-stock-items) runs.
+
+Grey rows stand in for the items; search and filters stay usable.
+
+![Grey rows while the items load](../images/stock-list/02-stock-list-loading.png)
+
+_Grey rows while the items load_
+
+### Success: Items
+
+Low stock shows an amber badge, out of stock a red one.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`GET /stock-items`](#get-stock-items) | 200 OK, example `first-page` | `Prefer: code=200, example=first-page` |
 
 ![Items low on stock and out of stock stand out](../images/stock-list/01-stock-list.png)
 
 _Items low on stock and out of stock stand out_
+
+### Empty: No matching items
+
+Says that nothing matches, with a button that clears the search and filters.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`GET /stock-items`](#get-stock-items) | 200 OK, example `empty` | `Prefer: code=200, example=empty` |
+
+![Nothing matches the search](../images/stock-list/03-stock-list-empty.png)
+
+_Nothing matches the search_
+
+### Error: Can't delete
+
+The confirmation dialog shows the API's `detail`, and the item stays.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`DELETE /stock-items/{itemId}`](#delete-stock-itemsitemid) | 409 [`item-has-stock`](../error-types.md#item-has-stock) | `Prefer: code=409, example=item-has-stock`<br>`Accept: application/problem+json` |
+
+![The item still has stock, so it can't be deleted](../images/stock-list/04-stock-list-delete-error.png)
+
+_The item still has stock, so it can't be deleted_
+
+### Success: Deleted
+
+The dialog closes, and the list loads again.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`DELETE /stock-items/{itemId}`](#delete-stock-itemsitemid) | 204 No Content | `Prefer: code=204` |
 
 ## Endpoints
 

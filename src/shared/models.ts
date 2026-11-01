@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { isJsonObject, type JsonSchema } from "./json-schema";
+import { revisionInputSchema, revisionSchema } from "./revision";
 
 export const modelNameSchema = z
   .string()
@@ -35,7 +36,8 @@ export const updateModelInputSchema = z
     description: modelDescriptionSchema,
     schema: jsonSchemaSchema,
   })
-  .partial();
+  .partial()
+  .extend({ revision: revisionInputSchema });
 
 export const modelSummarySchema = z.object({
   id: z.string(),
@@ -48,6 +50,7 @@ export const modelSummarySchema = z.object({
 
 export const modelSchema = modelSummarySchema.extend({
   schema: jsonSchemaSchema,
+  revision: revisionSchema,
 });
 
 export type CreateModelInput = z.input<typeof createModelInputSchema>;

@@ -24,7 +24,8 @@ Project
  ├─ Models        reusable schemas (User, StockItem, …)
  ├─ Error types   the errors the API answers with (sku-taken, token-expired, …)
  ├─ Endpoints     method and path, parameters, request body, responses, status, notes
- └─ Pages         description, acceptance criteria, mockups, and the endpoints the page calls
+ └─ Pages         description, acceptance criteria, mockups, the endpoints the page calls,
+                  and its states (loading, empty, error, …) with what leads to each
 ```
 
 - **Endpoints belong to the project, not to a page.** A page links endpoints, each with a
@@ -46,6 +47,13 @@ Project
   uses the catalog's example, or the endpoint's own examples instead (a 422 reports the
   fields of that endpoint's request). An error type goes in the response that answers
   its status: OpenAPI picks an exact code over `4XX`, and `4XX` over `default`.
+- **A page's states** describe what it shows: idle (a form waiting for input), loading,
+  success, empty, or error, any number of each, with a name, a description, the page's
+  mockups that show it, and what leads to it. A cause is one of the page's calls (its
+  link): the call itself while it runs (loading states only), a response or one of its
+  body's examples, or an error type the call answers with or one of the endpoint's own
+  examples of it. Each cause gets the Prism `Prefer` header (and `Accept`, when the
+  content isn't JSON) that makes the mock server answer with it.
 
 ## Data
 
@@ -53,22 +61,41 @@ SQLite through better-sqlite3 and Drizzle, in `DATA_DIR/app.db`. Uploaded mockup
 files in `DATA_DIR/uploads/<project id>/`, named by a new ID. IDs are ULIDs. The SQL
 migrations in `drizzle/` run on startup.
 
-| Table            | Holds                                                                                                                                                                                                                                     |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `projects`       | name, unique slug, description (Markdown), API version, servers and security schemes (JSON, each with its own ID), the default scheme                                                                                                     |
-| `models`         | name (unique per project, ignoring case), description, schema (JSON)                                                                                                                                                                      |
-| `endpoints`      | method, path, `path_key` (the path without parameter names), operation ID, summary, description, status, deprecated, security, parameters, request body, and responses (JSON columns, each with the error types it uses), FE and BE notes |
-| `error_types`    | name (unique per project, ignoring case), status, title, description (Markdown), headers and body (JSON)                                                                                                                                  |
-| `pages`          | name, unique slug, description and acceptance criteria (Markdown), position                                                                                                                                                               |
-| `page_endpoints` | a page's links to endpoints: trigger, note, position                                                                                                                                                                                      |
-| `page_mockups`   | uploaded images: file name, original name, type, width and height, caption, position                                                                                                                                                      |
-| `app_meta`       | facts about the instance, like when its data directory was created                                                                                                                                                                        |
+| Table            | Holds                                                                                                                                                                                                                                                 |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `projects`       | name, unique slug, description (Markdown), API version, servers and security schemes (JSON, each with its own ID), the default scheme, a revision                                                                                                     |
+| `models`         | name (unique per project, ignoring case), description, schema (JSON), a revision                                                                                                                                                                      |
+| `endpoints`      | method, path, `path_key` (the path without parameter names), operation ID, summary, description, status, deprecated, security, parameters, request body, and responses (JSON columns, each with the error types it uses), FE and BE notes, a revision |
+| `error_types`    | name (unique per project, ignoring case), status, title, description (Markdown), headers and body (JSON), a revision                                                                                                                                  |
+| `pages`          | name, unique slug, description and acceptance criteria (Markdown), position, states (JSON: kind, name, description, causes, mockups), a revision                                                                                                      |
+| `page_endpoints` | a page's links to endpoints: trigger, note, position                                                                                                                                                                                                  |
+| `page_mockups`   | uploaded images: file name, original name, type, width and height, caption, position                                                                                                                                                                  |
+| `app_meta`       | facts about the instance, like when its data directory was created                                                                                                                                                                                    |
 
 Deleting a project deletes everything it owns, files included. Models and security schemes
 that endpoints use, models other models or error types use, and error types responses use
 can't be deleted, so exports never have dangling references. For the same reason an error
 type in use can't change in a way that breaks a response using it (a status the response
 doesn't answer, an example name the response already has).
+
+Page states point at links, responses, examples, and error types by ID, so renaming any
+of them is followed. What a state comes from can't disappear unnoticed: saving an
+endpoint without a response or example a state uses is refused (409, naming the states)
+unless the save asks to remove it from those states too (`?detachStates=true`, which the
+editor offers); deleting an endpoint or a mockup takes it out of states, as its dialog
+says; and saving a page without a call its states use is refused, with the issue on the
+state, or as a 409 naming the states for clients that don't send `states`. A save that
+still lists a mockup deleted since (from a window opened before) drops it.
+
+Projects, models, error types, endpoints, and pages count their saves in a revision.
+A save can name the revision it started from, and answers 409 with the current one when
+the item was saved again since; editors always send it. Mockups don't count, since
+they're saved apart from the page.
+
+Responses and examples need unique IDs where states look them up. Data saved through the
+API before that rule may repeat one; reading it renames the later ones (`r` stays,
+another `r` becomes `r-2`), so saving it works and anything that pointed at the first
+still does.
 
 ## Server
 
@@ -131,6 +158,13 @@ authentication, pages, endpoints, error types, and how to mock with Prism), `mod
 rules (lengths, ranges, allowed values, patterns, defaults); parameter and header tables
 add examples, and bodies show theirs as JSON.
 
+A page with states gets a States section in place of Mockups: each state as
+`### <Kind>: <name>`, the calls it waits for, its description, a table of the responses
+that lead to it with their Prism headers (left out when the bundle has no OpenAPI file),
+and its mockups. Mockups no state shows follow under "Other mockups". Pages without
+states, and so projects without them, export exactly as before; the README explains the
+headers only when some page has states. States don't reach the OpenAPI document.
+
 ## Client
 
 A React single-page app built with Vite: TanStack Router (file-based routes) and Query,
@@ -140,6 +174,12 @@ grouped by area in `src/client/features`.
 The schema builder edits the JSON Schema document in place, so switching between the
 builder and JSON loses nothing, and keywords the builder doesn't know are kept. Subschemas
 it can't edit (`oneOf`, `if`/`then`, `const`, …) show as Custom and are edited as JSON.
+
+Editors share `useSavedForm` (`src/client/lib/saved-form.ts`): it decides when server data
+replaces the form (`serverChange`: responses that arrive late are ignored, since
+revisions only grow), sends the revision with each save, turns a 409 for an older
+revision into `ConflictDialog`, and makes the form inert for the moment a save or load
+runs, so nothing typed then is lost to the reset that follows.
 
 ## Running and releasing
 
@@ -163,8 +203,11 @@ has moved, the latest release is rebuilt and published again as `X.Y` and `lates
 ## Tests
 
 - **Vitest**: rules and pure functions; API routes, in process with a fresh database;
-  exports against golden files in `test/golden`; the OpenAPI export through Prism's mock
-  engine (examples, errors, request validation, security); the data migrations.
+  exports against golden files in `test/golden` (and the sample without its states
+  against what 0.2.0 exported, in `test/golden/inventory-markdown-without-states`); the
+  OpenAPI export through Prism's mock engine (examples, errors, request validation,
+  security), and every page state's headers through Prism's HTTP server; the data
+  migrations.
 - **Playwright**: everything a person does in the browser, against the production build.
 - **The image**: `scripts/smoke-test-image.sh` runs a built image the way users do, and
   Trivy scans it for vulnerabilities that already have a fix.
@@ -205,6 +248,48 @@ The calls that shape the code, and why. Earlier plans and their history are in g
   know, and that must not silently empty a response.
 - **Mockups are saved right away**, apart from the page's Save button, because a file
   exists as soon as it's uploaded.
+- **Page states are a closed set of kinds**: the request lifecycle frontends already
+  model (TanStack Query's and Redux's idle, loading, success, error) plus the designer's
+  empty state. A fixed set gives every project the same vocabulary and lets the rules
+  check causes (an idle state has none; only loading waits for a call); anything finer,
+  like "Too many attempts", is the state's name, and a page can have several of a kind.
+- **A state's causes point at the page's calls**, not at endpoints, so a call made twice
+  (the sample's on-load refresh and the background one) leads to different states, and
+  the trigger comes along. A response with error types is reached through its error
+  types: their example and status match, while asking Prism for a range or default
+  response would answer one error's body with another code. An error cause has no
+  response ID, since an error type sits in one response per endpoint, so moving it to
+  another response keeps the state. Nothing reaches a state from "any endpoint": Prism
+  mocks one request at a time.
+- **Prism headers are worked out, not stored**, so renames never leave a stale header.
+  Preferences are separated by commas (RFC 7240): Prism's parser reads
+  `code=200; example=empty` as one preference with a parameter and ignores the example.
+  A range or default response gets the first usual code that reaches it, skipping 401,
+  407, 408, and 429, which frontends handle on their own; `Accept` is added when the
+  content isn't JSON, since Prism only finds examples in the content type it negotiates.
+  1xx and 3xx responses can't be causes: a page never sees them through `fetch`.
+- **States are saved with the page, as a JSON column**, like an endpoint's responses:
+  the page form saves them as a whole, and nothing reads one state alone. A save without
+  `states` keeps them, so older clients don't erase them. Issue #6's mockup annotations
+  should link to states from the annotation, not add fields to states, or a client from
+  before them would drop those fields on save.
+- **Editors keep unsaved changes, and saves name the revision they started from.** Each
+  editor takes new data from the server (a refetch when the window becomes visible, a
+  mockup delete that prunes states) only while it has no changes of its own, instead of
+  replacing what the user typed; TanStack Query and React Hook Form both advise against
+  syncing background updates into a form being edited. Without a check, that would let
+  one tab save over a newer save from another tab or window, so items count their saves,
+  and a save based on an older revision answers 409: the editor offers to load the saved
+  version or to save over it. RFC 9110 gives this, a versioning conflict, as its example
+  of a 409. Project settings save in sections; a section moves on to the new revision
+  when only other sections' fields changed, so sections never conflict with each other.
+  `ETag` and `If-Match` would be the header form of it, but a page's representation
+  includes its mockups, which are saved apart and right away, so a strong `ETag` would
+  change with every upload and report conflicts that aren't. API clients that don't send
+  a revision save as before.
+- **Leaving OpenAPI alone for states.** OpenAPI describes the HTTP interface, no tool
+  reads UI states, and an `x-` extension would only churn generated clients and mocks;
+  Prism needs only the example names already there.
 - **Markdown page files stand alone**, so someone can read one page without jumping
   around; `models.md` lists each model once.
 - **The sample project is built through the API and is the export fixture**, so what users
@@ -246,6 +331,8 @@ calls are explained here:
   succeeds. Staging is on its own site, so cookies never cross between environments.
 - **Creates take a required `Idempotency-Key`**; only successes are replayed, and a resend
   while the first request runs answers 409 `request-in-progress`.
+- **Every page describes its states**, from its acceptance criteria, and every mockup
+  shows one. Stock list has the loading, empty, and delete-refused screens as mockups.
 - **Every error is an error type in the catalog**, 20 of them. The 422s give their own
   examples, the fields each endpoint checks, under `validation-failed`; the 415 keeps
   `Accept-Patch` as its own header, since only the PATCH endpoint sends it.

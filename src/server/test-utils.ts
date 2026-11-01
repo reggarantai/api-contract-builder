@@ -69,10 +69,15 @@ export function readSampleMockup(name: string) {
   return fs.readFileSync(path.resolve("samples/mockups", `${name}.png`));
 }
 
-/** Builds the sample project in a test app. */
-export function buildSample(t: ReturnType<typeof createTestApp>) {
+/** Builds the sample project in a test app; `states: false` leaves out page states. */
+export function buildSample(
+  t: ReturnType<typeof createTestApp>,
+  options: { states?: boolean } = {},
+) {
   return buildInventorySample(
     { request: t.request, upload: t.upload },
     readSampleMockup,
+    undefined,
+    options,
   );
 }

@@ -13,11 +13,42 @@ The layout around every signed-in page: navigation, the user menu, and keeping t
 - [ ] The user menu shows the user's name and role, and Sign out
 - [ ] Sign out goes to Login, even if the request fails
 
-## Mockups
+## States
+
+### Loading: Restoring the session
+
+While [`POST /auth/refresh`](#post-authrefresh) (When the page loads) and [`GET /me`](#get-me) run.
+
+The navigation shows, and the page waits until the user is known.
+
+### Success: Signed in
+
+The user menu shows the user's name and role, and Sign out.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`GET /me`](#get-me) | 200 OK, example `ana` | `Prefer: code=200, example=ana` |
 
 ![User menu open](../images/app-shell/01-app-shell.png)
 
 _User menu open_
+
+### Error: Session ended
+
+Goes to Login, and back to this page after signing in.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`POST /auth/refresh`](#post-authrefresh) (When the page loads) | 401 [`session-expired`](../error-types.md#session-expired) | `Prefer: code=401, example=session-expired`<br>`Accept: application/problem+json` |
+| [`POST /auth/refresh`](#post-authrefresh) (Other) | 401 [`session-expired`](../error-types.md#session-expired) | `Prefer: code=401, example=session-expired`<br>`Accept: application/problem+json` |
+
+### Success: Signed out
+
+Goes to Login. It would even if the request failed: the access token is dropped anyway.
+
+| Comes from | Response | Prism headers |
+| --- | --- | --- |
+| [`POST /auth/logout`](#post-authlogout) | 204 No Content | `Prefer: code=204` |
 
 ## Endpoints
 

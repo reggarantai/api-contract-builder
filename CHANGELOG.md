@@ -4,6 +4,49 @@ All notable changes to this project are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Page states**: describe each state a page can be in (idle, loading, success, empty,
+  or error, as many of each as needed), with a description, the page's mockups that show
+  it, and what leads to it: one of the page's calls while it runs, a response or one of
+  its examples, or an error type. The page view shows each with the Prism headers that
+  make the mock server answer with it, ready to copy, and page files in the Markdown
+  bundle get a States section. The OpenAPI export doesn't change.
+- The sample project describes the states of all its pages, with three new Stock list
+  mockups: loading, nothing found, and a delete refused with a 409.
+- Saving a page, an endpoint, a model, an error type, or project settings that were
+  saved somewhere else since you opened them, like another tab or window, asks first:
+  load the saved version, or save over it. Through the API, a save can send the
+  `revision` it started from, and gets 409 when the item is past it.
+
+### Changed
+
+- Saving an endpoint without a response or example that a page state comes from asks
+  first, and then removes it from those states too; through the API, the save answers
+  409 unless it adds `?detachStates=true`. Deleting an endpoint or a mockup takes it out
+  of the states that used it.
+- Endpoints refuse two responses with the same ID, and two examples with the same ID in
+  one body or one error type's examples, since states refer to them by ID. Endpoints
+  saved through the API with repeated IDs before get unique ones when read, so they can
+  still be saved.
+- Editors keep unsaved changes when the item changes elsewhere, instead of replacing
+  them with the saved version when the window becomes visible again. While a save
+  runs, the form is locked, so nothing typed then is lost.
+- Data volumes from 0.2.0 work as they are: pages start without states, and projects
+  without states export exactly as before.
+
+### Fixed
+
+- Saving a page with two endpoint links that share an ID answers 400 instead of failing
+  with a server error.
+- After saving a change that the server trims away, like a trailing space, editors no
+  longer show unsaved changes.
+- When an endpoint, model, or error type changes elsewhere while its editor has no
+  changes, JSON text and examples in the editor show the new values instead of the old
+  ones.
+
 ## [0.2.0] - 2026-11-01
 
 ### Added
