@@ -67,6 +67,14 @@ await page.screenshot({ path: out("endpoint-editor") });
 
 await page.goto(`${base}/projects/${project.id}/export`);
 await page.getByText("Valid OpenAPI 3.1").waitFor();
+// The downloads turn on with the report, and fade in. (Text, not a function:
+// tsx would add helpers the browser doesn't have.)
+await page.waitForFunction(
+  `[...document.querySelectorAll("button")].some((button) =>
+    button.textContent.includes("Download YAML") &&
+    !button.disabled &&
+    getComputedStyle(button).opacity === "1")`,
+);
 await page.screenshot({ path: out("export") });
 
 await browser.close();
