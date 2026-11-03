@@ -506,4 +506,108 @@ describe("endpoints API", () => {
       ]);
     });
   });
+
+  it("keeps saving an example nested deeper than 256 levels from before the limit, while it stays as it was", async () => {
+    const endpoint = await createEndpoint({ method: "POST", path: "/old" });
+    const nested = (levels: number) => {
+      let value: unknown = 0;
+      for (let level = 0; level < levels; level++) {
+        value = [value];
+      }
+      return value;
+    };
+    const old = {
+      ...endpoint.requestBody,
+      examples: [{ id: "x", name: "old", summary: "", value: nested(300) }],
+    };
+    // Saved before the limit: straight into the database.
+    t.db.$client
+      .prepare("update endpoints set request_body = ? where id = ?")
+      .run(JSON.stringify(old), endpoint.id);
+
+    // A change elsewhere, as an API client sends it.
+    const renamed = await patchEndpoint(endpoint.id, { summary: "Renamed" });
+    expect(renamed.status).toBe(200);
+    // Everything as read, as the editor sends it.
+    const read = endpointResponseFieldsSchema.parse(await renamed.json());
+    const resaved = await patchEndpoint(endpoint.id, {
+      ...read,
+      summary: "Saved again",
+    });
+    expect(resaved.status).toBe(200);
+    // What changes must fit.
+    const changed = await patchEndpoint(endpoint.id, {
+      requestBody: {
+        ...old,
+        examples: [{ id: "x", name: "old", summary: "", value: nested(301) }],
+      },
+    });
+    expect(changed.status).toBe(400);
+    expect((await errorOf(changed)).issues).toEqual([
+      {
+        path: "requestBody.examples.0.value",
+        message: "This example is nested more than 256 levels deep",
+      },
+    ]);
+  });
+
+  it("saves examples nested up to 256 levels deep, and refuses deeper ones wherever they are", async () => {
+    const endpoint = await createEndpoint({ method: "POST", path: "/deep" });
+    const [response] = endpoint.responses;
+    const nested = (levels: number) => {
+      let value: unknown = 0;
+      for (let level = 0; level < levels; level++) {
+        value = [value];
+      }
+      return value;
+    };
+    const examples = (levels: number) => [
+      { id: "x", name: "deep", summary: "", value: nested(levels) },
+    ];
+    const tooDeep = (path: string) => [
+      { path, message: "This example is nested more than 256 levels deep" },
+    ];
+
+    const saved = await patchEndpoint(endpoint.id, {
+      requestBody: { ...endpoint.requestBody, examples: examples(256) },
+    });
+    expect(saved.status).toBe(200);
+
+    const request = await patchEndpoint(endpoint.id, {
+      requestBody: { ...endpoint.requestBody, examples: examples(257) },
+    });
+    expect(request.status).toBe(400);
+    expect((await errorOf(request)).issues).toEqual(
+      tooDeep("requestBody.examples.0.value"),
+    );
+    const answer = await patchEndpoint(endpoint.id, {
+      responses: [
+        {
+          ...response,
+          body: { ...response?.body, examples: examples(257) },
+        },
+      ],
+    });
+    expect(answer.status).toBe(400);
+    expect((await errorOf(answer)).issues).toEqual(
+      tooDeep("responses.0.body.examples.0.value"),
+    );
+
+    // Sent as text: building it as an object would overflow the client.
+    const depth = 50_000;
+    const value = `${"[".repeat(depth)}${"]".repeat(depth)}`;
+    const body = `{"requestBody": {"contentType": "application/json", "description": "", "required": true, "schema": {"type": "array"}, "examples": [{"id": "x", "name": "deep", "summary": "", "value": ${value}}]}}`;
+    const deep = await t.app.request(
+      `/api/projects/${projectId}/endpoints/${endpoint.id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body,
+      },
+    );
+    expect(deep.status).toBe(400);
+    expect((await errorOf(deep)).issues).toEqual(
+      tooDeep("requestBody.examples.0.value"),
+    );
+  });
 });

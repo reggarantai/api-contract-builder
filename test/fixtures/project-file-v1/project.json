@@ -1,0 +1,602 @@
+{
+  "format": "api-contract-builder/project",
+  "formatVersion": 1,
+  "generator": "A hand-written test fixture",
+  "project": {
+    "id": "fixture-shop",
+    "name": "Fixture Shop",
+    "slug": "fixture-shop",
+    "description": "A small project in project file format 1, with every kind of reference. Files from older versions must keep importing, so this one never changes.",
+    "apiVersion": "2.0.0",
+    "servers": [
+      {
+        "id": "local",
+        "name": "Local",
+        "url": "http://localhost:8080",
+        "description": ""
+      }
+    ],
+    "securitySchemes": [
+      {
+        "id": "bearer",
+        "key": "bearerAuth",
+        "type": "bearer",
+        "bearerFormat": "JWT",
+        "description": ""
+      },
+      {
+        "id": "key",
+        "key": "apiKey",
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "For scripts"
+      }
+    ],
+    "defaultSecuritySchemeId": "bearer"
+  },
+  "models": [
+    {
+      "id": "category",
+      "name": "Category",
+      "description": "",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "featured": {
+            "$ref": "model:item"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    },
+    {
+      "id": "item",
+      "name": "Item",
+      "description": "An item for sale.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "category": {
+            "$ref": "model:category"
+          },
+          "related": {
+            "type": "array",
+            "items": {
+              "$ref": "model:item"
+            }
+          },
+          "note": {
+            "type": "string",
+            "description": "Data that looks like a reference stays data.",
+            "examples": [
+              "model:item",
+              {
+                "$ref": "model:item"
+              }
+            ],
+            "default": "model:category"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/tag"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "$defs": {
+          "tag": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ],
+  "errorTypes": [
+    {
+      "id": "not-found",
+      "name": "not-found",
+      "status": "404",
+      "title": "Not found",
+      "description": "The item doesn't exist.",
+      "headers": {
+        "type": "object",
+        "properties": {}
+      },
+      "body": {
+        "contentType": "application/problem+json",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "status": {
+              "type": "integer"
+            },
+            "detail": {
+              "type": "string"
+            },
+            "nearest": {
+              "$ref": "model:item"
+            }
+          }
+        },
+        "example": {
+          "type": "https://shop.example/problems/not-found",
+          "title": "Not found",
+          "status": 404
+        }
+      }
+    },
+    {
+      "id": "rate-limited",
+      "name": "rate-limited",
+      "status": "429",
+      "title": "Too many requests",
+      "description": "",
+      "headers": {
+        "type": "object",
+        "properties": {
+          "Retry-After": {
+            "type": "integer",
+            "description": "Seconds to wait"
+          }
+        },
+        "required": [
+          "Retry-After"
+        ]
+      },
+      "body": {
+        "contentType": "application/problem+json",
+        "schema": {
+          "type": "object"
+        },
+        "example": {
+          "type": "https://shop.example/problems/rate-limited",
+          "title": "Too many requests",
+          "status": 429
+        }
+      }
+    }
+  ],
+  "endpoints": [
+    {
+      "id": "list-items",
+      "method": "GET",
+      "path": "/items",
+      "operationId": "listItems",
+      "summary": "List items",
+      "description": "",
+      "status": "agreed",
+      "deprecated": false,
+      "security": {
+        "type": "default"
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {}
+        },
+        "query": {
+          "type": "object",
+          "properties": {
+            "q": {
+              "type": "string"
+            }
+          }
+        },
+        "header": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "requestBody": null,
+      "responses": [
+        {
+          "id": "ok",
+          "status": "200",
+          "description": "OK",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": {
+            "contentType": "application/json",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "model:item"
+              }
+            },
+            "examples": [
+              {
+                "id": "some",
+                "name": "some",
+                "summary": "Two items",
+                "value": [
+                  {
+                    "id": "1",
+                    "name": "Mug"
+                  },
+                  {
+                    "id": "2",
+                    "name": "Cap"
+                  }
+                ]
+              },
+              {
+                "id": "none",
+                "name": "empty",
+                "summary": "",
+                "value": []
+              }
+            ]
+          },
+          "errors": []
+        },
+        {
+          "id": "slow-down",
+          "status": "429",
+          "description": "Too Many Requests",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "rate-limited",
+              "examples": []
+            }
+          ]
+        }
+      ],
+      "notesFe": "",
+      "notesBe": "Cache it for a minute."
+    },
+    {
+      "id": "create-item",
+      "method": "POST",
+      "path": "/items",
+      "operationId": "",
+      "summary": "Create an item",
+      "description": "",
+      "status": "review",
+      "deprecated": false,
+      "security": {
+        "type": "schemes",
+        "schemeIds": [
+          "bearer",
+          "key"
+        ]
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {}
+        },
+        "query": {
+          "type": "object",
+          "properties": {}
+        },
+        "header": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "requestBody": {
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "model:item"
+        },
+        "examples": [
+          {
+            "id": "mug",
+            "name": "mug",
+            "summary": "",
+            "value": {
+              "id": "1",
+              "name": "Mug"
+            }
+          }
+        ],
+        "required": true,
+        "description": ""
+      },
+      "responses": [
+        {
+          "id": "created",
+          "status": "201",
+          "description": "Created",
+          "headers": {
+            "type": "object",
+            "properties": {
+              "Location": {
+                "type": "string",
+                "examples": [
+                  "/items/1"
+                ]
+              }
+            },
+            "required": [
+              "Location"
+            ]
+          },
+          "body": {
+            "contentType": "application/json",
+            "schema": {
+              "$ref": "model:item"
+            },
+            "examples": [
+              {
+                "id": "mug",
+                "name": "mug",
+                "summary": "",
+                "value": {
+                  "id": "1",
+                  "name": "Mug"
+                }
+              }
+            ]
+          },
+          "errors": []
+        }
+      ],
+      "notesFe": "",
+      "notesBe": ""
+    },
+    {
+      "id": "get-item",
+      "method": "GET",
+      "path": "/items/{itemId}",
+      "operationId": "",
+      "summary": "Get an item",
+      "description": "",
+      "status": "draft",
+      "deprecated": true,
+      "security": {
+        "type": "none"
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {
+            "itemId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "itemId"
+          ]
+        },
+        "query": {
+          "type": "object",
+          "properties": {}
+        },
+        "header": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "requestBody": null,
+      "responses": [
+        {
+          "id": "ok",
+          "status": "200",
+          "description": "OK",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": {
+            "contentType": "application/json",
+            "schema": {
+              "$ref": "model:item"
+            },
+            "examples": [
+              {
+                "id": "mug",
+                "name": "mug",
+                "summary": "",
+                "value": {
+                  "id": "1",
+                  "name": "Mug"
+                }
+              }
+            ]
+          },
+          "errors": []
+        },
+        {
+          "id": "missing",
+          "status": "404",
+          "description": "Not Found",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "not-found",
+              "examples": [
+                {
+                  "id": "gone",
+                  "name": "item-gone",
+                  "summary": "Deleted",
+                  "value": {
+                    "type": "https://shop.example/problems/not-found",
+                    "title": "Not found",
+                    "status": 404,
+                    "detail": "Item 1 was deleted."
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "notesFe": "Show the last known name while it loads.",
+      "notesBe": ""
+    }
+  ],
+  "pages": [
+    {
+      "id": "items-page",
+      "name": "Items",
+      "slug": "items",
+      "description": "Every item, newest first.",
+      "acceptanceCriteria": "- Shows every item\n- Opens an item when clicked",
+      "endpoints": [
+        {
+          "id": "load",
+          "endpointId": "list-items",
+          "trigger": "on_load",
+          "note": ""
+        },
+        {
+          "id": "open",
+          "endpointId": "get-item",
+          "trigger": "on_action",
+          "note": "When an item is clicked"
+        }
+      ],
+      "mockups": [
+        {
+          "id": "list-shot",
+          "file": "mockups/items.png",
+          "originalName": "items.png",
+          "caption": "The list"
+        },
+        {
+          "id": "empty-shot",
+          "file": "mockups/items-empty.png",
+          "originalName": "items-empty.png",
+          "caption": ""
+        }
+      ],
+      "states": [
+        {
+          "id": "loading",
+          "kind": "loading",
+          "name": "Loading",
+          "description": "",
+          "causes": [
+            {
+              "type": "request",
+              "linkId": "load"
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "list",
+          "kind": "success",
+          "name": "Items",
+          "description": "",
+          "causes": [
+            {
+              "type": "response",
+              "linkId": "load",
+              "responseId": "ok",
+              "exampleId": "some"
+            }
+          ],
+          "mockupIds": [
+            "list-shot"
+          ]
+        },
+        {
+          "id": "empty",
+          "kind": "empty",
+          "name": "No items",
+          "description": "",
+          "causes": [
+            {
+              "type": "response",
+              "linkId": "load",
+              "responseId": "ok",
+              "exampleId": "none"
+            }
+          ],
+          "mockupIds": [
+            "empty-shot"
+          ]
+        },
+        {
+          "id": "limited",
+          "kind": "error",
+          "name": "Too many requests",
+          "description": "",
+          "causes": [
+            {
+              "type": "error",
+              "linkId": "load",
+              "errorTypeId": "rate-limited",
+              "exampleId": null
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "gone",
+          "kind": "error",
+          "name": "Item gone",
+          "description": "The list stays.",
+          "causes": [
+            {
+              "type": "error",
+              "linkId": "open",
+              "errorTypeId": "not-found",
+              "exampleId": "gone"
+            }
+          ],
+          "mockupIds": []
+        }
+      ]
+    },
+    {
+      "id": "item-page",
+      "name": "Item",
+      "slug": "item",
+      "description": "",
+      "acceptanceCriteria": "",
+      "endpoints": [
+        {
+          "id": "load",
+          "endpointId": "get-item",
+          "trigger": "on_load",
+          "note": ""
+        },
+        {
+          "id": "add",
+          "endpointId": "create-item",
+          "trigger": "on_submit",
+          "note": ""
+        }
+      ],
+      "mockups": [],
+      "states": []
+    }
+  ]
+}

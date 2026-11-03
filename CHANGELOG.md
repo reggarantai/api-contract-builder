@@ -4,6 +4,49 @@ All notable changes to this project are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Project files**: download a whole project, mockups included, as one .zip from its
+  Export tab, and import it with **Import project** on the Projects page of another
+  machine or instance. An import checks the file with the same rules as saving, and
+  happens completely or not at all. A project that isn't on the instance yet keeps its
+  IDs, so links to it keep working; one that is comes in as a copy, under a free slug.
+  The Export tab shows the file's size, and warns when this instance couldn't import it.
+  Through the API: `GET /api/projects/{projectId}/export/project`, and
+  `POST /api/projects/import` with the file as the body and
+  `Content-Type: application/zip`.
+- `MAX_IMPORT_MB` (default 1024): the largest project file an instance imports.
+
+### Changed
+
+- Projects with the same name, like an imported copy, show their slugs on the Projects
+  page and in the project switcher.
+- `GET /api/health` also answers `maxImportBytes`.
+- Schemas and examples may nest at most 256 levels of objects and lists; saving a deeper
+  one answers 400, as importing one does. The exports follow schemas recursively and give
+  out a few hundred levels down, so this way nothing saved is too deep to export. Data
+  saved before keeps opening, and saves that leave its deep parts as they are still go
+  through.
+- The Markdown bundle holds at most about 128 MB of text, since page files repeat what
+  they show, and a bigger bundle answers 422 with the reason. A table stops expanding
+  models it already showed after 500 rows, and goes at most 512 levels deep into the
+  models it expands, pointing to `models.md` for the rest.
+- The Export tab downloads OpenAPI and Markdown through the app, so a refused download
+  says why.
+
+### Fixed
+
+- Exports keep a schema key named `__proto__` instead of dropping it.
+- Exports of a schema or example nested deeper than they can follow, saved before the
+  limit above, say so (422, and an error in the export report) instead of failing with a
+  server error, and so does anything else that meets such data. The Markdown bundle
+  leaves the OpenAPI file out instead, as for other errors.
+- Generate example stops at 10,000 values and at a million characters of property names
+  and given values (`examples`, `const`, `enum`, `default`), so models that refer to each
+  other many times can't freeze the browser.
+
 ## [0.3.0] - 2026-11-01
 
 ### Added

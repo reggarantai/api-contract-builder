@@ -3,6 +3,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { ApiErrorBody } from "../shared/api-error";
+import { MAX_NESTING } from "../shared/json-schema";
 import type { Db } from "./db/client";
 import { endpointRoutes } from "./routes/endpoints";
 import { errorTypeRoutes } from "./routes/error-types";
@@ -10,6 +11,7 @@ import { exportRoutes } from "./routes/export";
 import { healthRoutes } from "./routes/health";
 import { modelRoutes } from "./routes/models";
 import { pageRoutes } from "./routes/pages";
+import { projectFileRoutes } from "./routes/project-files";
 import { projectRoutes } from "./routes/projects";
 import { sampleRoutes } from "./routes/samples";
 import { createUploadStorage } from "./storage/uploads";
@@ -23,6 +25,10 @@ export type AppOptions = {
   uploadsDir: string;
   /** Largest mockup file accepted. */
   maxUploadBytes: number;
+  /** Largest project file accepted, and the most one may unpack to. */
+  maxImportBytes: number;
+  /** Where imports are kept while they're read. */
+  tmpDir: string;
   /** Assets of the sample project (mockup images). */
   samplesDir: string;
 };
@@ -33,18 +39,29 @@ export function createApp({
   clientDir,
   uploadsDir,
   maxUploadBytes,
+  maxImportBytes,
+  tmpDir,
   samplesDir,
 }: AppOptions) {
   const app = new Hono();
   const storage = createUploadStorage(uploadsDir);
 
-  app.route("/api", healthRoutes(db, version));
+  app.route("/api", healthRoutes(db, version, maxImportBytes));
   app.route("/api/projects", projectRoutes(db, storage));
   app.route("/api/projects", modelRoutes(db));
   app.route("/api/projects", endpointRoutes(db));
   app.route("/api/projects", errorTypeRoutes(db));
   app.route("/api/projects", pageRoutes(db, storage, maxUploadBytes));
   app.route("/api/projects", exportRoutes(db, storage));
+  app.route(
+    "/api/projects",
+    projectFileRoutes(db, storage, {
+      version,
+      maxImportBytes,
+      maxUploadBytes,
+      tmpDir,
+    }),
+  );
   app.route(
     "/api/samples",
     sampleRoutes((url, init) => app.request(url, init), samplesDir),
@@ -81,6 +98,17 @@ export function createApp({
       return c.json<ApiErrorBody>({ error: error.message }, error.status);
     }
     console.error(error);
+    // Values nested deeper than recursion can follow: the API saves no more
+    // than MAX_NESTING levels, but data saved before can be deeper. A reason,
+    // not a server error.
+    if (error instanceof RangeError && /call stack/i.test(error.message)) {
+      return c.json<ApiErrorBody>(
+        {
+          error: `Something here nests deeper than the app can follow. Schemas and examples may nest at most ${MAX_NESTING} levels.`,
+        },
+        422,
+      );
+    }
     return c.json<ApiErrorBody>({ error: "Internal server error" }, 500);
   });
 

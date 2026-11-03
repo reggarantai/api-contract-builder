@@ -1,6 +1,5 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import { type Context, Hono } from "hono";
-import { ulid } from "ulid";
 import type { ApiErrorBody, ApiIssue } from "../../shared/api-error";
 import { endpointLabel } from "../../shared/endpoints";
 import {
@@ -12,6 +11,7 @@ import {
   schemasOfErrorType,
   updateErrorTypeInputSchema,
 } from "../../shared/error-types";
+import { nestingIssues } from "../../shared/json-schema";
 import type { Db } from "../db/client";
 import { findProject, touchProject } from "../db/projects";
 import {
@@ -20,11 +20,13 @@ import {
   endpointsUsingErrorType,
 } from "../db/references";
 import { type ErrorTypeRow, errorTypes } from "../db/schema";
+import { newId } from "../ids";
 import {
   jsonBody,
   staleRevision,
   toApiIssues,
   validationFailed,
+  withoutStoredNesting,
 } from "../validation";
 
 function fieldsOf(row: ErrorTypeRow): ErrorTypeFields {
@@ -112,15 +114,21 @@ function findErrorType(db: Db, projectId: string, errorTypeId: string) {
     .get();
 }
 
-/** Issues for models the error type's schemas reference but the project lacks. */
+/**
+ * Issues for models the error type's schemas reference but the project lacks,
+ * and for schemas and its example nested too deeply to follow.
+ */
 function checkSchemas(
   db: Db,
   projectId: string,
   fields: Pick<ErrorTypeFields, "headers" | "body">,
 ): ApiIssue[] {
-  return schemasOfErrorType(fields).flatMap(([path, schema]) =>
-    checkModelRefs(db, projectId, schema, path),
-  );
+  return [
+    ...schemasOfErrorType(fields).flatMap(([path, schema]) =>
+      checkModelRefs(db, projectId, schema, path),
+    ),
+    ...nestingIssues(fields.body.example, "body.example", "example"),
+  ];
 }
 
 /**
@@ -228,7 +236,7 @@ export function errorTypeRoutes(db: Db) {
           .insert(errorTypes)
           .values({
             ...input,
-            id: ulid(),
+            id: newId(),
             projectId: project.id,
             createdAt: now,
             updatedAt: now,
@@ -288,7 +296,11 @@ export function errorTypeRoutes(db: Db) {
         ) {
           return nameTaken(c);
         }
-        const issues = checkSchemas(db, existing.projectId, fields);
+        const issues = withoutStoredNesting(
+          checkSchemas(db, existing.projectId, fields),
+          fields,
+          fieldsOf(existing),
+        );
         if (issues.length > 0) {
           return validationFailed(c, issues);
         }

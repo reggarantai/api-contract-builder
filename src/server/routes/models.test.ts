@@ -204,4 +204,98 @@ describe("models API", () => {
       t.db.$client.prepare("select count(*) as count from models").get(),
     ).toEqual({ count: 0 });
   });
+
+  it("refuses a schema nested too deeply to check, instead of failing", async () => {
+    // Sent as text: building it as an object would overflow the client.
+    const depth = 50_000;
+    const body = `{"name": "Deep", "schema": ${'{"type": "array", "items": '.repeat(depth)}{"type": "string"}${"}".repeat(depth)}}`;
+    const response = await t.app.request(`/api/projects/${projectId}/models`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "Validation failed",
+      issues: [
+        {
+          path: "schema",
+          message: "This schema is nested more than 256 levels deep",
+        },
+      ],
+    });
+  });
+
+  it("keeps saving a schema nested deeper than 256 levels from before the limit, while it stays as it was", async () => {
+    const schema = (levels: number) => {
+      let value: Record<string, unknown> = { type: "string" };
+      for (let level = 1; level < levels; level++) {
+        value = { type: "array", items: value };
+      }
+      return value;
+    };
+    const model = await createModel({ name: "Old" });
+    // Saved before the limit: straight into the database.
+    t.db.$client
+      .prepare("update models set schema = ? where id = ?")
+      .run(JSON.stringify(schema(300)), model.id);
+
+    // As the editor sends it: the schema too.
+    const resaved = await t.request("PATCH", `${modelsUrl()}/${model.id}`, {
+      description: "Saved again",
+      schema: schema(300),
+    });
+    expect(resaved.status).toBe(200);
+    const changed = await t.request("PATCH", `${modelsUrl()}/${model.id}`, {
+      schema: schema(301),
+    });
+    expect(changed.status).toBe(400);
+    expect(await changed.json()).toEqual({
+      error: "Validation failed",
+      issues: [
+        {
+          path: "schema",
+          message: "This schema is nested more than 256 levels deep",
+        },
+      ],
+    });
+  });
+
+  it("saves schemas nested up to 256 levels deep, and refuses deeper ones", async () => {
+    const schema = (levels: number) => {
+      let value: Record<string, unknown> = { type: "string" };
+      for (let level = 1; level < levels; level++) {
+        value = { type: "array", items: value };
+      }
+      return value;
+    };
+    const tooDeep = {
+      error: "Validation failed",
+      issues: [
+        {
+          path: "schema",
+          message: "This schema is nested more than 256 levels deep",
+        },
+      ],
+    };
+
+    const created = await t.request("POST", modelsUrl(), {
+      name: "Deep",
+      schema: schema(256),
+    });
+    expect(created.status).toBe(201);
+    const model = modelSchema.parse(await created.json());
+    const refused = await t.request("POST", modelsUrl(), {
+      name: "Deeper",
+      schema: schema(257),
+    });
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toEqual(tooDeep);
+    const changed = await t.request("PATCH", `${modelsUrl()}/${model.id}`, {
+      schema: schema(257),
+      revision: model.revision,
+    });
+    expect(changed.status).toBe(400);
+    expect(await changed.json()).toEqual(tooDeep);
+  });
 });

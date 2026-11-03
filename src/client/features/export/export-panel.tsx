@@ -1,9 +1,12 @@
 import type { LintIssue } from "@shared/export";
+import { formatSize } from "@shared/format-size";
 import type { PageSummary } from "@shared/pages";
 import type { Project } from "@shared/projects";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { CircleAlertIcon, CircleCheckIcon, DownloadIcon } from "lucide-react";
+import { type ReactNode, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
 import {
@@ -13,10 +16,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ApiError, apiGetFile } from "@/lib/api";
 import {
-  exportDownloadUrl,
+  exportDownloadPath,
   exportReportQueryOptions,
-  markdownDownloadUrl,
+  markdownDownloadPath,
+  projectFileDownloadUrl,
+  projectFileReportQueryOptions,
 } from "./queries";
 
 const WHOLE_PROJECT = "all";
@@ -67,7 +73,7 @@ export function ExportPanel({
         </Select>
       </Field>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
         <section
           aria-label="OpenAPI"
           className="grid content-start gap-4 rounded-xl border p-4"
@@ -83,32 +89,17 @@ export function ExportPanel({
           <ValidityStatus isPending={report.isPending} valid={valid} />
 
           <div className="flex flex-wrap gap-2">
-            {(["yaml", "json"] as const).map((format) =>
-              valid ? (
-                <Button
-                  key={format}
-                  asChild
-                  variant={format === "yaml" ? "default" : "outline"}
-                >
-                  <a
-                    href={exportDownloadUrl(project.id, format, pageId)}
-                    download
-                  >
-                    <DownloadIcon />
-                    Download {format.toUpperCase()}
-                  </a>
-                </Button>
-              ) : (
-                <Button
-                  key={format}
-                  disabled
-                  variant={format === "yaml" ? "default" : "outline"}
-                >
-                  <DownloadIcon />
-                  Download {format.toUpperCase()}
-                </Button>
-              ),
-            )}
+            {(["yaml", "json"] as const).map((format) => (
+              <DownloadButton
+                key={format}
+                path={exportDownloadPath(project.id, format, pageId)}
+                what={`OpenAPI ${format.toUpperCase()}`}
+                variant={format === "yaml" ? "default" : "outline"}
+                disabled={!valid}
+              >
+                Download {format.toUpperCase()}
+              </DownloadButton>
+            ))}
           </div>
 
           <p className="text-sm text-muted-foreground">
@@ -132,12 +123,13 @@ export function ExportPanel({
             </p>
           </div>
           <div>
-            <Button asChild variant="outline">
-              <a href={markdownDownloadUrl(project.id, pageId)} download>
-                <DownloadIcon />
-                Download Markdown (.zip)
-              </a>
-            </Button>
+            <DownloadButton
+              path={markdownDownloadPath(project.id, pageId)}
+              what="Markdown bundle"
+              variant="outline"
+            >
+              Download Markdown (.zip)
+            </DownloadButton>
           </div>
           <p className="text-sm text-muted-foreground">
             {report.data && !valid
@@ -145,6 +137,8 @@ export function ExportPanel({
               : "Includes the OpenAPI file, so the bundle has everything."}
           </p>
         </section>
+
+        <ProjectFileSection projectId={project.id} />
       </div>
 
       {report.data && report.data.errors.length > 0 && (
@@ -192,6 +186,115 @@ export function ExportPanel({
         </section>
       )}
     </div>
+  );
+}
+
+/** The whole project as a file, to import elsewhere; the scope doesn't apply. */
+function ProjectFileSection({ projectId }: { projectId: string }) {
+  const report = useQuery(projectFileReportQueryOptions(projectId));
+  return (
+    <section
+      aria-label="Project file"
+      className="grid content-start gap-4 rounded-xl border p-4"
+    >
+      <div className="grid gap-0.5">
+        <h3 className="font-heading font-medium">Project file</h3>
+        <p className="text-sm text-muted-foreground">
+          Everything in this project, mockups included, to import on another
+          machine or instance, or to keep as a backup.
+        </p>
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button asChild variant="outline">
+          <a href={projectFileDownloadUrl(projectId)} download>
+            <DownloadIcon />
+            Download project file
+          </a>
+        </Button>
+        {report.data && (
+          <span className="text-sm text-muted-foreground">
+            About {formatSize(report.data.size)}
+          </span>
+        )}
+      </div>
+      {report.isError && (
+        <p className="text-sm text-destructive">{report.error.message}</p>
+      )}
+      {report.data && report.data.issues.length > 0 && (
+        <ul className="grid list-disc gap-1 pl-5 text-sm text-amber-700">
+          {report.data.issues.map((issue, index) => (
+            // Two can read the same (two pages' images of one name).
+            // biome-ignore lint/suspicious/noArrayIndexKey: see above.
+            <li key={index}>{issue}</li>
+          ))}
+        </ul>
+      )}
+      <p className="text-sm text-muted-foreground">
+        Always the whole project. To open it elsewhere, choose{" "}
+        <span className="font-medium text-foreground">Import project</span> on
+        the Projects page.
+      </p>
+    </section>
+  );
+}
+
+/** Saves a file from memory under `name`, as a download. */
+function saveFile(blob: Blob, name: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.click();
+  // Long enough for the browser to start saving it.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+/**
+ * Downloads an export through the API, so a refusal (a bundle too large to
+ * export, say) shows its reason instead of a failed download.
+ */
+function DownloadButton({
+  path,
+  what,
+  variant,
+  disabled = false,
+  children,
+}: {
+  path: string;
+  /** What's downloaded, for the message when it can't be. */
+  what: string;
+  variant: "default" | "outline";
+  disabled?: boolean;
+  children: ReactNode;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  async function download() {
+    setBusy(true);
+    try {
+      const { blob, fileName } = await apiGetFile(path);
+      saveFile(blob, fileName ?? "export");
+    } catch (error) {
+      toast.error(`Couldn't download the ${what}`, {
+        description:
+          error instanceof ApiError
+            ? error.message
+            : "The connection to the app stopped. Try again.",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Button
+      variant={variant}
+      disabled={disabled || busy}
+      onClick={() => void download()}
+    >
+      <DownloadIcon />
+      {busy ? "Downloading…" : children}
+    </Button>
   );
 }
 

@@ -27,6 +27,8 @@ describe("app", () => {
       clientDir: null,
       uploadsDir: path.join(temp.dir, "uploads"),
       maxUploadBytes: 1024,
+      maxImportBytes: 1024,
+      tmpDir: path.join(temp.dir, "tmp"),
       samplesDir: path.resolve("samples"),
     });
 
@@ -44,6 +46,8 @@ describe("app", () => {
       clientDir: null,
       uploadsDir: path.join(temp.dir, "uploads"),
       maxUploadBytes: 1024,
+      maxImportBytes: 1024,
+      tmpDir: path.join(temp.dir, "tmp"),
       samplesDir: path.resolve("samples"),
     });
 
@@ -70,6 +74,8 @@ describe("app", () => {
         clientDir,
         uploadsDir: path.join(temp.dir, "uploads"),
         maxUploadBytes: 1024,
+        maxImportBytes: 1024,
+        tmpDir: path.join(temp.dir, "tmp"),
         samplesDir: path.resolve("samples"),
       });
 
@@ -86,6 +92,8 @@ describe("app", () => {
         clientDir,
         uploadsDir: path.join(temp.dir, "uploads"),
         maxUploadBytes: 1024,
+        maxImportBytes: 1024,
+        tmpDir: path.join(temp.dir, "tmp"),
         samplesDir: path.resolve("samples"),
       });
 
@@ -102,6 +110,8 @@ describe("app", () => {
         clientDir,
         uploadsDir: path.join(temp.dir, "uploads"),
         maxUploadBytes: 1024,
+        maxImportBytes: 1024,
+        tmpDir: path.join(temp.dir, "tmp"),
         samplesDir: path.resolve("samples"),
       });
 

@@ -28,6 +28,23 @@ describe("loadConfig", () => {
     expect(config.maxUploadBytes).toBe(2 * 1024 * 1024);
   });
 
+  it("imports project files up to 1 GB, through a folder in the data directory", () => {
+    const config = loadConfig({});
+
+    expect(config.maxImportBytes).toBe(1024 * 1024 * 1024);
+    expect(config.tmpDir).toBe(path.resolve("data", "tmp"));
+    expect(loadConfig({ MAX_IMPORT_MB: "50" }).maxImportBytes).toBe(
+      50 * 1024 * 1024,
+    );
+  });
+
+  it("rejects an import limit it can't serve", () => {
+    expect(() => loadConfig({ MAX_IMPORT_MB: "0" })).toThrow(/MAX_IMPORT_MB/);
+    expect(() => loadConfig({ MAX_IMPORT_MB: "5000" })).toThrow(
+      /MAX_IMPORT_MB/,
+    );
+  });
+
   it("rejects an invalid port", () => {
     expect(() => loadConfig({ PORT: "not-a-port" })).toThrow(/PORT/);
   });

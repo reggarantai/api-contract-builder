@@ -579,6 +579,33 @@ export function schemasOfEndpoint(
   return schemas;
 }
 
+/** Each example value of an endpoint, with its path. */
+export function examplesOfEndpoint(
+  endpoint: Pick<EndpointFields, "requestBody" | "responses">,
+): [string, JsonValue][] {
+  const values: [string, JsonValue][] = [];
+  endpoint.requestBody?.examples.forEach((example, index) => {
+    values.push([`requestBody.examples.${index}.value`, example.value]);
+  });
+  endpoint.responses.forEach((response, index) => {
+    response.body?.examples.forEach((example, exampleIndex) => {
+      values.push([
+        `responses.${index}.body.examples.${exampleIndex}.value`,
+        example.value,
+      ]);
+    });
+    response.errors.forEach((error, errorIndex) => {
+      error.examples.forEach((example, exampleIndex) => {
+        values.push([
+          `responses.${index}.errors.${errorIndex}.examples.${exampleIndex}.value`,
+          example.value,
+        ]);
+      });
+    });
+  });
+  return values;
+}
+
 /** List order: by path, then by method in HTTP_METHODS order. */
 export function compareEndpoints(
   a: Pick<EndpointFields, "method" | "path">,
@@ -639,6 +666,17 @@ export function withUniqueIds(
       examples: unique(usage.examples),
     })),
   }));
+}
+
+/**
+ * Stored fields as they're read: the repairs for rules that came after the
+ * data, so it can be saved again. Imported project files get them too, so a
+ * file written before a rule keeps importing.
+ */
+export function repairEndpointFields<
+  T extends Pick<EndpointFields, "responses">,
+>(fields: T): T {
+  return { ...fields, responses: withUniqueIds(fields.responses) };
 }
 
 // --- Defaults ---------------------------------------------------------------

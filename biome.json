@@ -12,7 +12,8 @@
       "!src/client/routeTree.gen.ts",
       "!pnpm-lock.yaml",
       "!pnpm-workspace.yaml",
-      "!test/golden"
+      "!test/golden",
+      "!test/fixtures/project-file-v1"
     ]
   },
   "formatter": {

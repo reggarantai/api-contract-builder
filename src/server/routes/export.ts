@@ -4,9 +4,15 @@ import { type Context, Hono } from "hono";
 import { stringify } from "yaml";
 import { z } from "zod";
 import type { ApiErrorBody } from "../../shared/api-error";
-import { EXPORT_FORMATS, type ExportReport } from "../../shared/export";
+import {
+  EXPORT_FORMATS,
+  type ExportFormat,
+  type ExportReport,
+} from "../../shared/export";
+import { MAX_NESTING, nestsDeeperThan } from "../../shared/json-schema";
 import type { Db } from "../db/client";
 import { loadExportInput } from "../export/load";
+import { MarkdownTooLargeError } from "../export/markdown";
 import { buildMarkdownFiles } from "../export/markdown-files";
 import {
   buildOpenApi,
@@ -19,9 +25,35 @@ import { toApiIssues, validationFailed } from "../validation";
 
 const formatSchema = z.enum(EXPORT_FORMATS).default("yaml");
 
+/**
+ * What exports answer for a schema or an example nested deeper than they can
+ * follow: validating and writing them recurse, and give out a few hundred
+ * levels down. The API saves no more than MAX_NESTING levels, but data saved
+ * before can be deeper.
+ */
+const TOO_DEEP = `A schema or example nests deeper than the exports can follow. Keep them within ${MAX_NESTING} levels, moving inner parts of schemas into models of their own.`;
+
+/**
+ * How deep an OpenAPI document of data saved within MAX_NESTING can go: its
+ * schemas and examples sit at most ten levels in (a response's example), and
+ * a few more allow for change. Only data saved before the limit goes deeper.
+ */
+const SAVED_DOCUMENT_DEPTH = MAX_NESTING + 16;
+
+function isTooDeep(error: unknown) {
+  return error instanceof RangeError && /call stack/i.test(error.message);
+}
+
 function openApiYaml(doc: unknown) {
   // No anchors/aliases: many OpenAPI tools don't handle them.
   return stringify(doc, { lineWidth: 0, aliasDuplicateObjects: false });
+}
+
+/** The OpenAPI document as a download holds it. */
+function openApiText(doc: unknown, format: ExportFormat) {
+  return format === "yaml"
+    ? openApiYaml(doc)
+    : `${JSON.stringify(doc, null, 2)}\n`;
 }
 
 export function exportRoutes(db: Db, storage: UploadStorage) {
@@ -68,8 +100,19 @@ export function exportRoutes(db: Db, storage: UploadStorage) {
       }
 
       const { input, pageId, pageSlug } = scope;
-      const doc = buildOpenApi(input, { pageId });
-      const errors = await validateContract(input, doc, { pageId });
+      let doc: ReturnType<typeof buildOpenApi>;
+      let errors: string[];
+      let body: string;
+      try {
+        doc = buildOpenApi(input, { pageId });
+        errors = await validateContract(input, doc, { pageId });
+        body = errors.length > 0 ? "" : openApiText(doc, format.data);
+      } catch (error) {
+        if (isTooDeep(error)) {
+          return c.json<ApiErrorBody>({ error: TOO_DEEP }, 422);
+        }
+        throw error;
+      }
       if (errors.length > 0) {
         return c.json<ApiErrorBody>(
           {
@@ -84,10 +127,6 @@ export function exportRoutes(db: Db, storage: UploadStorage) {
       const fileName = [input.project.slug, pageSlug, "openapi", format.data]
         .filter(Boolean)
         .join(".");
-      const body =
-        format.data === "yaml"
-          ? openApiYaml(doc)
-          : `${JSON.stringify(doc, null, 2)}\n`;
       return c.body(body, 200, {
         "Content-Type": `application/${format.data}; charset=utf-8`,
         "Content-Disposition": `attachment; filename="${fileName}"`,
@@ -98,49 +137,17 @@ export function exportRoutes(db: Db, storage: UploadStorage) {
       if ("response" in scope) {
         return scope.response;
       }
-      const { input, pageId, pageSlug } = scope;
-      const projectSlug = input.project.slug;
-      const doc = buildOpenApi(input, { pageId });
-      const valid =
-        (await validateContract(input, doc, { pageId })).length === 0;
-
-      const openApi = valid
-        ? {
-            fileName: [projectSlug, pageSlug, "openapi", "yaml"]
-              .filter(Boolean)
-              .join("."),
-            content: openApiYaml(doc),
-          }
-        : null;
-      const files = buildMarkdownFiles(
-        input,
-        { pageId },
-        {
-          readImage: (mockup) =>
-            storage.read(input.project.id, path.posix.basename(mockup.url)),
-          openApi,
-        },
-      );
-      if (openApi) {
-        files[openApi.fileName] = openApi.content;
+      try {
+        return await markdownBundle(c, scope);
+      } catch (error) {
+        if (isTooDeep(error)) {
+          return c.json<ApiErrorBody>({ error: TOO_DEEP }, 422);
+        }
+        if (error instanceof MarkdownTooLargeError) {
+          return c.json<ApiErrorBody>({ error: error.message }, 422);
+        }
+        throw error;
       }
-
-      // Everything sits in one folder, so unzipping doesn't scatter files.
-      const zip = zipSync(
-        Object.fromEntries(
-          Object.entries(files).map(([name, content]) => [
-            `${projectSlug}/${name}`,
-            typeof content === "string" ? strToU8(content) : content,
-          ]),
-        ),
-      );
-      const fileName = [projectSlug, pageSlug, "contract", "zip"]
-        .filter(Boolean)
-        .join(".");
-      return c.body(zip, 200, {
-        "Content-Type": "application/zip",
-        "Content-Disposition": `attachment; filename="${fileName}"`,
-      });
     })
     .get("/:projectId/export/report", async (c) => {
       const scope = scopeOf(c);
@@ -148,17 +155,102 @@ export function exportRoutes(db: Db, storage: UploadStorage) {
         return scope.response;
       }
       const { input, pageId } = scope;
-      const errors = await validateContract(
-        input,
-        buildOpenApi(input, { pageId }),
-        {
-          pageId,
-        },
-      );
-      return c.json<ExportReport>({
-        valid: errors.length === 0,
-        errors,
-        warnings: lintContract(input, { pageId }),
-      });
+      try {
+        const doc = buildOpenApi(input, { pageId });
+        const errors = await validateContract(input, doc, { pageId });
+        if (errors.length === 0 && nestsDeeperThan(doc, SAVED_DOCUMENT_DEPTH)) {
+          // Writing recurses too, and can give out where checking didn't:
+          // the report says valid only for what the downloads can write.
+          // Saved data can't go that deep, so its reports skip the cost.
+          for (const format of EXPORT_FORMATS) {
+            openApiText(doc, format);
+          }
+        }
+        return c.json<ExportReport>({
+          valid: errors.length === 0,
+          errors,
+          warnings: lintContract(input, { pageId }),
+        });
+      } catch (error) {
+        if (isTooDeep(error)) {
+          return c.json<ExportReport>({
+            valid: false,
+            errors: [TOO_DEEP],
+            warnings: [],
+          });
+        }
+        throw error;
+      }
     });
+
+  /**
+   * The OpenAPI file for the Markdown bundle, or null while the contract has
+   * errors, a schema too deep to check among them (the report lists it).
+   */
+  async function validOpenApiFile(
+    input: ExportInput,
+    pageId: string | undefined,
+    slugs: (string | undefined)[],
+  ) {
+    try {
+      const doc = buildOpenApi(input, { pageId });
+      if ((await validateContract(input, doc, { pageId })).length > 0) {
+        return null;
+      }
+      return {
+        fileName: [...slugs, "openapi", "yaml"].filter(Boolean).join("."),
+        content: openApiYaml(doc),
+      };
+    } catch (error) {
+      if (isTooDeep(error)) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  /** The Markdown bundle as a zip download. */
+  async function markdownBundle(
+    c: Context,
+    {
+      input,
+      pageId,
+      pageSlug,
+    }: { input: ExportInput; pageId?: string; pageSlug?: string },
+  ) {
+    const projectSlug = input.project.slug;
+    const openApi = await validOpenApiFile(input, pageId, [
+      projectSlug,
+      pageSlug,
+    ]);
+    const files = buildMarkdownFiles(
+      input,
+      { pageId },
+      {
+        readImage: (mockup) =>
+          storage.read(input.project.id, path.posix.basename(mockup.url)),
+        openApi,
+      },
+    );
+    if (openApi) {
+      files[openApi.fileName] = openApi.content;
+    }
+
+    // Everything sits in one folder, so unzipping doesn't scatter files.
+    const zip = zipSync(
+      Object.fromEntries(
+        Object.entries(files).map(([name, content]) => [
+          `${projectSlug}/${name}`,
+          typeof content === "string" ? strToU8(content) : content,
+        ]),
+      ),
+    );
+    const fileName = [projectSlug, pageSlug, "contract", "zip"]
+      .filter(Boolean)
+      .join(".");
+    return c.body(zip, 200, {
+      "Content-Type": "application/zip",
+      "Content-Disposition": `attachment; filename="${fileName}"`,
+    });
+  }
 }

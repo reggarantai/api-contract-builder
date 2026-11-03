@@ -7,11 +7,10 @@ import {
 } from "../../shared/endpoints";
 import { schemasOfErrorType } from "../../shared/error-types";
 import {
-  COMPONENT_REF_PREFIX,
   collectRefs,
   type JsonSchema,
-  modelIdOfRef,
   modelRef,
+  modelRefIssues,
 } from "../../shared/json-schema";
 import type { PageState, StateCause } from "../../shared/page-states";
 import type { PageEndpointLink } from "../../shared/pages";
@@ -51,21 +50,7 @@ export function checkModelRefs(
   if (extraModelId) {
     modelIds.add(extraModelId);
   }
-
-  const messages = new Set<string>();
-  for (const ref of collectRefs(schema)) {
-    const id = modelIdOfRef(ref);
-    if (id !== null) {
-      if (!modelIds.has(id)) {
-        messages.add(`References a model that doesn't exist: ${ref}`);
-      }
-    } else if (!ref.startsWith("#") || ref.startsWith(COMPONENT_REF_PREFIX)) {
-      messages.add(
-        `Unsupported reference "${ref}"; reference a model of this project instead`,
-      );
-    }
-  }
-  return [...messages].map((message) => ({ path: issuePath, message }));
+  return modelRefIssues(schema, modelIds, issuePath);
 }
 
 /**

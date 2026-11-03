@@ -1,3 +1,4 @@
+import { projectImportResultSchema } from "@shared/project-file";
 import {
   type CreateProjectInput,
   projectSchema,
@@ -9,7 +10,7 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
-import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost, apiPostFile } from "@/lib/api";
 
 export const projectKeys = {
   all: ["projects"] as const,
@@ -80,6 +81,28 @@ export function useCreateSampleProject() {
   return useMutation({
     mutationFn: () => apiPost("/samples", undefined, projectSchema),
     onSuccess: (project) => {
+      queryClient.setQueryData(projectKeys.detail(project.id), project);
+      return queryClient.invalidateQueries({ queryKey: projectKeys.list() });
+    },
+  });
+}
+
+/** Running imports share this key, so any button can tell one is running. */
+export const importProjectKey = [...projectKeys.all, "import"] as const;
+
+/** Imports a project file (.project.zip) as a new project. */
+export function useImportProject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: importProjectKey,
+    mutationFn: (file: File) =>
+      apiPostFile(
+        "/projects/import",
+        file,
+        "application/zip",
+        projectImportResultSchema,
+      ),
+    onSuccess: ({ project }) => {
       queryClient.setQueryData(projectKeys.detail(project.id), project);
       return queryClient.invalidateQueries({ queryKey: projectKeys.list() });
     },

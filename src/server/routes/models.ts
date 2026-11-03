@@ -1,6 +1,5 @@
 import { and, eq, sql } from "drizzle-orm";
 import { type Context, Hono } from "hono";
-import { ulid } from "ulid";
 import type { ApiErrorBody } from "../../shared/api-error";
 import {
   createModelInputSchema,
@@ -13,7 +12,13 @@ import type { Db } from "../db/client";
 import { findProject, touchProject } from "../db/projects";
 import { checkModelRefs, usersOfModel } from "../db/references";
 import { type ModelRow, models } from "../db/schema";
-import { jsonBody, staleRevision, validationFailed } from "../validation";
+import { newId } from "../ids";
+import {
+  jsonBody,
+  staleRevision,
+  validationFailed,
+  withoutStoredNesting,
+} from "../validation";
 
 function toSummary(row: ModelRow): ModelSummary {
   return {
@@ -111,7 +116,7 @@ export function modelRoutes(db: Db) {
       const row = db
         .insert(models)
         .values({
-          id: ulid(),
+          id: newId(),
           projectId: project.id,
           name: input.name,
           description: input.description,
@@ -157,12 +162,16 @@ export function modelRoutes(db: Db) {
           return nameTaken(c);
         }
         if (input.schema !== undefined) {
-          const issues = checkModelRefs(
-            db,
-            existing.projectId,
-            input.schema,
-            "schema",
-            existing.id,
+          const issues = withoutStoredNesting(
+            checkModelRefs(
+              db,
+              existing.projectId,
+              input.schema,
+              "schema",
+              existing.id,
+            ),
+            input,
+            existing,
           );
           if (issues.length > 0) {
             return validationFailed(c, issues);

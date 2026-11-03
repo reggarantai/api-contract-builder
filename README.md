@@ -28,6 +28,8 @@ hand the contract over as **OpenAPI 3.1** for frontend and backend tools and as
   project or one page. Contracts are validated before export, and warnings point at
   missing examples, unused endpoints, models, or error types, and problem details that
   contradict their error type.
+- **Project files**: a whole project, mockups included, as one .zip, to import on another
+  machine or instance, or to keep as a backup.
 
 It runs locally, for one author, as a single Docker container. Data stays on your machine.
 
@@ -101,6 +103,18 @@ includes the OpenAPI file too.
 Everything (the SQLite database and uploaded mockups) lives in the `/data` volume, so it
 survives restarts, upgrades, and removing the container.
 
+**Move or copy one project** to another machine or instance: on the project's **Export**
+tab, download its **project file** (`inventory-app.project.zip`), then choose **Import
+project** on the other instance's Projects page. The file holds everything in the project,
+mockups included. Importing checks it with the same rules as saving does, and happens
+completely or not at all. A project that isn't on the instance yet keeps its IDs, so links
+to it keep working; one that is comes in as a copy, under a free slug like
+`inventory-app-2`. A project file is also a backup of one project, readable as JSON. Its
+descriptions are Markdown, so, as in any Markdown viewer, they can show images from other
+sites, which load when you open the project.
+
+The backup below copies the whole volume instead: every project at once.
+
 **Back up** to `api-contract-builder-backup.tgz` in the current folder:
 
 ```bash
@@ -138,12 +152,13 @@ images' security fixes every week, while `0.1.0` stays exactly as released.
 
 ## Configuration
 
-| Variable        | Default                           | Description                             |
-| --------------- | --------------------------------- | --------------------------------------- |
-| `HOST`          | `127.0.0.1` (`0.0.0.0` in Docker) | Interface the server listens on         |
-| `PORT`          | `3000`                            | Port the server listens on              |
-| `DATA_DIR`      | `./data` (`/data` in Docker)      | SQLite database and uploaded images     |
-| `MAX_UPLOAD_MB` | `10`                              | Largest mockup image accepted, per file |
+| Variable        | Default                           | Description                                                              |
+| --------------- | --------------------------------- | ------------------------------------------------------------------------ |
+| `HOST`          | `127.0.0.1` (`0.0.0.0` in Docker) | Interface the server listens on                                          |
+| `PORT`          | `3000`                            | Port the server listens on                                               |
+| `DATA_DIR`      | `./data` (`/data` in Docker)      | SQLite database and uploaded images                                      |
+| `MAX_UPLOAD_MB` | `10`                              | Largest mockup image accepted, per file                                  |
+| `MAX_IMPORT_MB` | `1024`                            | Largest project file Import project takes, and the most it may unpack to |
 
 ## Security
 

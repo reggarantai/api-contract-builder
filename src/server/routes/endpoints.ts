@@ -1,6 +1,5 @@
 import { and, eq, ne } from "drizzle-orm";
 import { type Context, Hono } from "hono";
-import { ulid } from "ulid";
 import type { ApiErrorBody, ApiIssue } from "../../shared/api-error";
 import {
   createEndpointDefaults,
@@ -11,15 +10,17 @@ import {
   type EndpointSummary,
   endpointLabel,
   endpointSchema,
+  examplesOfEndpoint,
   HTTP_METHODS,
   type HttpMethod,
   pathMatchKey,
+  repairEndpointFields,
   schemasOfEndpoint,
   type UpdateEndpointInput,
   updateEndpointInputSchema,
-  withUniqueIds,
 } from "../../shared/endpoints";
 import { checkResponseErrors } from "../../shared/error-types";
+import { nestingIssues } from "../../shared/json-schema";
 import { resolveCause } from "../../shared/page-states";
 import type { Db } from "../db/client";
 import { findProject, touchProject } from "../db/projects";
@@ -37,15 +38,17 @@ import {
   type ProjectRow,
   pages,
 } from "../db/schema";
+import { newId } from "../ids";
 import {
   jsonBody,
   staleRevision,
   toApiIssues,
   validationFailed,
+  withoutStoredNesting,
 } from "../validation";
 
 function fieldsOf(row: EndpointRow): EndpointFields {
-  return {
+  return repairEndpointFields({
     method: row.method,
     path: row.path,
     operationId: row.operationId,
@@ -56,10 +59,10 @@ function fieldsOf(row: EndpointRow): EndpointFields {
     security: row.security,
     parameters: row.parameters,
     requestBody: row.requestBody ?? null,
-    responses: withUniqueIds(row.responses),
+    responses: row.responses,
     notesFe: row.notesFe,
     notesBe: row.notesBe,
-  };
+  });
 }
 
 export function toEndpoint(row: EndpointRow): Endpoint {
@@ -163,7 +166,8 @@ function findOperationIdOwner(
 
 /**
  * Issues for security schemes, models, and catalog errors the endpoint uses
- * but the project lacks, and for catalog errors its responses can't use.
+ * but the project lacks, for catalog errors its responses can't use, and for
+ * schemas and examples nested too deeply to follow.
  */
 function checkReferences(
   db: Db,
@@ -183,6 +187,9 @@ function checkReferences(
   }
   for (const [path, schema] of schemasOfEndpoint(fields)) {
     issues.push(...checkModelRefs(db, project.id, schema, path));
+  }
+  for (const [path, value] of examplesOfEndpoint(fields)) {
+    issues.push(...nestingIssues(value, path, "example"));
   }
   if (fields.responses.some((response) => response.errors.length > 0)) {
     const catalog = db
@@ -301,14 +308,14 @@ export function endpointRoutes(db: Db) {
         input.method,
         input.path,
         input.summary,
-        ulid,
+        newId,
       );
       const now = new Date();
       const row = db
         .insert(endpoints)
         .values({
           ...fields,
-          id: ulid(),
+          id: newId(),
           projectId: project.id,
           pathKey: pathMatchKey(fields.path),
           createdAt: now,
@@ -360,7 +367,11 @@ export function endpointRoutes(db: Db) {
         }
         const fields = result.data;
 
-        const referenceIssues = checkReferences(db, project, fields);
+        const referenceIssues = withoutStoredNesting(
+          checkReferences(db, project, fields),
+          fields,
+          fieldsOf(existing),
+        );
         if (referenceIssues.length > 0) {
           return validationFailed(c, referenceIssues);
         }

@@ -17,16 +17,22 @@ export function createTempDir(prefix: string) {
 }
 
 /** An app backed by a fresh database and uploads folder in a temporary directory. */
-export function createTestApp({ maxUploadBytes = 1024 * 1024 } = {}) {
+export function createTestApp({
+  maxUploadBytes = 1024 * 1024,
+  maxImportBytes = 200 * 1024 * 1024,
+} = {}) {
   const temp = createTempDir("app");
   const database = openDatabase(path.join(temp.dir, "app.db"), migrationsDir);
   const uploadsDir = path.join(temp.dir, "uploads");
+  const tmpDir = path.join(temp.dir, "tmp");
   const app = createApp({
     db: database.db,
     version: "1.2.3",
     clientDir: null,
     uploadsDir,
     maxUploadBytes,
+    maxImportBytes,
+    tmpDir,
     samplesDir: path.resolve("samples"),
   });
 
@@ -34,6 +40,7 @@ export function createTestApp({ maxUploadBytes = 1024 * 1024 } = {}) {
     app,
     db: database.db,
     uploadsDir,
+    tmpDir,
     request(method: string, url: string, body?: unknown) {
       return app.request(url, {
         method,

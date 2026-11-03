@@ -1,4 +1,3 @@
-import { healthResponseSchema } from "@shared/health";
 import type { QueryClient } from "@tanstack/react-query";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -11,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ProjectSwitcher } from "@/features/projects/project-switcher";
-import { apiGet } from "@/lib/api";
+import { healthQueryOptions } from "@/lib/health";
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   {
@@ -52,11 +51,7 @@ function RootLayout() {
 }
 
 function ServerStatus() {
-  const health = useQuery({
-    queryKey: ["health"],
-    queryFn: () => apiGet("/health", healthResponseSchema),
-    refetchInterval: 30_000,
-  });
+  const health = useQuery(healthQueryOptions());
 
   if (health.isPending) {
     return <Badge variant="outline">Connecting…</Badge>;

@@ -16,6 +16,47 @@ export function createUploadStorage(uploadsDir: string) {
       const file = path.join(projectDir(projectId), fileName);
       return fs.existsSync(file) ? fs.readFileSync(file) : undefined;
     },
+    /** The file's size, or undefined when it isn't there. */
+    size(projectId: string, fileName: string): number | undefined {
+      try {
+        const stat = fs.statSync(path.join(projectDir(projectId), fileName));
+        return stat.isFile() ? stat.size : undefined;
+      } catch {
+        return undefined;
+      }
+    },
+    hasProject(projectId: string) {
+      return fs.existsSync(projectDir(projectId));
+    },
+    /**
+     * Moves a folder of files in as the project's: in one step, or, when
+     * uploads is on another file system (mounted apart), by copying it.
+     */
+    adoptProject(projectId: string, folder: string) {
+      const target = projectDir(projectId);
+      try {
+        fs.renameSync(folder, target);
+      } catch (error) {
+        // A folder already there isn't this one's to replace, or to clean up.
+        if (
+          (error as NodeJS.ErrnoException).code !== "EXDEV" ||
+          fs.existsSync(target)
+        ) {
+          throw error;
+        }
+        try {
+          fs.cpSync(folder, target, {
+            recursive: true,
+            errorOnExist: true,
+            force: false,
+          });
+        } catch (copyError) {
+          fs.rmSync(target, { recursive: true, force: true });
+          throw copyError;
+        }
+        fs.rmSync(folder, { recursive: true, force: true });
+      }
+    },
     remove(projectId: string, fileName: string) {
       fs.rmSync(path.join(projectDir(projectId), fileName), { force: true });
     },

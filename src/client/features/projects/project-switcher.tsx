@@ -25,10 +25,15 @@ export function ProjectSwitcher({ projectId }: { projectId: string }) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
-        {projects.data?.map((project) => (
+        {projects.data?.map((project, _index, list) => (
           <DropdownMenuItem key={project.id} asChild>
             <Link to="/projects/$projectId" params={{ projectId: project.id }}>
               <span className="truncate">{project.name}</span>
+              {list.filter((item) => item.name === project.name).length > 1 && (
+                <span className="truncate font-mono text-xs text-muted-foreground">
+                  {project.slug}
+                </span>
+              )}
               {project.id === projectId && <CheckIcon className="ml-auto" />}
             </Link>
           </DropdownMenuItem>

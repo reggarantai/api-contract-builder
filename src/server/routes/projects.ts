@@ -1,6 +1,5 @@
 import { eq, sql } from "drizzle-orm";
 import { type Context, Hono } from "hono";
-import { ulid } from "ulid";
 import type { ApiErrorBody } from "../../shared/api-error";
 import {
   createProjectInputSchema,
@@ -15,6 +14,7 @@ import type { Db } from "../db/client";
 import { findProject } from "../db/projects";
 import { endpointsUsingScheme } from "../db/references";
 import { type ProjectRow, projects } from "../db/schema";
+import { newId } from "../ids";
 import type { UploadStorage } from "../storage/uploads";
 import {
   jsonBody,
@@ -111,7 +111,7 @@ export function projectRoutes(db: Db, storage: UploadStorage) {
       const row = db
         .insert(projects)
         .values({
-          id: ulid(),
+          id: newId(),
           name: input.name,
           slug,
           description: input.description,

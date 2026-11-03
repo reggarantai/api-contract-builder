@@ -1,8 +1,6 @@
 import { and, asc, count, eq, inArray, max } from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { imageSize } from "image-size";
-import { ulid } from "ulid";
 import type { ApiErrorBody, ApiIssue } from "../../shared/api-error";
 import { checkPageStates, type PageState } from "../../shared/page-states";
 import {
@@ -30,6 +28,8 @@ import {
   pageMockups,
   pages,
 } from "../db/schema";
+import { newId } from "../ids";
+import { checkMockupImage } from "../storage/mockup-image";
 import type { UploadStorage } from "../storage/uploads";
 import {
   jsonBody,
@@ -305,7 +305,7 @@ export function pageRoutes(
         const row = db
           .insert(pages)
           .values({
-            id: ulid(),
+            id: newId(),
             projectId: project.id,
             name: input.name,
             slug,
@@ -528,26 +528,15 @@ export function pageRoutes(
               continue;
             }
             const data = new Uint8Array(await file.arrayBuffer());
-            let size: ReturnType<typeof imageSize> | undefined;
-            try {
-              size = imageSize(data);
-            } catch {
-              size = undefined;
-            }
-            if (!size?.type || !(size.type in MOCKUP_MIME_TYPES)) {
+            const image = checkMockupImage(data);
+            if (!image) {
               issues.push({
                 path,
                 message: `${file.name} isn't a PNG, JPEG, GIF, or WebP image`,
               });
               continue;
             }
-            accepted.push({
-              file,
-              data,
-              type: size.type as keyof typeof MOCKUP_MIME_TYPES,
-              width: size.width,
-              height: size.height,
-            });
+            accepted.push({ file, data, ...image });
           }
           if (issues.length > 0) {
             return validationFailed(c, issues);
@@ -560,7 +549,7 @@ export function pageRoutes(
             .get();
           const now = new Date();
           const rows = accepted.map((upload, index) => {
-            const id = ulid();
+            const id = newId();
             return {
               id,
               pageId: page.id,

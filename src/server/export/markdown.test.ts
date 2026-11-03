@@ -190,3 +190,147 @@ describe("fieldRows without expanding", () => {
     ]);
   });
 });
+
+describe("fieldRows with references that branch", () => {
+  // Each model refers twice to the next: all of it would double per model.
+  function chain(length: number) {
+    const chained: Record<string, { name: string; schema: JsonSchema }> = {};
+    for (let index = 0; index < length; index++) {
+      const next: JsonSchema =
+        index + 1 < length
+          ? { $ref: `model:m${index + 1}` }
+          : { type: "string" };
+      chained[`m${index}`] = {
+        name: `M${index}`,
+        schema: { type: "object", properties: { left: next, right: next } },
+      };
+    }
+    return chained;
+  }
+
+  it("expands at most 500 rows of models in a table, and says the rest is in models.md", () => {
+    const chained = chain(14);
+    let lookups = 0;
+    const counting = {
+      model: (id: string) => {
+        lookups++;
+        return chained[id];
+      },
+      modelLink: (name: string) => `../models.md#${name.toLowerCase()}`,
+    };
+
+    const result = fieldRows({ $ref: "model:m0" }, counting);
+
+    // Each model's first expansion (14 × 2 rows), 500 rows of models shown
+    // again, and the last row.
+    expect(result.length).toBeLessThanOrEqual(28 + 500 + 1);
+    expect(result.at(-1)).toEqual({
+      field: "…",
+      type: "",
+      required: false,
+      description: "More fields of the models above are in models.md",
+      rules: "",
+      example: "",
+    });
+    // The work stops too, not only the table.
+    expect(lookups).toBeLessThan(2000);
+  });
+
+  it("lists every field of models a table shows once, however many", () => {
+    // 30 properties, each a different model of 20 fields: 630 rows.
+    const distinct: Record<string, { name: string; schema: JsonSchema }> = {};
+    for (let index = 0; index < 30; index++) {
+      distinct[`d${index}`] = {
+        name: `D${index}`,
+        schema: {
+          type: "object",
+          properties: Object.fromEntries(
+            Array.from({ length: 20 }, (_, field) => [
+              `f${field}`,
+              { type: "string" },
+            ]),
+          ),
+        },
+      };
+    }
+    const lookup = {
+      model: (id: string) => distinct[id],
+      modelLink: (name: string) => `../models.md#${name.toLowerCase()}`,
+    };
+    const body: JsonSchema = {
+      type: "object",
+      properties: Object.fromEntries(
+        Object.keys(distinct).map((id) => [id, { $ref: `model:${id}` }]),
+      ),
+    };
+
+    const rows = fieldRows(body, lookup);
+    expect(rows).toHaveLength(630);
+    expect(rows.at(-1)?.field).toBe("d29.f19");
+
+    // One model of 600 fields, as a whole body.
+    distinct.wide = {
+      name: "Wide",
+      schema: {
+        type: "object",
+        properties: Object.fromEntries(
+          Array.from({ length: 600 }, (_, field) => [
+            `f${field}`,
+            { type: "string" },
+          ]),
+        ),
+      },
+    };
+    expect(fieldRows({ $ref: "model:wide" }, lookup)).toHaveLength(600);
+  });
+
+  it("stops a long chain of models before expanding it would run out of stack", () => {
+    const lookupOf = (
+      chained: Record<string, { name: string; schema: JsonSchema }>,
+    ) => ({
+      model: (id: string) => chained[id],
+      modelLink: (name: string) => `../models.md#${name.toLowerCase()}`,
+    });
+    const last = {
+      field: "…",
+      type: "",
+      required: false,
+      description: "More fields of the models above are in models.md",
+      rules: "",
+      example: "",
+    };
+    // Each model refers once to the next: nothing repeats, but it goes deep.
+    const chain: Record<string, { name: string; schema: JsonSchema }> = {};
+    // Each model nests its reference in lists, which add no rows.
+    const lists: Record<string, { name: string; schema: JsonSchema }> = {};
+    for (let index = 0; index < 5000; index++) {
+      const next = { $ref: `model:c${index + 1}` };
+      chain[`c${index}`] = {
+        name: `C${index}`,
+        schema: { type: "object", properties: { next } },
+      };
+      let schema: JsonSchema = next;
+      for (let level = 0; level < 50; level++) {
+        schema = { type: "array", items: schema };
+      }
+      lists[`c${index}`] = { name: `C${index}`, schema };
+    }
+
+    const rows = fieldRows({ $ref: "model:c0" }, lookupOf(chain));
+    expect(rows.length).toBeLessThan(600);
+    expect(rows.at(-1)).toEqual(last);
+    expect(fieldRows({ $ref: "model:c0" }, lookupOf(lists))).toEqual([last]);
+  });
+
+  it("lists every field of a model's own schema, however many", () => {
+    const properties = Object.fromEntries(
+      Array.from({ length: 700 }, (_, index) => [
+        `f${index}`,
+        { type: "string" },
+      ]),
+    );
+    expect(fieldRows({ type: "object", properties }, context)).toHaveLength(
+      700,
+    );
+  });
+});

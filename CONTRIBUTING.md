@@ -52,8 +52,9 @@ pnpm check && pnpm typecheck && pnpm test && pnpm test:e2e
 CI (`.github/workflows/ci.yml`) runs the same on every push to `main` and every pull
 request, and also builds the Docker image and runs `scripts/smoke-test-image.sh` on it:
 the container must turn healthy, run as a non-root user, export the sample project
-cleanly, keep its data across a restart, ship only the SQLite binary for its platform,
-and have no shell or package manager. Then Trivy scans the image, and CI fails on any high
+cleanly, import the sample's project file as a copy that exports the same OpenAPI, keep its
+data across a restart, ship only the SQLite binary for its platform, and have no shell or
+package manager. Then Trivy scans the image, and CI fails on any high
 or critical vulnerability that already has a fix. To check an image locally, including
 one built for the other architecture:
 
@@ -85,6 +86,30 @@ git diff test/golden
 before page states, and the sample built without its states must still export exactly
 that. Don't regenerate it to make a test pass; a change there means projects that don't
 use states see a different export.
+
+`test/golden/inventory.project.json` is the sample's project file, with its IDs renamed
+in order (`model-1`, `page-1`, …) since every build makes new ones.
+
+### Project files
+
+`test/fixtures/project-file-v1` is a project file of format version 1, written by hand,
+with every kind of reference. `test/fixtures/project-file-v1-zips` holds it zipped by real
+tools (Finder's Compress, Info-ZIP with and without ZIP64, libarchive, Python). Like the
+0.2.0 golden files, they never change: files from older versions must keep importing.
+They're excluded from Biome for that reason.
+
+To change what a project file holds, in `src/server/project-file/format.ts`:
+
+1. raise `PROJECT_FILE_VERSION`;
+2. add the upgrade from the version before to `UPGRADES`;
+3. add a frozen fixture of the new version next to the old one;
+4. regenerate the golden file.
+
+A rule that gets stricter, so that data saved before it no longer passes, needs one of
+two things. Either a repair in `repairEndpointFields` (or a function like it), which runs
+where stored data is read and on imported files, or a new format version whose upgrade
+does the repair. Otherwise older files stop importing. Upgrades get files from outside
+before anything has checked them, so they must not trust their shape.
 
 ### The sample project
 
@@ -169,10 +194,11 @@ src/client      React SPA (TanStack Router and Query, shadcn/ui)
 src/server      Hono API and SQLite (Drizzle)
   routes/       API routes and their tests
   export/       OpenAPI and Markdown builders
+  project-file/ project files: the format, export, import, and the zip reader
   samples/      the sample project
 src/shared      Zod schemas and pure helpers used by both sides
 e2e/            Playwright browser tests
-test/           fixtures shared by tests (images) and golden files
+test/           fixtures shared by tests (images, zips, project files) and golden files
 drizzle/        SQL migrations
 samples/        sample project assets (mockup images)
 scripts/        maintenance scripts (mockups, screenshots, image smoke test, release notes,

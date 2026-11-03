@@ -36,8 +36,10 @@ import {
   fieldRows,
   fieldTable,
   jsonBlock,
+  spendText,
   table,
   typeLabel,
+  withTextBudget,
 } from "./markdown";
 import { type ExportInput, type ExportOptions, scopeOf } from "./openapi";
 
@@ -45,6 +47,8 @@ import { type ExportInput, type ExportOptions, scopeOf } from "./openapi";
 function topLevelRows(schema: JsonSchema, context: FieldContext) {
   const properties = isJsonObject(schema.properties) ? schema.properties : {};
   const required = Array.isArray(schema.required) ? schema.required : [];
+  // Only each property's own row is kept, so nothing is expanded.
+  const flat = { ...context, expand: false };
   return Object.entries(properties).flatMap(([name, property]) =>
     fieldRows(
       {
@@ -52,7 +56,7 @@ function topLevelRows(schema: JsonSchema, context: FieldContext) {
         properties: { [name]: property },
         required: required.includes(name) ? [name] : [],
       },
-      context,
+      flat,
     ).slice(0, 1),
   );
 }
@@ -87,11 +91,21 @@ function andList(items: string[]) {
 export function buildMarkdownFiles(
   input: ExportInput,
   options: ExportOptions,
-  assets: {
-    readImage: (mockup: Mockup) => Uint8Array | undefined;
-    /** The OpenAPI file to include, or null while the contract isn't valid. */
-    openApi: { fileName: string; content: string } | null;
-  },
+  assets: MarkdownAssets,
+): Record<string, string | Uint8Array> {
+  return withTextBudget(() => markdownFiles(input, options, assets));
+}
+
+type MarkdownAssets = {
+  readImage: (mockup: Mockup) => Uint8Array | undefined;
+  /** The OpenAPI file to include, or null while the contract isn't valid. */
+  openApi: { fileName: string; content: string } | null;
+};
+
+function markdownFiles(
+  input: ExportInput,
+  options: ExportOptions,
+  assets: MarkdownAssets,
 ): Record<string, string | Uint8Array> {
   const { project } = input;
   const scope = scopeOf(input, options);
@@ -426,8 +440,11 @@ export function buildMarkdownFiles(
             )
           : "_This page doesn't call any endpoints yet._"
       }`,
-      ...endpoints.map((endpoint) => endpointSection(endpoint, page)),
+      ...endpoints.map((endpoint) =>
+        spendText(endpointSection(endpoint, page)),
+      ),
     );
+    spendText(files[pageFile(page)] as string);
   }
 
   // Models
@@ -640,5 +657,11 @@ export function buildMarkdownFiles(
       : "> This contract isn't valid OpenAPI yet, so the bundle has no OpenAPI file. Fix the problems listed on the Export tab and export again.",
   );
 
+  for (const name of ["models.md", "error-types.md", "README.md"]) {
+    const text = files[name];
+    if (typeof text === "string") {
+      spendText(text);
+    }
+  }
   return files;
 }

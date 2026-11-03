@@ -17,7 +17,7 @@ async function contentOf(download: Download) {
 
 async function download(page: Page, name: string) {
   const started = page.waitForEvent("download");
-  await page.getByRole("link", { name }).click();
+  await page.getByRole("button", { name }).click();
   return started;
 }
 
@@ -205,4 +205,31 @@ test("still offers Markdown while the OpenAPI isn't valid", async ({
   expect(Object.keys(await unzip(zip))).not.toContain(
     `${project.slug}/${project.slug}.openapi.yaml`,
   );
+});
+
+test("says why an export can't be downloaded", async ({ page, request }) => {
+  const { project } = await setUp(request);
+  const reason =
+    "This contract is too large to export as Markdown: its files would hold more than 128 MB of text.";
+  let answer = () => {};
+  const answered = new Promise<void>((resolve) => {
+    answer = resolve;
+  });
+  await page.route("**/export/markdown*", async (route) => {
+    await answered;
+    await route.fulfill({ status: 422, json: { error: reason } });
+  });
+  await page.goto(`/projects/${project.id}/export`);
+
+  await page.getByRole("button", { name: "Download Markdown" }).click();
+  await expect(
+    page.getByRole("button", { name: "Downloading…" }),
+  ).toBeDisabled();
+  answer();
+
+  await expect(page.getByText("Couldn't download the Markdown")).toBeVisible();
+  await expect(page.getByText(reason)).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Download Markdown" }),
+  ).toBeEnabled();
 });

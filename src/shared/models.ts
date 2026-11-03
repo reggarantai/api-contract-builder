@@ -30,12 +30,14 @@ export const createModelInputSchema = z.object({
   schema: jsonSchemaSchema.optional(),
 });
 
-export const updateModelInputSchema = z
-  .object({
-    name: modelNameSchema,
-    description: modelDescriptionSchema,
-    schema: jsonSchemaSchema,
-  })
+/** A model's editable fields. */
+export const modelFieldsSchema = z.object({
+  name: modelNameSchema,
+  description: modelDescriptionSchema,
+  schema: jsonSchemaSchema,
+});
+
+export const updateModelInputSchema = modelFieldsSchema
   .partial()
   .extend({ revision: revisionInputSchema });
 

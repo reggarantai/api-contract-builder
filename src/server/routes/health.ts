@@ -4,7 +4,7 @@ import type { HealthResponse } from "../../shared/health";
 import type { Db } from "../db/client";
 import { appMeta } from "../db/schema";
 
-export function healthRoutes(db: Db, version: string) {
+export function healthRoutes(db: Db, version: string, maxImportBytes: number) {
   return new Hono().get("/health", (c) => {
     const createdAt = db
       .select({ value: appMeta.value })
@@ -16,6 +16,7 @@ export function healthRoutes(db: Db, version: string) {
       status: "ok",
       version,
       dataCreatedAt: createdAt?.value ?? "",
+      maxImportBytes,
     } satisfies HealthResponse);
   });
 }

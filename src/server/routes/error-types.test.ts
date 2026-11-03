@@ -197,6 +197,79 @@ describe("error types API", () => {
     ]);
   });
 
+  it("saves an example nested up to 256 levels deep, and refuses a deeper one", async () => {
+    const nested = (levels: number) => {
+      let value: unknown = 0;
+      for (let level = 0; level < levels; level++) {
+        value = [value];
+      }
+      return value;
+    };
+    const body = (levels: number) => ({
+      ...problemBody("deep", 400, "Deep"),
+      example: nested(levels),
+    });
+
+    const created = await createError("deep", "400", { body: body(256) });
+    const refused = await t.request("POST", errorsUrl(), {
+      name: "deeper",
+      status: "400",
+      title: "Deeper",
+      body: body(257),
+    });
+    expect(refused.status).toBe(400);
+    const tooDeep = [
+      {
+        path: "body.example",
+        message: "This example is nested more than 256 levels deep",
+      },
+    ];
+    expect((await errorOf(refused)).issues).toEqual(tooDeep);
+    const changed = await t.request("PATCH", `${errorsUrl()}/${created.id}`, {
+      body: body(257),
+      revision: created.revision,
+    });
+    expect(changed.status).toBe(400);
+    expect((await errorOf(changed)).issues).toEqual(tooDeep);
+  });
+
+  it("keeps saving an example nested deeper than 256 levels from before the limit, while it stays as it was", async () => {
+    const nested = (levels: number) => {
+      let value: unknown = 0;
+      for (let level = 0; level < levels; level++) {
+        value = [value];
+      }
+      return value;
+    };
+    const created = await createError("old", "400");
+    const old = { ...problemBody("old", 400, "Old"), example: nested(300) };
+    // Saved before the limit: straight into the database.
+    t.db.$client
+      .prepare("update error_types set body = ? where id = ?")
+      .run(JSON.stringify(old), created.id);
+
+    const renamed = await t.request("PATCH", `${errorsUrl()}/${created.id}`, {
+      title: "Renamed",
+    });
+    expect(renamed.status).toBe(200);
+    const read = errorTypeSchema.parse(await renamed.json());
+    const resaved = await t.request("PATCH", `${errorsUrl()}/${created.id}`, {
+      ...read,
+      title: "Saved again",
+    });
+    expect(resaved.status).toBe(200);
+    const changed = await t.request("PATCH", `${errorsUrl()}/${created.id}`, {
+      body: { ...old, example: nested(301) },
+    });
+    expect(changed.status).toBe(400);
+    expect((await errorOf(changed)).issues).toEqual([
+      {
+        path: "body.example",
+        message: "This example is nested more than 256 levels deep",
+      },
+    ]);
+  });
+
   it("updates an error and marks the project as changed", async () => {
     const error = await createError("sku-taken", "409");
     const before = projectSchema.parse(

@@ -1,0 +1,4875 @@
+{
+  "format": "api-contract-builder/project",
+  "formatVersion": 1,
+  "generator": "API Contract Builder 1.2.3",
+  "project": {
+    "id": "project",
+    "name": "Inventory App",
+    "slug": "inventory-app",
+    "description": "Stock tracking for the warehouse team: accounts and sign-in, stock items, and stock movements.\n\nEvery endpoint follows these conventions:\n\n- **Errors** are problem details ([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)) in `application/problem+json`; branch on `type`. 400 means invalid query or header parameters, 422 invalid body fields (listed in `errors`), and 404 an unknown or deleted ID. Other errors, like 415 or 500, are problem details too.\n- **Authentication**: send `Authorization: Bearer <access token>`. A 401 means the token is missing or expired: refresh once with `POST /auth/refresh`, then retry. If refreshing answers 401, sign in again.\n- **Paged lists** return `{ data, meta }` and take `page` and `pageSize`. Short lists return `{ data }`.\n- **Creates** take an `Idempotency-Key` header, so a retry never creates something twice.\n- **Requests** send JSON. PATCH sends a JSON Merge Patch (`application/merge-patch+json`).\n- **Responses** send `Cache-Control: no-store`.\n- **CORS** allows only the app's origin, with credentials. It exposes `Location` and `Retry-After` to scripts, and allows the `Idempotency-Key` request header.\n- **Times** are UTC, in RFC 3339 format.",
+    "apiVersion": "1.0.0",
+    "servers": [
+      {
+        "id": "prod",
+        "name": "Production",
+        "url": "https://api.inventory.example/v1",
+        "description": ""
+      },
+      {
+        "id": "staging",
+        "name": "Staging",
+        "url": "https://api.inventory-staging.example/v1",
+        "description": "Reset every night. A separate site, so cookies never cross between staging and production."
+      }
+    ],
+    "securitySchemes": [
+      {
+        "id": "bearer",
+        "key": "bearerAuth",
+        "description": "Access token from POST /auth/login or POST /auth/refresh. It expires after 15 minutes.",
+        "type": "bearer",
+        "bearerFormat": "JWT"
+      },
+      {
+        "id": "refresh",
+        "key": "refreshCookie",
+        "description": "HttpOnly cookie set by POST /auth/login and replaced by POST /auth/refresh.",
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "refresh_token"
+      }
+    ],
+    "defaultSecuritySchemeId": "bearer"
+  },
+  "models": [
+    {
+      "id": "model-1",
+      "name": "Problem",
+      "description": "An error, as RFC 9457 problem details. Branch on `type`, not on `title` or `detail`.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri",
+            "description": "Identifies the kind of problem. It's stable: branch on it.",
+            "examples": [
+              "https://api.inventory.example/problems/not-found"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "description": "Short summary of the kind of problem"
+          },
+          "status": {
+            "type": "integer",
+            "minimum": 400,
+            "maximum": 599,
+            "description": "The HTTP status code"
+          },
+          "detail": {
+            "type": "string",
+            "description": "What went wrong this time, in words for people"
+          },
+          "instance": {
+            "type": "string",
+            "format": "uri-reference",
+            "description": "Identifies this occurrence. Quote it when reporting a problem."
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status"
+        ]
+      }
+    },
+    {
+      "id": "model-2",
+      "name": "ValidationProblem",
+      "description": "A 422 problem: some fields of the request body are invalid.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri",
+            "description": "Identifies the kind of problem. It's stable: branch on it.",
+            "examples": [
+              "https://api.inventory.example/problems/validation-failed"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "description": "Short summary of the kind of problem"
+          },
+          "status": {
+            "type": "integer",
+            "minimum": 400,
+            "maximum": 599,
+            "description": "The HTTP status code"
+          },
+          "detail": {
+            "type": "string",
+            "description": "What went wrong this time, in words for people"
+          },
+          "instance": {
+            "type": "string",
+            "format": "uri-reference",
+            "description": "Identifies this occurrence. Quote it when reporting a problem."
+          },
+          "errors": {
+            "type": "array",
+            "minItems": 1,
+            "description": "One entry per invalid field",
+            "items": {
+              "type": "object",
+              "properties": {
+                "pointer": {
+                  "type": "string",
+                  "description": "JSON Pointer (RFC 6901) to the field in the request body, as a URI fragment like `#/email`",
+                  "examples": [
+                    "#/email"
+                  ]
+                },
+                "detail": {
+                  "type": "string",
+                  "description": "What's wrong with it"
+                }
+              },
+              "required": [
+                "pointer",
+                "detail"
+              ]
+            }
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "errors"
+        ]
+      }
+    },
+    {
+      "id": "model-3",
+      "name": "PageMeta",
+      "description": "Where a page of results sits in the whole list.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The page number"
+          },
+          "pageSize": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "Items per page"
+          },
+          "totalItems": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Items in the whole list"
+          },
+          "totalPages": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "0 when the list is empty"
+          }
+        },
+        "required": [
+          "page",
+          "pageSize",
+          "totalItems",
+          "totalPages"
+        ]
+      }
+    },
+    {
+      "id": "model-4",
+      "name": "User",
+      "description": "A person who can sign in.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254,
+            "description": "Unique, ignoring case"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "staff"
+            ],
+            "description": "Admins can also delete stock items"
+          },
+          "emailVerified": {
+            "type": "boolean",
+            "description": "Users can sign in once their email is verified"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "email",
+          "role",
+          "emailVerified",
+          "createdAt"
+        ]
+      }
+    },
+    {
+      "id": "model-5",
+      "name": "Session",
+      "description": "An access token. The refresh token isn't in the body: it's in the `refresh_token` cookie, which scripts can't read.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "description": "Send as `Authorization: Bearer <token>`. Keep it in memory only."
+          },
+          "tokenType": {
+            "type": "string",
+            "enum": [
+              "Bearer"
+            ]
+          },
+          "expiresIn": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Seconds until the access token expires",
+            "examples": [
+              900
+            ]
+          }
+        },
+        "required": [
+          "accessToken",
+          "tokenType",
+          "expiresIn"
+        ]
+      }
+    },
+    {
+      "id": "model-6",
+      "name": "Category",
+      "description": "A group of stock items, like Packaging.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      }
+    },
+    {
+      "id": "model-7",
+      "name": "StockItem",
+      "description": "Something the warehouse keeps in stock. Its quantity only changes through stock movements.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sku": {
+            "type": "string",
+            "pattern": "^[A-Z0-9-]{3,32}$",
+            "description": "Stock keeping unit: upper-case letters, digits, and hyphens. Unique among items that aren't deleted.",
+            "examples": [
+              "BOX-S-001"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000
+          },
+          "category": {
+            "$ref": "model:model-6"
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "piece",
+              "box",
+              "roll",
+              "pack"
+            ],
+            "description": "What quantities count. It can't change once the item has stock movements."
+          },
+          "quantityOnHand": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reorderPoint": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000,
+            "description": "At or below this quantity, the item is low on stock"
+          },
+          "stockStatus": {
+            "type": "string",
+            "enum": [
+              "in_stock",
+              "low_stock",
+              "out_of_stock"
+            ],
+            "description": "`out_of_stock` at 0; `low_stock` at or below `reorderPoint`"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "sku",
+          "name",
+          "description",
+          "category",
+          "unit",
+          "quantityOnHand",
+          "reorderPoint",
+          "stockStatus",
+          "createdAt",
+          "updatedAt"
+        ]
+      }
+    },
+    {
+      "id": "model-8",
+      "name": "StockItemInput",
+      "description": "A new stock item. It starts with 0 on hand: record a receipt to add stock.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "sku": {
+            "type": "string",
+            "pattern": "^[A-Z0-9-]{3,32}$",
+            "description": "Stock keeping unit: upper-case letters, digits, and hyphens. Unique among items that aren't deleted.",
+            "examples": [
+              "BOX-S-001"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "piece",
+              "box",
+              "roll",
+              "pack"
+            ],
+            "description": "What quantities count. It can't change once the item has stock movements."
+          },
+          "reorderPoint": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000,
+            "description": "At or below this quantity, the item is low on stock",
+            "default": 0
+          }
+        },
+        "required": [
+          "sku",
+          "name",
+          "categoryId",
+          "unit"
+        ]
+      }
+    },
+    {
+      "id": "model-9",
+      "name": "StockItemUpdate",
+      "description": "Changes to a stock item, as a JSON Merge Patch: send only the fields that change. The quantity isn't here; record a stock movement instead.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "sku": {
+            "type": "string",
+            "pattern": "^[A-Z0-9-]{3,32}$",
+            "description": "Stock keeping unit: upper-case letters, digits, and hyphens. Unique among items that aren't deleted.",
+            "examples": [
+              "BOX-S-001"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "piece",
+              "box",
+              "roll",
+              "pack"
+            ],
+            "description": "What quantities count. It can't change once the item has stock movements."
+          },
+          "reorderPoint": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000,
+            "description": "At or below this quantity, the item is low on stock"
+          }
+        },
+        "minProperties": 1
+      }
+    },
+    {
+      "id": "model-10",
+      "name": "StockMovement",
+      "description": "One change to an item's quantity on hand. Movements can't be changed or deleted; record a count to correct a mistake.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "receipt",
+              "issue",
+              "count"
+            ],
+            "description": "`receipt` adds stock, `issue` takes it out, `count` sets it to what was counted"
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "As entered: the amount received or issued, or the counted quantity"
+          },
+          "quantityChange": {
+            "type": "integer",
+            "description": "How the quantity on hand changed: positive or negative"
+          },
+          "quantityAfter": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Quantity on hand after this movement"
+          },
+          "reference": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 64,
+            "description": "Delivery note, order, or ticket number"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500
+          },
+          "createdBy": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "description": "Who recorded it"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "quantity",
+          "quantityChange",
+          "quantityAfter",
+          "reference",
+          "note",
+          "createdBy",
+          "createdAt"
+        ]
+      }
+    },
+    {
+      "id": "model-11",
+      "name": "StockMovementInput",
+      "description": "A stock movement to record.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "receipt",
+              "issue",
+              "count"
+            ],
+            "description": "`receipt` adds stock, `issue` takes it out, `count` sets it to what was counted"
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000,
+            "description": "At least 1 for receipts and issues"
+          },
+          "reference": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 64,
+            "description": "Delivery note, order, or ticket number"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "type",
+          "quantity"
+        ]
+      }
+    }
+  ],
+  "errorTypes": [
+    {
+      "id": "error-type-1",
+      "name": "idempotency-key-missing",
+      "status": "400",
+      "title": "Idempotency-Key missing",
+      "description": "A create was sent without an `Idempotency-Key` header.",
+      "headers": {
+        "type": "object",
+        "properties": {}
+      },
+      "body": {
+        "contentType": "application/problem+json",
+        "schema": {
+          "$ref": "model:model-1"
+        },
+        "example": {
+          "type": "https://api.inventory.example/problems/idempotency-key-missing",
+          "title": "Idempotency-Key missing",
+          "status": 400,
+          "detail": "Send an Idempotency-Key header with each create."
+        }
+      }
+    },
+    {
+      "id": "error-type-2",
+      "name": "idempotency-key-reused",
+      "status": "400",
+      "title": "Idempotency-Key reused",
+      "description": "The key was already used for a request with a different body. Make a new key for each new thing to create.",
+      "headers": {
+        "type": "object",
+        "properties": {}
+      },
+      "body": {
+        "contentType": "application/problem+json",
+        "schema": {
+          "$ref": "model:model-1"
+        },
+        "example": {
+          "type": "https://api.inventory.example/problems/idempotency-key-reused",
+          "title": "Idempotency-Key reused",
+          "status": 400,
+          "detail": "This key was already used for a different request. Make a new one."
+        }
+      }
+    },
+    {
+      "id": "error-type-3",
+      "name": "invalid-credentials",
+      "status": "400",
+      "title": "Invalid credentials",
+      "description": "The email or password is wrong. It's 400, not 401: a 401 always means the access token is missing or expired.",
+      "headers": {
+        "type": "object",
+        "properties": {}
+      },
+      "body": {
+        "contentType": "application/problem+json",
+        "schema": {
+          "$ref": "model:model-1"
+        },
+        "example": {
+          "type": "https://api.inventory.example/problems/invalid-credentials",
+          "title": "Invalid credentials",
+          "status": 400,
+          "detail": "Email or password is wrong."
+        }
+      }
+    },
+    {
+      "id": "error-type-4",
+      "name": "invalid-link",
+      "status": "400",
+      "title": "Invalid or expired link",
+      "description": "The token from an email link is unknown or has expired. Offer to send a new link.",
+      "headers": {
+        "type": "object",
+        "properties": {}
+      },
+      "body": {
+        "contentType": "application/problem+json",
+        "schema": {
+          "$ref": "model:model-1"
+        },
+        "example": {
+          "type": "https://api.inventory.example/problems/invalid-link",
+          "title": "Invalid or expired link",
+          "status": 400,
+          "detail": "This link is invalid or has expired. Ask for a new one."
+        }
+      }
+    },
+    {
+      "id": "error-type-5",
+      "name": "invalid-parameters",
+      "status": "400",
+      "title": "Invalid parameters",
+      "description": "A query or header parameter is invalid; `detail` says which.",
+      "headers": {
+        "type": "object",
+        "properties": {}
+      },
+      "body": {
+        "contentType": "application/problem+json",
+        "schema": {
+          "$ref": "model:model-1"
+        },
+        "example": {
+          "type": "https://api.inventory.example/problems/invalid-parameters",
+          "title": "Invalid parameters",
+          "status": 400,
+          "detail": "pageSize must be between 1 and 100."
+        }
+      }
+    },
+    {
+      "id": "error-type-6",
+      "name": "session-expired",
+      "status": "401",
+      "title": "Session expired",
+      "description": "The refresh token is missing, expired, or revoked, so the session is over. Sign in again.",
+      "headers": {
+        "type": "object",
+        "properties": {
+          "Set-Cookie": {
+            "type": "string",
+            "description": "Clears the refresh token cookie",
+            "examples": [
+              "refresh_token=; HttpOnly; Secure; SameSite=Strict; Path=/v1/auth; Max-Age=0"
+            ]
+          }
+        },
+        "required": [
+          "Set-Cookie"
+        ]
+      },
+      "body": {
+        "contentType": "application/problem+json",
+        "schema": {
+          "$ref": "model:model-1"
+        },
+        "example": {
+          "type": "https://api.inventory.example/problems/session-expired",
+          "title": "Session expired",
+          "status": 401,
+          "detail": "Sign in again."
+        }
+      }
+    },
+    {
+      "id": "error-type-7",
+      "name": "token-expired",
+      "status": "401",
+      "title": "Access token expired",
+      "description": "The access token has expired. Refresh it once with `POST /auth/refresh`, then retry the request.",
+      "headers": {
+        "type": "object",
+        "properties": {
+          "WWW-Authenticate": {
+            "type": "string",
+            "description": "The Bearer challenge (RFC 6750). It adds `error=\"invalid_token\"` when the token sent is expired or invalid.",
+            "examples": [
+              "Bearer realm=\"inventory\", error=\"invalid_token\", error_description=\"The access token expired\""
+            ]
+          }
+        },
+        "required": [
+          "WWW-Authenticate"
+        ]
+      },
+      "body": {
+        "contentType": "application/problem+json",
+        "schema": {
+          "$ref": "model:model-1"
+        },
+        "example": {
+          "type": "https://api.inventory.example/problems/token-expired",
+          "title": "Access token expired",
+          "status": 401,
+          "detail": "Refresh the access token and try again."
+        }
+      }
+    },
+    {
+      "id": "error-type-8",
+      "name": "unauthenticated",
+      "status": "401",
+      "title": "Not signed in",
+      "description": "The request has no access token. Send one in the `Authorization` header.",
+      "headers": {
+        "type": "object",
+        "properties": {
+          "WWW-Authenticate": {
+            "type": "string",
+            "description": "The Bearer challenge (RFC 6750). It adds `error=\"invalid_token\"` when the token sent is expired or invalid.",
+            "examples": [
+              "Bearer realm=\"inventory\""
+            ]
+          }
+        },
+        "required": [
+          "WWW-Authenticate"
+        ]
+      },
+      "body": {
+        "contentType": "application/problem+json",
+        "schema": {
+          "$ref": "model:model-1"
+        },
+        "example": {
+          "type": "https://api.inventory.example/problems/unauthenticated",
+          "title": "Not signed in",
+          "status": 401,
+          "detail": "Send an access token in the Authorization header."
+        }
+      }
+    },
+    {
+      "id": "error-type-9",
+      "name": "admins-only",
+      "status": "403",
+      "title": "Admins only",
+      "description": "Only admins can do this; staff can't.",
+      "headers": {
+        "type": "object",
+        "properties": {}
+      },
+      "body": {
+        "contentType": "application/problem+json",
+        "schema": {
+          "$ref": "model:model-1"
+        },
+        "example": {
+          "type": "https://api.inventory.example/problems/admins-only",
+          "title": "Admins only",
+          "status": 403,
+          "detail": "Only admins can delete stock items."
+        }
+      }
+    },
+    {
+      "id": "error-type-10",
+      "name": "email-not-verified",
+      "status": "403",
+      "title": "Email not verified",
+      "description": "The password matched, but the email address isn't verified yet. Offer to send a new link with `POST /auth/verify-email/resend`.",
+      "headers": {
+        "type": "object",
+        "properties": {}
+      },
+      "body": {
+        "contentType": "application/problem+json",
+        "schema": {
+          "$ref": "model:model-1"
+        },
+        "example": {
+          "type": "https://api.inventory.example/problems/email-not-verified",
+          "title": "Email not verified",
+          "status": 403,
+          "detail": "Verify your email address first. We sent a link to budi@example.com."
+        }
+      }
+    },
+    {
+      "id": "error-type-11",
+      "name": "not-found",
+      "status": "404",
+      "title": "Not found",
+      "description": "Nothing has this ID: it's unknown, malformed, or deleted.",
+      "headers": {
+        "type": "object",
+        "properties": {}
+      },
+      "body": {
+        "contentType": "application/problem+json",
+        "schema": {
+          "$ref": "model:model-1"
+        },
+        "example": {
+          "type": "https://api.inventory.example/problems/not-found",
+          "title": "Not found",
+          "status": 404,
+          "detail": "There's no stock item with ID 9d0c8b7a-6f5e-4d3c-8b2a-1f0e9d8c7b6a."
+        }
+      }
+    },
+    {
+      "id": "error-type-12",
+      "name": "insufficient-stock",
+      "status": "409",
+      "title": "Not enough stock",
+      "description": "The issue would take the quantity on hand below 0. Nothing was recorded.",
+      "headers": {
+        "type": "object",
+        "properties": {}
+      },
+      "body": {
+        "contentType": "application/problem+json",
+        "schema": {
+          "$ref": "model:model-1"
+        },
+        "example": {
+          "type": "https://api.inventory.example/problems/insufficient-stock",
+          "title": "Not enough stock",
+          "status": 409,
+          "detail": "Only 18 on hand, so 30 can't be issued."
+        }
+      }
+    },
+    {
+      "id": "error-type-13",
+      "name": "item-has-stock",
+      "status": "409",
+      "title": "Item still in stock",
+      "description": "Only items with nothing on hand can be deleted. Issue or count the stock to 0 first.",
+      "headers": {
+        "type": "object",
+        "properties": {}
+      },
+      "body": {
+        "contentType": "application/problem+json",
+        "schema": {
+          "$ref": "model:model-1"
+        },
+        "example": {
+          "type": "https://api.inventory.example/problems/item-has-stock",
+          "title": "Item still in stock",
+          "status": 409,
+          "detail": "Shipping box, small still has 340 on hand. Issue or count them to 0 first."
+        }
+      }
+    },
+    {
+      "id": "error-type-14",
+      "name": "request-in-progress",
+      "status": "409",
+      "title": "Request in progress",
+      "description": "A request with the same `Idempotency-Key` is still running. Resend it after `Retry-After` seconds to get its result.",
+      "headers": {
+        "type": "object",
+        "properties": {
+          "Retry-After": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Seconds before resending",
+            "examples": [
+              2
+            ]
+          }
+        },
+        "required": [
+          "Retry-After"
+        ]
+      },
+      "body": {
+        "contentType": "application/problem+json",
+        "schema": {
+          "$ref": "model:model-1"
+        },
+        "example": {
+          "type": "https://api.inventory.example/problems/request-in-progress",
+          "title": "Request in progress",
+          "status": 409,
+          "detail": "A request with this Idempotency-Key is still running. Resend it later."
+        }
+      }
+    },
+    {
+      "id": "error-type-15",
+      "name": "sku-taken",
+      "status": "409",
+      "title": "SKU already used",
+      "description": "Another stock item has this SKU. SKUs are unique, ignoring case; a deleted item's SKU can be used again.",
+      "headers": {
+        "type": "object",
+        "properties": {}
+      },
+      "body": {
+        "contentType": "application/problem+json",
+        "schema": {
+          "$ref": "model:model-1"
+        },
+        "example": {
+          "type": "https://api.inventory.example/problems/sku-taken",
+          "title": "SKU already used",
+          "status": 409,
+          "detail": "TAPE-050 is already used by Packing tape, 50 m."
+        }
+      }
+    },
+    {
+      "id": "error-type-16",
+      "name": "unit-locked",
+      "status": "409",
+      "title": "Unit can't change",
+      "description": "The item already has stock movements, so its unit can't change.",
+      "headers": {
+        "type": "object",
+        "properties": {}
+      },
+      "body": {
+        "contentType": "application/problem+json",
+        "schema": {
+          "$ref": "model:model-1"
+        },
+        "example": {
+          "type": "https://api.inventory.example/problems/unit-locked",
+          "title": "Unit can't change",
+          "status": 409,
+          "detail": "Shipping box, small already has stock movements, so its unit can't change."
+        }
+      }
+    },
+    {
+      "id": "error-type-17",
+      "name": "unsupported-media-type",
+      "status": "415",
+      "title": "Unsupported media type",
+      "description": "The request body isn't in a content type the endpoint takes.",
+      "headers": {
+        "type": "object",
+        "properties": {}
+      },
+      "body": {
+        "contentType": "application/problem+json",
+        "schema": {
+          "$ref": "model:model-1"
+        },
+        "example": {
+          "type": "https://api.inventory.example/problems/unsupported-media-type",
+          "title": "Unsupported media type",
+          "status": 415,
+          "detail": "Send the body as JSON."
+        }
+      }
+    },
+    {
+      "id": "error-type-18",
+      "name": "validation-failed",
+      "status": "422",
+      "title": "Validation failed",
+      "description": "Some fields of the request body are invalid. `errors` lists each one, with a JSON Pointer to the field, so a form can show each message next to its field.",
+      "headers": {
+        "type": "object",
+        "properties": {}
+      },
+      "body": {
+        "contentType": "application/problem+json",
+        "schema": {
+          "$ref": "model:model-2"
+        },
+        "example": {
+          "type": "https://api.inventory.example/problems/validation-failed",
+          "title": "Validation failed",
+          "status": 422,
+          "detail": "Some fields are invalid.",
+          "errors": [
+            {
+              "pointer": "#/name",
+              "detail": "Enter a name."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "error-type-19",
+      "name": "too-many-attempts",
+      "status": "429",
+      "title": "Too many attempts",
+      "description": "Too many failed sign-ins for this email or from this IP address. Wait `Retry-After` seconds.",
+      "headers": {
+        "type": "object",
+        "properties": {
+          "Retry-After": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Seconds to wait before trying again",
+            "examples": [
+              900
+            ]
+          }
+        },
+        "required": [
+          "Retry-After"
+        ]
+      },
+      "body": {
+        "contentType": "application/problem+json",
+        "schema": {
+          "$ref": "model:model-1"
+        },
+        "example": {
+          "type": "https://api.inventory.example/problems/too-many-attempts",
+          "title": "Too many attempts",
+          "status": 429,
+          "detail": "Too many sign-in attempts. Try again in 15 minutes."
+        }
+      }
+    },
+    {
+      "id": "error-type-20",
+      "name": "too-many-requests",
+      "status": "429",
+      "title": "Too many requests",
+      "description": "Too many emails were asked for in a short time. Wait `Retry-After` seconds.",
+      "headers": {
+        "type": "object",
+        "properties": {
+          "Retry-After": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Seconds to wait before trying again",
+            "examples": [
+              60
+            ]
+          }
+        },
+        "required": [
+          "Retry-After"
+        ]
+      },
+      "body": {
+        "contentType": "application/problem+json",
+        "schema": {
+          "$ref": "model:model-1"
+        },
+        "example": {
+          "type": "https://api.inventory.example/problems/too-many-requests",
+          "title": "Too many requests",
+          "status": 429,
+          "detail": "Wait a minute before asking for another email."
+        }
+      }
+    }
+  ],
+  "endpoints": [
+    {
+      "id": "endpoint-1",
+      "method": "POST",
+      "path": "/auth/login",
+      "operationId": "",
+      "summary": "Sign in",
+      "description": "Returns an access token and sets the refresh token cookie. A session lasts 12 hours, or 30 days with `remember`, from sign-in; refreshing doesn't make it longer. Wrong credentials answer 400, not 401: a 401 always means the access token is missing or expired.",
+      "status": "agreed",
+      "deprecated": false,
+      "security": {
+        "type": "none"
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {}
+        },
+        "query": {
+          "type": "object",
+          "properties": {}
+        },
+        "header": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "requestBody": {
+        "contentType": "application/json",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "email": {
+              "type": "string",
+              "format": "email",
+              "maxLength": 254
+            },
+            "password": {
+              "type": "string",
+              "format": "password",
+              "maxLength": 128
+            },
+            "remember": {
+              "type": "boolean",
+              "description": "Keep the session for 30 days instead of 12 hours"
+            }
+          },
+          "required": [
+            "email",
+            "password"
+          ]
+        },
+        "examples": [
+          {
+            "id": "valid",
+            "name": "valid",
+            "summary": "",
+            "value": {
+              "email": "ana@example.com",
+              "password": "correct-horse-battery",
+              "remember": true
+            }
+          }
+        ],
+        "required": true,
+        "description": ""
+      },
+      "responses": [
+        {
+          "id": "200",
+          "status": "200",
+          "description": "OK",
+          "headers": {
+            "type": "object",
+            "properties": {
+              "Set-Cookie": {
+                "type": "string",
+                "description": "The refresh token. With `remember`, `Max-Age` keeps it for the session's 30 days; without, it's a browser-session cookie.",
+                "examples": [
+                  "refresh_token=rt_5Jx2mQ9vL0aR; HttpOnly; Secure; SameSite=Strict; Path=/v1/auth; Max-Age=2592000"
+                ]
+              },
+              "Cache-Control": {
+                "type": "string",
+                "enum": [
+                  "no-store"
+                ],
+                "description": "Tokens must never be stored by a cache (RFC 6749)"
+              }
+            },
+            "required": [
+              "Set-Cookie",
+              "Cache-Control"
+            ]
+          },
+          "body": {
+            "contentType": "application/json",
+            "schema": {
+              "$ref": "model:model-5"
+            },
+            "examples": [
+              {
+                "id": "signed-in",
+                "name": "signed-in",
+                "summary": "",
+                "value": {
+                  "accessToken": "eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiIwYjVjMmQ0ZSJ9.c2ln",
+                  "tokenType": "Bearer",
+                  "expiresIn": 900
+                }
+              }
+            ]
+          },
+          "errors": []
+        },
+        {
+          "id": "400",
+          "status": "400",
+          "description": "Bad Request",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-3",
+              "examples": []
+            }
+          ]
+        },
+        {
+          "id": "403",
+          "status": "403",
+          "description": "Forbidden",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-10",
+              "examples": []
+            }
+          ]
+        },
+        {
+          "id": "422",
+          "status": "422",
+          "description": "Unprocessable Content",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-18",
+              "examples": [
+                {
+                  "id": "invalid-email",
+                  "name": "invalid-email",
+                  "summary": "",
+                  "value": {
+                    "type": "https://api.inventory.example/problems/validation-failed",
+                    "title": "Validation failed",
+                    "status": 422,
+                    "detail": "Some fields are invalid.",
+                    "errors": [
+                      {
+                        "pointer": "#/email",
+                        "detail": "Enter an email address."
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "429",
+          "status": "429",
+          "description": "Too Many Requests",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-19",
+              "examples": []
+            }
+          ]
+        }
+      ],
+      "notesFe": "Keep the access token in memory, not in localStorage. Send API requests with `credentials: 'include'` so the browser keeps the cookie.",
+      "notesBe": "Answer 400 for unknown emails too, and hash the password for them as well, so neither the answer nor its timing shows who has an account. Answer 403 only once the password matched. Throttle failed attempts per email and per IP address, unknown emails included, instead of locking accounts: a lock would let anyone lock a colleague out."
+    },
+    {
+      "id": "endpoint-2",
+      "method": "POST",
+      "path": "/auth/register",
+      "operationId": "",
+      "summary": "Create an account",
+      "description": "Always answers 202, whether or not the email has an account, so it doesn't show who has one. A new account gets a link to verify the address. An existing account gets an email saying so, with links to sign in and to reset the password; an unverified one gets a new link.",
+      "status": "agreed",
+      "deprecated": false,
+      "security": {
+        "type": "none"
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {}
+        },
+        "query": {
+          "type": "object",
+          "properties": {}
+        },
+        "header": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "requestBody": {
+        "contentType": "application/json",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "email": {
+              "type": "string",
+              "format": "email",
+              "maxLength": 254
+            },
+            "password": {
+              "type": "string",
+              "format": "password",
+              "minLength": 12,
+              "maxLength": 128,
+              "description": "At least 12 characters, and not in known data breaches"
+            }
+          },
+          "required": [
+            "name",
+            "email",
+            "password"
+          ]
+        },
+        "examples": [
+          {
+            "id": "new-user",
+            "name": "new-user",
+            "summary": "",
+            "value": {
+              "name": "Budi Santoso",
+              "email": "budi@example.com",
+              "password": "correct-horse-battery"
+            }
+          }
+        ],
+        "required": true,
+        "description": ""
+      },
+      "responses": [
+        {
+          "id": "202",
+          "status": "202",
+          "description": "Accepted",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": []
+        },
+        {
+          "id": "422",
+          "status": "422",
+          "description": "Unprocessable Content",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-18",
+              "examples": [
+                {
+                  "id": "short-password",
+                  "name": "short-password",
+                  "summary": "",
+                  "value": {
+                    "type": "https://api.inventory.example/problems/validation-failed",
+                    "title": "Validation failed",
+                    "status": 422,
+                    "detail": "Some fields are invalid.",
+                    "errors": [
+                      {
+                        "pointer": "#/password",
+                        "detail": "Use at least 12 characters."
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "breached-password",
+                  "name": "breached-password",
+                  "summary": "",
+                  "value": {
+                    "type": "https://api.inventory.example/problems/validation-failed",
+                    "title": "Validation failed",
+                    "status": 422,
+                    "detail": "Some fields are invalid.",
+                    "errors": [
+                      {
+                        "pointer": "#/password",
+                        "detail": "This password appeared in a data breach. Choose another."
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "429",
+          "status": "429",
+          "description": "Too Many Requests",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-20",
+              "examples": []
+            }
+          ]
+        }
+      ],
+      "notesFe": "",
+      "notesBe": "The verification link works for 24 hours. New accounts get the staff role; admins are promoted outside this app. Check passwords against known breached passwords (NIST SP 800-63B)."
+    },
+    {
+      "id": "endpoint-3",
+      "method": "POST",
+      "path": "/auth/verify-email",
+      "operationId": "",
+      "summary": "Verify an email address",
+      "description": "The token comes from the link in the verification email: `/verify-email?token=…`. A link that was already used answers 204 again while its account stays verified, so opening it twice, or an email scanner opening it first, isn't an error.",
+      "status": "review",
+      "deprecated": false,
+      "security": {
+        "type": "none"
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {}
+        },
+        "query": {
+          "type": "object",
+          "properties": {}
+        },
+        "header": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "requestBody": {
+        "contentType": "application/json",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "token": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "token"
+          ]
+        },
+        "examples": [
+          {
+            "id": "from-link",
+            "name": "from-link",
+            "summary": "",
+            "value": {
+              "token": "ev_3Hq8sK2wN6"
+            }
+          }
+        ],
+        "required": true,
+        "description": ""
+      },
+      "responses": [
+        {
+          "id": "204",
+          "status": "204",
+          "description": "No Content",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": []
+        },
+        {
+          "id": "400",
+          "status": "400",
+          "description": "Bad Request",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-4",
+              "examples": []
+            }
+          ]
+        },
+        {
+          "id": "422",
+          "status": "422",
+          "description": "Unprocessable Content",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-18",
+              "examples": [
+                {
+                  "id": "missing-token",
+                  "name": "missing-token",
+                  "summary": "",
+                  "value": {
+                    "type": "https://api.inventory.example/problems/validation-failed",
+                    "title": "Validation failed",
+                    "status": 422,
+                    "detail": "Some fields are invalid.",
+                    "errors": [
+                      {
+                        "pointer": "#/token",
+                        "detail": "Send the token from the link."
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "notesFe": "",
+      "notesBe": "Store link tokens hashed."
+    },
+    {
+      "id": "endpoint-4",
+      "method": "POST",
+      "path": "/auth/verify-email/resend",
+      "operationId": "",
+      "summary": "Send a new verification email",
+      "description": "Always answers 202, so it doesn't show which emails have accounts. An account that's already verified gets an email saying so, with a link to sign in; an unknown email gets nothing.",
+      "status": "review",
+      "deprecated": false,
+      "security": {
+        "type": "none"
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {}
+        },
+        "query": {
+          "type": "object",
+          "properties": {}
+        },
+        "header": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "requestBody": {
+        "contentType": "application/json",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "email": {
+              "type": "string",
+              "format": "email",
+              "maxLength": 254
+            }
+          },
+          "required": [
+            "email"
+          ]
+        },
+        "examples": [
+          {
+            "id": "email",
+            "name": "email",
+            "summary": "",
+            "value": {
+              "email": "budi@example.com"
+            }
+          }
+        ],
+        "required": true,
+        "description": ""
+      },
+      "responses": [
+        {
+          "id": "202",
+          "status": "202",
+          "description": "Accepted",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": []
+        },
+        {
+          "id": "422",
+          "status": "422",
+          "description": "Unprocessable Content",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-18",
+              "examples": [
+                {
+                  "id": "invalid-email",
+                  "name": "invalid-email",
+                  "summary": "",
+                  "value": {
+                    "type": "https://api.inventory.example/problems/validation-failed",
+                    "title": "Validation failed",
+                    "status": 422,
+                    "detail": "Some fields are invalid.",
+                    "errors": [
+                      {
+                        "pointer": "#/email",
+                        "detail": "Enter an email address."
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "429",
+          "status": "429",
+          "description": "Too Many Requests",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-20",
+              "examples": []
+            }
+          ]
+        }
+      ],
+      "notesFe": "",
+      "notesBe": ""
+    },
+    {
+      "id": "endpoint-5",
+      "method": "POST",
+      "path": "/auth/forgot-password",
+      "operationId": "",
+      "summary": "Email a password reset link",
+      "description": "The link works once, for 1 hour. Always answers 202, so it doesn't show which emails have accounts.",
+      "status": "draft",
+      "deprecated": false,
+      "security": {
+        "type": "none"
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {}
+        },
+        "query": {
+          "type": "object",
+          "properties": {}
+        },
+        "header": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "requestBody": {
+        "contentType": "application/json",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "email": {
+              "type": "string",
+              "format": "email",
+              "maxLength": 254
+            }
+          },
+          "required": [
+            "email"
+          ]
+        },
+        "examples": [
+          {
+            "id": "email",
+            "name": "email",
+            "summary": "",
+            "value": {
+              "email": "ana@example.com"
+            }
+          }
+        ],
+        "required": true,
+        "description": ""
+      },
+      "responses": [
+        {
+          "id": "202",
+          "status": "202",
+          "description": "Accepted",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": []
+        },
+        {
+          "id": "422",
+          "status": "422",
+          "description": "Unprocessable Content",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-18",
+              "examples": [
+                {
+                  "id": "invalid-email",
+                  "name": "invalid-email",
+                  "summary": "",
+                  "value": {
+                    "type": "https://api.inventory.example/problems/validation-failed",
+                    "title": "Validation failed",
+                    "status": 422,
+                    "detail": "Some fields are invalid.",
+                    "errors": [
+                      {
+                        "pointer": "#/email",
+                        "detail": "Enter an email address."
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "429",
+          "status": "429",
+          "description": "Too Many Requests",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-20",
+              "examples": []
+            }
+          ]
+        }
+      ],
+      "notesFe": "",
+      "notesBe": ""
+    },
+    {
+      "id": "endpoint-6",
+      "method": "POST",
+      "path": "/auth/reset-password",
+      "operationId": "",
+      "summary": "Set a new password",
+      "description": "The token comes from the link in the reset email: `/reset-password?token=…`. Ends every session of the user: refresh tokens stop working at once, and access tokens already issued expire within 15 minutes.",
+      "status": "draft",
+      "deprecated": false,
+      "security": {
+        "type": "none"
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {}
+        },
+        "query": {
+          "type": "object",
+          "properties": {}
+        },
+        "header": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "requestBody": {
+        "contentType": "application/json",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "token": {
+              "type": "string",
+              "minLength": 1
+            },
+            "password": {
+              "type": "string",
+              "format": "password",
+              "minLength": 12,
+              "maxLength": 128,
+              "description": "At least 12 characters, and not in known data breaches"
+            }
+          },
+          "required": [
+            "token",
+            "password"
+          ]
+        },
+        "examples": [
+          {
+            "id": "new-password",
+            "name": "new-password",
+            "summary": "",
+            "value": {
+              "token": "pr_7Tb2vX9kM4",
+              "password": "staple-battery-horse"
+            }
+          }
+        ],
+        "required": true,
+        "description": ""
+      },
+      "responses": [
+        {
+          "id": "204",
+          "status": "204",
+          "description": "No Content",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": []
+        },
+        {
+          "id": "400",
+          "status": "400",
+          "description": "Bad Request",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-4",
+              "examples": []
+            }
+          ]
+        },
+        {
+          "id": "422",
+          "status": "422",
+          "description": "Unprocessable Content",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-18",
+              "examples": [
+                {
+                  "id": "short-password",
+                  "name": "short-password",
+                  "summary": "",
+                  "value": {
+                    "type": "https://api.inventory.example/problems/validation-failed",
+                    "title": "Validation failed",
+                    "status": 422,
+                    "detail": "Some fields are invalid.",
+                    "errors": [
+                      {
+                        "pointer": "#/password",
+                        "detail": "Use at least 12 characters."
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "breached-password",
+                  "name": "breached-password",
+                  "summary": "",
+                  "value": {
+                    "type": "https://api.inventory.example/problems/validation-failed",
+                    "title": "Validation failed",
+                    "status": 422,
+                    "detail": "Some fields are invalid.",
+                    "errors": [
+                      {
+                        "pointer": "#/password",
+                        "detail": "This password appeared in a data breach. Choose another."
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "notesFe": "",
+      "notesBe": "Store reset tokens hashed. Revoke every refresh token of the user."
+    },
+    {
+      "id": "endpoint-7",
+      "method": "POST",
+      "path": "/auth/refresh",
+      "operationId": "",
+      "summary": "Get a new access token",
+      "description": "Exchanges the refresh token cookie for a new access token, and replaces the cookie. The session still ends 12 hours, or 30 days, after sign-in.",
+      "status": "agreed",
+      "deprecated": false,
+      "security": {
+        "type": "schemes",
+        "schemeIds": [
+          "refresh"
+        ]
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {}
+        },
+        "query": {
+          "type": "object",
+          "properties": {}
+        },
+        "header": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "requestBody": null,
+      "responses": [
+        {
+          "id": "200",
+          "status": "200",
+          "description": "OK",
+          "headers": {
+            "type": "object",
+            "properties": {
+              "Set-Cookie": {
+                "type": "string",
+                "description": "The new refresh token, with the same attributes. `Max-Age`, if set, is the time left in the session.",
+                "examples": [
+                  "refresh_token=rt_8Kd3nW1pZ7bT; HttpOnly; Secure; SameSite=Strict; Path=/v1/auth; Max-Age=2505600"
+                ]
+              },
+              "Cache-Control": {
+                "type": "string",
+                "enum": [
+                  "no-store"
+                ],
+                "description": "Tokens must never be stored by a cache (RFC 6749)"
+              }
+            },
+            "required": [
+              "Set-Cookie",
+              "Cache-Control"
+            ]
+          },
+          "body": {
+            "contentType": "application/json",
+            "schema": {
+              "$ref": "model:model-5"
+            },
+            "examples": [
+              {
+                "id": "refreshed",
+                "name": "refreshed",
+                "summary": "",
+                "value": {
+                  "accessToken": "eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiIwYjVjMmQ0ZSJ9.bmV3",
+                  "tokenType": "Bearer",
+                  "expiresIn": 900
+                }
+              }
+            ]
+          },
+          "errors": []
+        },
+        {
+          "id": "401",
+          "status": "401",
+          "description": "Unauthorized",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-6",
+              "examples": []
+            }
+          ]
+        }
+      ],
+      "notesFe": "Call it directly, not through the code that refreshes on 401. Run one refresh at a time, across tabs too (e.g. with the Web Locks API): requests that get a 401 meanwhile wait for it, then retry once.",
+      "notesBe": "Rotate the refresh token on every use. Accept the previous token for 30 seconds after it's replaced, since tabs can refresh at the same moment; after that, a reused token was probably stolen, so revoke every session of the user. Only accept requests whose `Origin` is the app."
+    },
+    {
+      "id": "endpoint-8",
+      "method": "POST",
+      "path": "/auth/logout",
+      "operationId": "",
+      "summary": "Sign out",
+      "description": "Revokes the refresh token in the cookie, if there is one, and clears the cookie. Always answers 204, so signing out can't fail.",
+      "status": "agreed",
+      "deprecated": false,
+      "security": {
+        "type": "none"
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {}
+        },
+        "query": {
+          "type": "object",
+          "properties": {}
+        },
+        "header": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "requestBody": null,
+      "responses": [
+        {
+          "id": "204",
+          "status": "204",
+          "description": "No Content",
+          "headers": {
+            "type": "object",
+            "properties": {
+              "Set-Cookie": {
+                "type": "string",
+                "description": "Clears the refresh token cookie",
+                "examples": [
+                  "refresh_token=; HttpOnly; Secure; SameSite=Strict; Path=/v1/auth; Max-Age=0"
+                ]
+              }
+            },
+            "required": [
+              "Set-Cookie"
+            ]
+          },
+          "body": null,
+          "errors": []
+        }
+      ],
+      "notesFe": "The access token works until it expires, so drop it from memory, even if this request fails.",
+      "notesBe": "Only revoke when the request's `Origin` is the app."
+    },
+    {
+      "id": "endpoint-9",
+      "method": "GET",
+      "path": "/me",
+      "operationId": "",
+      "summary": "Current user",
+      "description": "",
+      "status": "agreed",
+      "deprecated": false,
+      "security": {
+        "type": "default"
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {}
+        },
+        "query": {
+          "type": "object",
+          "properties": {}
+        },
+        "header": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "requestBody": null,
+      "responses": [
+        {
+          "id": "200",
+          "status": "200",
+          "description": "OK",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": {
+            "contentType": "application/json",
+            "schema": {
+              "$ref": "model:model-4"
+            },
+            "examples": [
+              {
+                "id": "ana",
+                "name": "ana",
+                "summary": "",
+                "value": {
+                  "id": "0b5c2d4e-8f1a-4b3c-9d2e-7a6f5e4d3c2b",
+                  "name": "Ana Lima",
+                  "email": "ana@example.com",
+                  "role": "admin",
+                  "emailVerified": true,
+                  "createdAt": "2026-03-02T09:00:00Z"
+                }
+              }
+            ]
+          },
+          "errors": []
+        },
+        {
+          "id": "401",
+          "status": "401",
+          "description": "Unauthorized",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-7",
+              "examples": []
+            },
+            {
+              "errorTypeId": "error-type-8",
+              "examples": []
+            }
+          ]
+        }
+      ],
+      "notesFe": "",
+      "notesBe": ""
+    },
+    {
+      "id": "endpoint-10",
+      "method": "GET",
+      "path": "/categories",
+      "operationId": "",
+      "summary": "List categories",
+      "description": "All categories, by name. There are few, so there are no pages.",
+      "status": "agreed",
+      "deprecated": false,
+      "security": {
+        "type": "default"
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {}
+        },
+        "query": {
+          "type": "object",
+          "properties": {}
+        },
+        "header": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "requestBody": null,
+      "responses": [
+        {
+          "id": "200",
+          "status": "200",
+          "description": "OK",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": {
+            "contentType": "application/json",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "data": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "model:model-6"
+                  }
+                }
+              },
+              "required": [
+                "data"
+              ]
+            },
+            "examples": [
+              {
+                "id": "three",
+                "name": "three",
+                "summary": "",
+                "value": {
+                  "data": [
+                    {
+                      "id": "c8e2a4b6-3d5f-4a7c-9e1b-2f4d6a8c0e3b",
+                      "name": "Cleaning supplies"
+                    },
+                    {
+                      "id": "6f1c2b9e-0b7a-4c64-9a8e-2f1d3c4b5a69",
+                      "name": "Packaging"
+                    },
+                    {
+                      "id": "a3d5f7b9-1c2e-4f6a-8b0d-9e7c5a3b1d2f",
+                      "name": "Spare parts"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "errors": []
+        },
+        {
+          "id": "401",
+          "status": "401",
+          "description": "Unauthorized",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-7",
+              "examples": []
+            },
+            {
+              "errorTypeId": "error-type-8",
+              "examples": []
+            }
+          ]
+        }
+      ],
+      "notesFe": "",
+      "notesBe": ""
+    },
+    {
+      "id": "endpoint-11",
+      "method": "GET",
+      "path": "/stock-items",
+      "operationId": "",
+      "summary": "List stock items",
+      "description": "",
+      "status": "agreed",
+      "deprecated": false,
+      "security": {
+        "type": "default"
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {}
+        },
+        "query": {
+          "type": "object",
+          "properties": {
+            "q": {
+              "type": "string",
+              "maxLength": 100,
+              "description": "Matches the SKU or name, ignoring case"
+            },
+            "categoryId": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Only items in this category. An unknown ID gives an empty list."
+            },
+            "stockStatus": {
+              "type": "string",
+              "enum": [
+                "in_stock",
+                "low_stock",
+                "out_of_stock"
+              ],
+              "description": "Only items with this stock status"
+            },
+            "sort": {
+              "type": "string",
+              "enum": [
+                "name",
+                "-name",
+                "sku",
+                "-sku",
+                "quantityOnHand",
+                "-quantityOnHand",
+                "updatedAt",
+                "-updatedAt"
+              ],
+              "default": "name",
+              "description": "Sort by this field; a leading `-` sorts descending. Ties are broken by `id`, so pages don't overlap."
+            },
+            "page": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "description": "Page number, from 1"
+            },
+            "pageSize": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "description": "Items per page"
+            }
+          }
+        },
+        "header": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "requestBody": null,
+      "responses": [
+        {
+          "id": "200",
+          "status": "200",
+          "description": "OK",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": {
+            "contentType": "application/json",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "data": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "model:model-7"
+                  }
+                },
+                "meta": {
+                  "$ref": "model:model-3"
+                }
+              },
+              "required": [
+                "data",
+                "meta"
+              ]
+            },
+            "examples": [
+              {
+                "id": "first-page",
+                "name": "first-page",
+                "summary": "Three items",
+                "value": {
+                  "data": [
+                    {
+                      "id": "1e3a5c7e-9b2d-4f6a-8c0e-3b5d7f9a1c2e",
+                      "sku": "BOX-S-001",
+                      "name": "Shipping box, small",
+                      "description": "Single wall, 30 × 20 × 15 cm",
+                      "category": {
+                        "id": "6f1c2b9e-0b7a-4c64-9a8e-2f1d3c4b5a69",
+                        "name": "Packaging"
+                      },
+                      "unit": "piece",
+                      "quantityOnHand": 340,
+                      "reorderPoint": 100,
+                      "stockStatus": "in_stock",
+                      "createdAt": "2026-09-14T08:30:00Z",
+                      "updatedAt": "2026-10-28T14:05:00Z"
+                    },
+                    {
+                      "id": "2f4b6d8f-0c3e-4a7b-9d1f-4c6e8a0b2d3f",
+                      "sku": "TAPE-050",
+                      "name": "Packing tape, 50 m",
+                      "description": null,
+                      "category": {
+                        "id": "6f1c2b9e-0b7a-4c64-9a8e-2f1d3c4b5a69",
+                        "name": "Packaging"
+                      },
+                      "unit": "roll",
+                      "quantityOnHand": 18,
+                      "reorderPoint": 24,
+                      "stockStatus": "low_stock",
+                      "createdAt": "2026-09-14T08:34:00Z",
+                      "updatedAt": "2026-10-29T10:20:00Z"
+                    },
+                    {
+                      "id": "3a5c7e9a-1d4f-4b8c-8e2a-5d7f9b1c3e4a",
+                      "sku": "FILM-500",
+                      "name": "Stretch film, 500 mm",
+                      "description": "23 µm, for wrapping pallets by hand",
+                      "category": {
+                        "id": "6f1c2b9e-0b7a-4c64-9a8e-2f1d3c4b5a69",
+                        "name": "Packaging"
+                      },
+                      "unit": "roll",
+                      "quantityOnHand": 0,
+                      "reorderPoint": 10,
+                      "stockStatus": "out_of_stock",
+                      "createdAt": "2026-09-20T13:00:00Z",
+                      "updatedAt": "2026-10-27T17:45:00Z"
+                    }
+                  ],
+                  "meta": {
+                    "page": 1,
+                    "pageSize": 20,
+                    "totalItems": 3,
+                    "totalPages": 1
+                  }
+                }
+              },
+              {
+                "id": "empty",
+                "name": "empty",
+                "summary": "Nothing matches",
+                "value": {
+                  "data": [],
+                  "meta": {
+                    "page": 1,
+                    "pageSize": 20,
+                    "totalItems": 0,
+                    "totalPages": 0
+                  }
+                }
+              }
+            ]
+          },
+          "errors": []
+        },
+        {
+          "id": "400",
+          "status": "400",
+          "description": "Bad Request",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-5",
+              "examples": []
+            }
+          ]
+        },
+        {
+          "id": "401",
+          "status": "401",
+          "description": "Unauthorized",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-7",
+              "examples": []
+            },
+            {
+              "errorTypeId": "error-type-8",
+              "examples": []
+            }
+          ]
+        }
+      ],
+      "notesFe": "",
+      "notesBe": ""
+    },
+    {
+      "id": "endpoint-12",
+      "method": "POST",
+      "path": "/stock-items",
+      "operationId": "",
+      "summary": "Add a stock item",
+      "description": "The new item starts with 0 on hand. The response holds the item, and `Location` its URL.",
+      "status": "agreed",
+      "deprecated": false,
+      "security": {
+        "type": "default"
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {}
+        },
+        "query": {
+          "type": "object",
+          "properties": {}
+        },
+        "header": {
+          "type": "object",
+          "properties": {
+            "Idempotency-Key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "description": "A random value, like a UUID, for each thing to create. Resending with the same key gets the first success back (for 24 hours) instead of creating again. Failures aren't remembered, so a fixed request can reuse the key. The key with a different body after a success answers 400; a resend while the first request runs answers 409 `request-in-progress`.",
+              "examples": [
+                "3f1d8a52-6b0e-4c1a-9d7e-2b4c6a8e0f13"
+              ]
+            }
+          },
+          "required": [
+            "Idempotency-Key"
+          ]
+        }
+      },
+      "requestBody": {
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "model:model-8"
+        },
+        "examples": [
+          {
+            "id": "new-item",
+            "name": "new-item",
+            "summary": "",
+            "value": {
+              "sku": "LBL-100",
+              "name": "Shipping labels, 100 × 150 mm",
+              "description": null,
+              "categoryId": "6f1c2b9e-0b7a-4c64-9a8e-2f1d3c4b5a69",
+              "unit": "box",
+              "reorderPoint": 5
+            }
+          }
+        ],
+        "required": true,
+        "description": ""
+      },
+      "responses": [
+        {
+          "id": "201",
+          "status": "201",
+          "description": "Created",
+          "headers": {
+            "type": "object",
+            "properties": {
+              "Location": {
+                "type": "string",
+                "format": "uri-reference",
+                "description": "Where the new item lives",
+                "examples": [
+                  "/v1/stock-items/7d9f1b3d-5a8c-4f2a-8c6e-9b1d3f5a7c8e"
+                ]
+              }
+            },
+            "required": [
+              "Location"
+            ]
+          },
+          "body": {
+            "contentType": "application/json",
+            "schema": {
+              "$ref": "model:model-7"
+            },
+            "examples": [
+              {
+                "id": "created",
+                "name": "created",
+                "summary": "",
+                "value": {
+                  "id": "7d9f1b3d-5a8c-4f2a-8c6e-9b1d3f5a7c8e",
+                  "sku": "LBL-100",
+                  "name": "Shipping labels, 100 × 150 mm",
+                  "description": null,
+                  "category": {
+                    "id": "6f1c2b9e-0b7a-4c64-9a8e-2f1d3c4b5a69",
+                    "name": "Packaging"
+                  },
+                  "unit": "box",
+                  "quantityOnHand": 0,
+                  "reorderPoint": 5,
+                  "stockStatus": "out_of_stock",
+                  "createdAt": "2026-10-30T09:00:00Z",
+                  "updatedAt": "2026-10-30T09:00:00Z"
+                }
+              }
+            ]
+          },
+          "errors": []
+        },
+        {
+          "id": "400",
+          "status": "400",
+          "description": "Bad Request",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-1",
+              "examples": []
+            },
+            {
+              "errorTypeId": "error-type-2",
+              "examples": []
+            }
+          ]
+        },
+        {
+          "id": "401",
+          "status": "401",
+          "description": "Unauthorized",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-7",
+              "examples": []
+            },
+            {
+              "errorTypeId": "error-type-8",
+              "examples": []
+            }
+          ]
+        },
+        {
+          "id": "409",
+          "status": "409",
+          "description": "Conflict",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-15",
+              "examples": []
+            },
+            {
+              "errorTypeId": "error-type-14",
+              "examples": []
+            }
+          ]
+        },
+        {
+          "id": "422",
+          "status": "422",
+          "description": "Unprocessable Content",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-18",
+              "examples": [
+                {
+                  "id": "unknown-category",
+                  "name": "unknown-category",
+                  "summary": "",
+                  "value": {
+                    "type": "https://api.inventory.example/problems/validation-failed",
+                    "title": "Validation failed",
+                    "status": 422,
+                    "detail": "Some fields are invalid.",
+                    "errors": [
+                      {
+                        "pointer": "#/categoryId",
+                        "detail": "There's no category with this ID."
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "notesFe": "",
+      "notesBe": ""
+    },
+    {
+      "id": "endpoint-13",
+      "method": "GET",
+      "path": "/stock-items/{itemId}",
+      "operationId": "",
+      "summary": "Get a stock item",
+      "description": "",
+      "status": "agreed",
+      "deprecated": false,
+      "security": {
+        "type": "default"
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {
+            "itemId": {
+              "type": "string",
+              "format": "uuid",
+              "description": "The stock item's ID. Unknown, malformed, and deleted IDs answer 404."
+            }
+          },
+          "required": [
+            "itemId"
+          ]
+        },
+        "query": {
+          "type": "object",
+          "properties": {}
+        },
+        "header": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "requestBody": null,
+      "responses": [
+        {
+          "id": "200",
+          "status": "200",
+          "description": "OK",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": {
+            "contentType": "application/json",
+            "schema": {
+              "$ref": "model:model-7"
+            },
+            "examples": [
+              {
+                "id": "box",
+                "name": "box",
+                "summary": "",
+                "value": {
+                  "id": "1e3a5c7e-9b2d-4f6a-8c0e-3b5d7f9a1c2e",
+                  "sku": "BOX-S-001",
+                  "name": "Shipping box, small",
+                  "description": "Single wall, 30 × 20 × 15 cm",
+                  "category": {
+                    "id": "6f1c2b9e-0b7a-4c64-9a8e-2f1d3c4b5a69",
+                    "name": "Packaging"
+                  },
+                  "unit": "piece",
+                  "quantityOnHand": 340,
+                  "reorderPoint": 100,
+                  "stockStatus": "in_stock",
+                  "createdAt": "2026-09-14T08:30:00Z",
+                  "updatedAt": "2026-10-28T14:05:00Z"
+                }
+              }
+            ]
+          },
+          "errors": []
+        },
+        {
+          "id": "401",
+          "status": "401",
+          "description": "Unauthorized",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-7",
+              "examples": []
+            },
+            {
+              "errorTypeId": "error-type-8",
+              "examples": []
+            }
+          ]
+        },
+        {
+          "id": "404",
+          "status": "404",
+          "description": "Not Found",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-11",
+              "examples": []
+            }
+          ]
+        }
+      ],
+      "notesFe": "",
+      "notesBe": ""
+    },
+    {
+      "id": "endpoint-14",
+      "method": "PATCH",
+      "path": "/stock-items/{itemId}",
+      "operationId": "",
+      "summary": "Update a stock item",
+      "description": "A JSON Merge Patch (RFC 7396): fields left out don't change, and `null` clears the description.",
+      "status": "agreed",
+      "deprecated": false,
+      "security": {
+        "type": "default"
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {
+            "itemId": {
+              "type": "string",
+              "format": "uuid",
+              "description": "The stock item's ID. Unknown, malformed, and deleted IDs answer 404."
+            }
+          },
+          "required": [
+            "itemId"
+          ]
+        },
+        "query": {
+          "type": "object",
+          "properties": {}
+        },
+        "header": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "requestBody": {
+        "contentType": "application/merge-patch+json",
+        "schema": {
+          "$ref": "model:model-9"
+        },
+        "examples": [
+          {
+            "id": "reorder-point",
+            "name": "reorder-point",
+            "summary": "",
+            "value": {
+              "reorderPoint": 150
+            }
+          }
+        ],
+        "required": true,
+        "description": ""
+      },
+      "responses": [
+        {
+          "id": "200",
+          "status": "200",
+          "description": "OK",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": {
+            "contentType": "application/json",
+            "schema": {
+              "$ref": "model:model-7"
+            },
+            "examples": [
+              {
+                "id": "updated",
+                "name": "updated",
+                "summary": "",
+                "value": {
+                  "id": "1e3a5c7e-9b2d-4f6a-8c0e-3b5d7f9a1c2e",
+                  "sku": "BOX-S-001",
+                  "name": "Shipping box, small",
+                  "description": "Single wall, 30 × 20 × 15 cm",
+                  "category": {
+                    "id": "6f1c2b9e-0b7a-4c64-9a8e-2f1d3c4b5a69",
+                    "name": "Packaging"
+                  },
+                  "unit": "piece",
+                  "quantityOnHand": 340,
+                  "reorderPoint": 150,
+                  "stockStatus": "in_stock",
+                  "createdAt": "2026-09-14T08:30:00Z",
+                  "updatedAt": "2026-10-30T09:10:00Z"
+                }
+              }
+            ]
+          },
+          "errors": []
+        },
+        {
+          "id": "401",
+          "status": "401",
+          "description": "Unauthorized",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-7",
+              "examples": []
+            },
+            {
+              "errorTypeId": "error-type-8",
+              "examples": []
+            }
+          ]
+        },
+        {
+          "id": "404",
+          "status": "404",
+          "description": "Not Found",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-11",
+              "examples": []
+            }
+          ]
+        },
+        {
+          "id": "409",
+          "status": "409",
+          "description": "Conflict",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-15",
+              "examples": []
+            },
+            {
+              "errorTypeId": "error-type-16",
+              "examples": []
+            }
+          ]
+        },
+        {
+          "id": "415",
+          "status": "415",
+          "description": "Unsupported Media Type",
+          "headers": {
+            "type": "object",
+            "properties": {
+              "Accept-Patch": {
+                "type": "string",
+                "enum": [
+                  "application/merge-patch+json"
+                ],
+                "description": "The patch format this endpoint takes (RFC 5789)"
+              }
+            },
+            "required": [
+              "Accept-Patch"
+            ]
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-17",
+              "examples": [
+                {
+                  "id": "not-merge-patch",
+                  "name": "not-merge-patch",
+                  "summary": "",
+                  "value": {
+                    "type": "https://api.inventory.example/problems/unsupported-media-type",
+                    "title": "Unsupported media type",
+                    "status": 415,
+                    "detail": "Send the changes as application/merge-patch+json."
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "422",
+          "status": "422",
+          "description": "Unprocessable Content",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-18",
+              "examples": [
+                {
+                  "id": "negative-reorder-point",
+                  "name": "negative-reorder-point",
+                  "summary": "",
+                  "value": {
+                    "type": "https://api.inventory.example/problems/validation-failed",
+                    "title": "Validation failed",
+                    "status": 422,
+                    "detail": "Some fields are invalid.",
+                    "errors": [
+                      {
+                        "pointer": "#/reorderPoint",
+                        "detail": "Use 0 or more."
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "notesFe": "",
+      "notesBe": ""
+    },
+    {
+      "id": "endpoint-15",
+      "method": "DELETE",
+      "path": "/stock-items/{itemId}",
+      "operationId": "",
+      "summary": "Delete a stock item",
+      "description": "For admins. Only items with nothing on hand can be deleted. Deleted items answer 404 everywhere and leave lists, and their SKU can be used again.",
+      "status": "review",
+      "deprecated": false,
+      "security": {
+        "type": "default"
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {
+            "itemId": {
+              "type": "string",
+              "format": "uuid",
+              "description": "The stock item's ID. Unknown, malformed, and deleted IDs answer 404."
+            }
+          },
+          "required": [
+            "itemId"
+          ]
+        },
+        "query": {
+          "type": "object",
+          "properties": {}
+        },
+        "header": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "requestBody": null,
+      "responses": [
+        {
+          "id": "204",
+          "status": "204",
+          "description": "No Content",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": []
+        },
+        {
+          "id": "401",
+          "status": "401",
+          "description": "Unauthorized",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-7",
+              "examples": []
+            },
+            {
+              "errorTypeId": "error-type-8",
+              "examples": []
+            }
+          ]
+        },
+        {
+          "id": "403",
+          "status": "403",
+          "description": "Forbidden",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-9",
+              "examples": []
+            }
+          ]
+        },
+        {
+          "id": "404",
+          "status": "404",
+          "description": "Not Found",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-11",
+              "examples": []
+            }
+          ]
+        },
+        {
+          "id": "409",
+          "status": "409",
+          "description": "Conflict",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-13",
+              "examples": []
+            }
+          ]
+        }
+      ],
+      "notesFe": "",
+      "notesBe": "Soft delete: keep the item and its movements for reports."
+    },
+    {
+      "id": "endpoint-16",
+      "method": "GET",
+      "path": "/stock-items/{itemId}/movements",
+      "operationId": "",
+      "summary": "List an item's stock movements",
+      "description": "Newest first.",
+      "status": "agreed",
+      "deprecated": false,
+      "security": {
+        "type": "default"
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {
+            "itemId": {
+              "type": "string",
+              "format": "uuid",
+              "description": "The stock item's ID. Unknown, malformed, and deleted IDs answer 404."
+            }
+          },
+          "required": [
+            "itemId"
+          ]
+        },
+        "query": {
+          "type": "object",
+          "properties": {
+            "page": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "description": "Page number, from 1"
+            },
+            "pageSize": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "description": "Items per page"
+            }
+          }
+        },
+        "header": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "requestBody": null,
+      "responses": [
+        {
+          "id": "200",
+          "status": "200",
+          "description": "OK",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": {
+            "contentType": "application/json",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "data": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "model:model-10"
+                  }
+                },
+                "meta": {
+                  "$ref": "model:model-3"
+                }
+              },
+              "required": [
+                "data",
+                "meta"
+              ]
+            },
+            "examples": [
+              {
+                "id": "history",
+                "name": "history",
+                "summary": "",
+                "value": {
+                  "data": [
+                    {
+                      "id": "4b6d8f0b-2e5a-4c9d-9f3b-6e8a0c2d4f5b",
+                      "type": "receipt",
+                      "quantity": 200,
+                      "quantityChange": 200,
+                      "quantityAfter": 340,
+                      "reference": "DN-2026-1042",
+                      "note": null,
+                      "createdBy": {
+                        "id": "0b5c2d4e-8f1a-4b3c-9d2e-7a6f5e4d3c2b",
+                        "name": "Ana Lima"
+                      },
+                      "createdAt": "2026-10-28T14:05:00Z"
+                    },
+                    {
+                      "id": "5c7e9a1c-3f6b-4d0e-8a4c-7f9b1d3e5a6c",
+                      "type": "issue",
+                      "quantity": 25,
+                      "quantityChange": -25,
+                      "quantityAfter": 140,
+                      "reference": "SO-88213",
+                      "note": null,
+                      "createdBy": {
+                        "id": "0b5c2d4e-8f1a-4b3c-9d2e-7a6f5e4d3c2b",
+                        "name": "Ana Lima"
+                      },
+                      "createdAt": "2026-10-15T11:30:00Z"
+                    },
+                    {
+                      "id": "6d8f0b2d-4a7c-4e1f-9b5d-8a0c2e4f6b7d",
+                      "type": "count",
+                      "quantity": 165,
+                      "quantityChange": -3,
+                      "quantityAfter": 165,
+                      "reference": null,
+                      "note": "Monthly stock take",
+                      "createdBy": {
+                        "id": "0b5c2d4e-8f1a-4b3c-9d2e-7a6f5e4d3c2b",
+                        "name": "Ana Lima"
+                      },
+                      "createdAt": "2026-10-01T16:00:00Z"
+                    }
+                  ],
+                  "meta": {
+                    "page": 1,
+                    "pageSize": 20,
+                    "totalItems": 3,
+                    "totalPages": 1
+                  }
+                }
+              }
+            ]
+          },
+          "errors": []
+        },
+        {
+          "id": "400",
+          "status": "400",
+          "description": "Bad Request",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-5",
+              "examples": []
+            }
+          ]
+        },
+        {
+          "id": "401",
+          "status": "401",
+          "description": "Unauthorized",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-7",
+              "examples": []
+            },
+            {
+              "errorTypeId": "error-type-8",
+              "examples": []
+            }
+          ]
+        },
+        {
+          "id": "404",
+          "status": "404",
+          "description": "Not Found",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-11",
+              "examples": []
+            }
+          ]
+        }
+      ],
+      "notesFe": "",
+      "notesBe": ""
+    },
+    {
+      "id": "endpoint-17",
+      "method": "POST",
+      "path": "/stock-items/{itemId}/movements",
+      "operationId": "",
+      "summary": "Record a stock movement",
+      "description": "Changes the item's quantity on hand; `quantityAfter` is the new quantity. Fetch the item again for its new stock status.",
+      "status": "review",
+      "deprecated": false,
+      "security": {
+        "type": "default"
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {
+            "itemId": {
+              "type": "string",
+              "format": "uuid",
+              "description": "The stock item's ID. Unknown, malformed, and deleted IDs answer 404."
+            }
+          },
+          "required": [
+            "itemId"
+          ]
+        },
+        "query": {
+          "type": "object",
+          "properties": {}
+        },
+        "header": {
+          "type": "object",
+          "properties": {
+            "Idempotency-Key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "description": "A random value, like a UUID, for each thing to create. Resending with the same key gets the first success back (for 24 hours) instead of creating again. Failures aren't remembered, so a fixed request can reuse the key. The key with a different body after a success answers 400; a resend while the first request runs answers 409 `request-in-progress`.",
+              "examples": [
+                "3f1d8a52-6b0e-4c1a-9d7e-2b4c6a8e0f13"
+              ]
+            }
+          },
+          "required": [
+            "Idempotency-Key"
+          ]
+        }
+      },
+      "requestBody": {
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "model:model-11"
+        },
+        "examples": [
+          {
+            "id": "receipt",
+            "name": "receipt",
+            "summary": "A delivery arrived",
+            "value": {
+              "type": "receipt",
+              "quantity": 200,
+              "reference": "DN-2026-1042",
+              "note": null
+            }
+          },
+          {
+            "id": "issue",
+            "name": "issue",
+            "summary": "Taken out for an order",
+            "value": {
+              "type": "issue",
+              "quantity": 25,
+              "reference": "SO-88213",
+              "note": null
+            }
+          },
+          {
+            "id": "count",
+            "name": "count",
+            "summary": "Counted on the shelf",
+            "value": {
+              "type": "count",
+              "quantity": 165,
+              "reference": null,
+              "note": "Monthly stock take"
+            }
+          }
+        ],
+        "required": true,
+        "description": ""
+      },
+      "responses": [
+        {
+          "id": "201",
+          "status": "201",
+          "description": "Created",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": {
+            "contentType": "application/json",
+            "schema": {
+              "$ref": "model:model-10"
+            },
+            "examples": [
+              {
+                "id": "receipt",
+                "name": "receipt",
+                "summary": "",
+                "value": {
+                  "id": "4b6d8f0b-2e5a-4c9d-9f3b-6e8a0c2d4f5b",
+                  "type": "receipt",
+                  "quantity": 200,
+                  "quantityChange": 200,
+                  "quantityAfter": 340,
+                  "reference": "DN-2026-1042",
+                  "note": null,
+                  "createdBy": {
+                    "id": "0b5c2d4e-8f1a-4b3c-9d2e-7a6f5e4d3c2b",
+                    "name": "Ana Lima"
+                  },
+                  "createdAt": "2026-10-28T14:05:00Z"
+                }
+              }
+            ]
+          },
+          "errors": []
+        },
+        {
+          "id": "400",
+          "status": "400",
+          "description": "Bad Request",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-1",
+              "examples": []
+            },
+            {
+              "errorTypeId": "error-type-2",
+              "examples": []
+            }
+          ]
+        },
+        {
+          "id": "401",
+          "status": "401",
+          "description": "Unauthorized",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-7",
+              "examples": []
+            },
+            {
+              "errorTypeId": "error-type-8",
+              "examples": []
+            }
+          ]
+        },
+        {
+          "id": "404",
+          "status": "404",
+          "description": "Not Found",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-11",
+              "examples": []
+            }
+          ]
+        },
+        {
+          "id": "409",
+          "status": "409",
+          "description": "Conflict",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-12",
+              "examples": []
+            },
+            {
+              "errorTypeId": "error-type-14",
+              "examples": []
+            }
+          ]
+        },
+        {
+          "id": "422",
+          "status": "422",
+          "description": "Unprocessable Content",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-18",
+              "examples": [
+                {
+                  "id": "zero-receipt",
+                  "name": "zero-receipt",
+                  "summary": "",
+                  "value": {
+                    "type": "https://api.inventory.example/problems/validation-failed",
+                    "title": "Validation failed",
+                    "status": 422,
+                    "detail": "Some fields are invalid.",
+                    "errors": [
+                      {
+                        "pointer": "#/quantity",
+                        "detail": "Receive at least 1."
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "notesFe": "",
+      "notesBe": "Lock the item while recording, so two issues at the same time can't take the quantity below 0."
+    }
+  ],
+  "pages": [
+    {
+      "id": "page-1",
+      "name": "Login",
+      "slug": "login",
+      "description": "Everyone who works with stock signs in here. Links to Registration and Forgot password.",
+      "acceptanceCriteria": "- [ ] A wrong email or password shows the error above the form, and the email stays filled in\n- [ ] An account that isn't verified yet sees a button to send a new verification email\n- [ ] After too many attempts, the button stays disabled until the time from `Retry-After` has passed\n- [ ] After signing in, the user lands on the page they asked for (only paths within this app), or on Stock list",
+      "endpoints": [
+        {
+          "id": "l1",
+          "endpointId": "endpoint-1",
+          "trigger": "on_submit",
+          "note": ""
+        },
+        {
+          "id": "l2",
+          "endpointId": "endpoint-4",
+          "trigger": "on_action",
+          "note": "When the email isn't verified yet"
+        }
+      ],
+      "mockups": [
+        {
+          "id": "mockup-1",
+          "file": "mockups/mockup-1.png",
+          "originalName": "login-form.png",
+          "caption": "Sign-in form"
+        },
+        {
+          "id": "mockup-2",
+          "file": "mockups/mockup-2.png",
+          "originalName": "login-error.png",
+          "caption": "Wrong email or password"
+        }
+      ],
+      "states": [
+        {
+          "id": "s1",
+          "kind": "idle",
+          "name": "Sign-in form",
+          "description": "Email, password, and *Keep me signed in*, with links to Registration and Forgot password.",
+          "causes": [],
+          "mockupIds": [
+            "mockup-1"
+          ]
+        },
+        {
+          "id": "s2",
+          "kind": "loading",
+          "name": "Signing in",
+          "description": "The button shows a spinner, and the form can't be sent again until the answer comes.",
+          "causes": [
+            {
+              "type": "request",
+              "linkId": "l1"
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "s3",
+          "kind": "error",
+          "name": "Wrong email or password",
+          "description": "The API's `detail` shows above the form. The email stays filled in; the password is cleared.",
+          "causes": [
+            {
+              "type": "error",
+              "linkId": "l1",
+              "errorTypeId": "error-type-3",
+              "exampleId": null
+            }
+          ],
+          "mockupIds": [
+            "mockup-2"
+          ]
+        },
+        {
+          "id": "s4",
+          "kind": "error",
+          "name": "Invalid email",
+          "description": "The message shows under the email field.",
+          "causes": [
+            {
+              "type": "error",
+              "linkId": "l1",
+              "errorTypeId": "error-type-18",
+              "exampleId": "invalid-email"
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "s5",
+          "kind": "error",
+          "name": "Email not verified",
+          "description": "The API's `detail` shows above the form, with a button that sends a new verification email.",
+          "causes": [
+            {
+              "type": "error",
+              "linkId": "l1",
+              "errorTypeId": "error-type-10",
+              "exampleId": null
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "s6",
+          "kind": "success",
+          "name": "Verification email sent",
+          "description": "The button turns into “Sent. Check your email.”",
+          "causes": [
+            {
+              "type": "response",
+              "linkId": "l2",
+              "responseId": "202",
+              "exampleId": null
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "s7",
+          "kind": "error",
+          "name": "Too many attempts",
+          "description": "The button stays disabled, with a countdown, until the `Retry-After` time has passed.",
+          "causes": [
+            {
+              "type": "error",
+              "linkId": "l1",
+              "errorTypeId": "error-type-19",
+              "exampleId": null
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "s8",
+          "kind": "success",
+          "name": "Signed in",
+          "description": "Goes to the page the user asked for (only paths within this app), or to Stock list.",
+          "causes": [
+            {
+              "type": "response",
+              "linkId": "l1",
+              "responseId": "200",
+              "exampleId": "signed-in"
+            }
+          ],
+          "mockupIds": []
+        }
+      ]
+    },
+    {
+      "id": "page-2",
+      "name": "Registration",
+      "slug": "registration",
+      "description": "New staff create an account with their work email.",
+      "acceptanceCriteria": "- [ ] Each error in a 422 shows under the field its `pointer` names\n- [ ] After sending, the page asks the user to check their email and shows the address, whether or not it already had an account\n- [ ] A 429 shows when the user can try again",
+      "endpoints": [
+        {
+          "id": "l3",
+          "endpointId": "endpoint-2",
+          "trigger": "on_submit",
+          "note": ""
+        }
+      ],
+      "mockups": [
+        {
+          "id": "mockup-3",
+          "file": "mockups/mockup-3.png",
+          "originalName": "registration-form.png",
+          "caption": ""
+        },
+        {
+          "id": "mockup-4",
+          "file": "mockups/mockup-4.png",
+          "originalName": "registration-check-email.png",
+          "caption": "After sending the form"
+        }
+      ],
+      "states": [
+        {
+          "id": "s1",
+          "kind": "idle",
+          "name": "Registration form",
+          "description": "Name, work email, and password.",
+          "causes": [],
+          "mockupIds": [
+            "mockup-3"
+          ]
+        },
+        {
+          "id": "s2",
+          "kind": "loading",
+          "name": "Creating the account",
+          "description": "The button shows a spinner.",
+          "causes": [
+            {
+              "type": "request",
+              "linkId": "l3"
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "s3",
+          "kind": "error",
+          "name": "Field errors",
+          "description": "Each error in `errors` shows under the field its `pointer` names.",
+          "causes": [
+            {
+              "type": "error",
+              "linkId": "l3",
+              "errorTypeId": "error-type-18",
+              "exampleId": null
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "s4",
+          "kind": "error",
+          "name": "Too many emails",
+          "description": "Says when the user can try again, from `Retry-After`.",
+          "causes": [
+            {
+              "type": "error",
+              "linkId": "l3",
+              "errorTypeId": "error-type-20",
+              "exampleId": null
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "s5",
+          "kind": "success",
+          "name": "Check your email",
+          "description": "Asks the user to check their email and shows the address, whether or not it already had an account.",
+          "causes": [
+            {
+              "type": "response",
+              "linkId": "l3",
+              "responseId": "202",
+              "exampleId": null
+            }
+          ],
+          "mockupIds": [
+            "mockup-4"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "page-3",
+      "name": "Verify email",
+      "slug": "verify-email",
+      "description": "Opens from the link in the verification email: `/verify-email?token=…`.",
+      "acceptanceCriteria": "- [ ] The token is sent as soon as the page opens\n- [ ] The token is removed from the address bar once it's read (`history.replaceState`), and the page is served with `Referrer-Policy: no-referrer`, so the token can't leak\n- [ ] On success, the page says the email is verified and offers to sign in\n- [ ] An invalid or expired link shows a form to send a new one",
+      "endpoints": [
+        {
+          "id": "l4",
+          "endpointId": "endpoint-3",
+          "trigger": "on_load",
+          "note": "Token from the `token` query parameter"
+        },
+        {
+          "id": "l5",
+          "endpointId": "endpoint-4",
+          "trigger": "on_submit",
+          "note": "When the link is invalid or expired"
+        }
+      ],
+      "mockups": [
+        {
+          "id": "mockup-5",
+          "file": "mockups/mockup-5.png",
+          "originalName": "verify-email-expired.png",
+          "caption": "The link has expired"
+        }
+      ],
+      "states": [
+        {
+          "id": "s1",
+          "kind": "loading",
+          "name": "Verifying",
+          "description": "A spinner, while the token from the link is checked.",
+          "causes": [
+            {
+              "type": "request",
+              "linkId": "l4"
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "s2",
+          "kind": "success",
+          "name": "Email verified",
+          "description": "Says the email is verified, with a button to sign in.",
+          "causes": [
+            {
+              "type": "response",
+              "linkId": "l4",
+              "responseId": "204",
+              "exampleId": null
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "s3",
+          "kind": "error",
+          "name": "Invalid or expired link",
+          "description": "Shows a form to send a new link.",
+          "causes": [
+            {
+              "type": "error",
+              "linkId": "l4",
+              "errorTypeId": "error-type-4",
+              "exampleId": null
+            },
+            {
+              "type": "error",
+              "linkId": "l4",
+              "errorTypeId": "error-type-18",
+              "exampleId": "missing-token"
+            }
+          ],
+          "mockupIds": [
+            "mockup-5"
+          ]
+        },
+        {
+          "id": "s4",
+          "kind": "success",
+          "name": "New link sent",
+          "description": "Says to check the email, whether or not the address has an account.",
+          "causes": [
+            {
+              "type": "response",
+              "linkId": "l5",
+              "responseId": "202",
+              "exampleId": null
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "s5",
+          "kind": "error",
+          "name": "Too many emails",
+          "description": "Says when the user can try again, from `Retry-After`.",
+          "causes": [
+            {
+              "type": "error",
+              "linkId": "l5",
+              "errorTypeId": "error-type-20",
+              "exampleId": null
+            }
+          ],
+          "mockupIds": []
+        }
+      ]
+    },
+    {
+      "id": "page-4",
+      "name": "Forgot password",
+      "slug": "forgot-password",
+      "description": "Sends a link to set a new password.",
+      "acceptanceCriteria": "- [ ] After sending, the page always says \"If an account exists for this email, we sent a link\", even for unknown emails\n- [ ] A 429 shows when the user can ask again",
+      "endpoints": [
+        {
+          "id": "l6",
+          "endpointId": "endpoint-5",
+          "trigger": "on_submit",
+          "note": ""
+        }
+      ],
+      "mockups": [
+        {
+          "id": "mockup-6",
+          "file": "mockups/mockup-6.png",
+          "originalName": "forgot-password.png",
+          "caption": ""
+        }
+      ],
+      "states": [
+        {
+          "id": "s1",
+          "kind": "idle",
+          "name": "Email form",
+          "description": "One email field, and Send link.",
+          "causes": [],
+          "mockupIds": []
+        },
+        {
+          "id": "s2",
+          "kind": "loading",
+          "name": "Sending",
+          "description": "The button shows a spinner.",
+          "causes": [
+            {
+              "type": "request",
+              "linkId": "l6"
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "s3",
+          "kind": "success",
+          "name": "Link sent",
+          "description": "Always says “If an account exists for this email, we sent a link”, even for unknown emails.",
+          "causes": [
+            {
+              "type": "response",
+              "linkId": "l6",
+              "responseId": "202",
+              "exampleId": null
+            }
+          ],
+          "mockupIds": [
+            "mockup-6"
+          ]
+        },
+        {
+          "id": "s4",
+          "kind": "error",
+          "name": "Invalid email",
+          "description": "The message shows under the email field.",
+          "causes": [
+            {
+              "type": "error",
+              "linkId": "l6",
+              "errorTypeId": "error-type-18",
+              "exampleId": "invalid-email"
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "s5",
+          "kind": "error",
+          "name": "Too many emails",
+          "description": "Says when the user can try again, from `Retry-After`.",
+          "causes": [
+            {
+              "type": "error",
+              "linkId": "l6",
+              "errorTypeId": "error-type-20",
+              "exampleId": null
+            }
+          ],
+          "mockupIds": []
+        }
+      ]
+    },
+    {
+      "id": "page-5",
+      "name": "Reset password",
+      "slug": "reset-password",
+      "description": "Opens from the link in the reset email: `/reset-password?token=…`.",
+      "acceptanceCriteria": "- [ ] The token is removed from the address bar once it's read (`history.replaceState`), and the page is served with `Referrer-Policy: no-referrer`, so the token can't leak\n- [ ] The form checks for at least 12 characters before sending\n- [ ] On success, the user goes to Login, which says the password was changed and other devices were signed out\n- [ ] An invalid or expired link shows a link to Forgot password",
+      "endpoints": [
+        {
+          "id": "l7",
+          "endpointId": "endpoint-6",
+          "trigger": "on_submit",
+          "note": "Token from the `token` query parameter"
+        }
+      ],
+      "mockups": [
+        {
+          "id": "mockup-7",
+          "file": "mockups/mockup-7.png",
+          "originalName": "reset-password.png",
+          "caption": ""
+        }
+      ],
+      "states": [
+        {
+          "id": "s1",
+          "kind": "idle",
+          "name": "New password form",
+          "description": "The new password, twice.",
+          "causes": [],
+          "mockupIds": [
+            "mockup-7"
+          ]
+        },
+        {
+          "id": "s2",
+          "kind": "loading",
+          "name": "Saving",
+          "description": "The button shows a spinner.",
+          "causes": [
+            {
+              "type": "request",
+              "linkId": "l7"
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "s3",
+          "kind": "success",
+          "name": "Password changed",
+          "description": "Goes to Login, which says the password was changed and other devices were signed out.",
+          "causes": [
+            {
+              "type": "response",
+              "linkId": "l7",
+              "responseId": "204",
+              "exampleId": null
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "s4",
+          "kind": "error",
+          "name": "Invalid or expired link",
+          "description": "Shows a link to Forgot password.",
+          "causes": [
+            {
+              "type": "error",
+              "linkId": "l7",
+              "errorTypeId": "error-type-4",
+              "exampleId": null
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "s5",
+          "kind": "error",
+          "name": "Weak password",
+          "description": "The message shows under the password field.",
+          "causes": [
+            {
+              "type": "error",
+              "linkId": "l7",
+              "errorTypeId": "error-type-18",
+              "exampleId": null
+            }
+          ],
+          "mockupIds": []
+        }
+      ]
+    },
+    {
+      "id": "page-6",
+      "name": "App shell",
+      "slug": "app-shell",
+      "description": "The layout around every signed-in page: navigation, the user menu, and keeping the session alive. It isn't a screen of its own, but its calls happen on every page.",
+      "acceptanceCriteria": "- [ ] Opening a signed-in page without a session goes to Login, and back after signing in\n- [ ] A 401 from any other endpoint refreshes once and repeats the call; if refreshing answers 401, the app goes to Login\n- [ ] The user menu shows the user's name and role, and Sign out\n- [ ] Sign out goes to Login, even if the request fails",
+      "endpoints": [
+        {
+          "id": "l8",
+          "endpointId": "endpoint-7",
+          "trigger": "on_load",
+          "note": "When there's no access token in memory yet, e.g. after a reload"
+        },
+        {
+          "id": "l9",
+          "endpointId": "endpoint-9",
+          "trigger": "on_load",
+          "note": "Name and role for the user menu"
+        },
+        {
+          "id": "l10",
+          "endpointId": "endpoint-7",
+          "trigger": "other",
+          "note": "A minute before the access token expires, or once after a 401"
+        },
+        {
+          "id": "l11",
+          "endpointId": "endpoint-8",
+          "trigger": "on_action",
+          "note": "Sign out, in the user menu"
+        }
+      ],
+      "mockups": [
+        {
+          "id": "mockup-8",
+          "file": "mockups/mockup-8.png",
+          "originalName": "app-shell.png",
+          "caption": "User menu open"
+        }
+      ],
+      "states": [
+        {
+          "id": "s1",
+          "kind": "loading",
+          "name": "Restoring the session",
+          "description": "The navigation shows, and the page waits until the user is known.",
+          "causes": [
+            {
+              "type": "request",
+              "linkId": "l8"
+            },
+            {
+              "type": "request",
+              "linkId": "l9"
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "s2",
+          "kind": "success",
+          "name": "Signed in",
+          "description": "The user menu shows the user's name and role, and Sign out.",
+          "causes": [
+            {
+              "type": "response",
+              "linkId": "l9",
+              "responseId": "200",
+              "exampleId": "ana"
+            }
+          ],
+          "mockupIds": [
+            "mockup-8"
+          ]
+        },
+        {
+          "id": "s3",
+          "kind": "error",
+          "name": "Session ended",
+          "description": "Goes to Login, and back to this page after signing in.",
+          "causes": [
+            {
+              "type": "error",
+              "linkId": "l8",
+              "errorTypeId": "error-type-6",
+              "exampleId": null
+            },
+            {
+              "type": "error",
+              "linkId": "l10",
+              "errorTypeId": "error-type-6",
+              "exampleId": null
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "s4",
+          "kind": "success",
+          "name": "Signed out",
+          "description": "Goes to Login. It would even if the request failed: the access token is dropped anyway.",
+          "causes": [
+            {
+              "type": "response",
+              "linkId": "l11",
+              "responseId": "204",
+              "exampleId": null
+            }
+          ],
+          "mockupIds": []
+        }
+      ]
+    },
+    {
+      "id": "page-7",
+      "name": "Stock list",
+      "slug": "stock-list",
+      "description": "All stock items, with search, filters, and pages. Items low on stock or out of stock stand out.",
+      "acceptanceCriteria": "- [ ] Search, filters, sort, and page are kept in the URL, so a filtered list can be shared\n- [ ] Low stock shows an amber badge, out of stock a red one\n- [ ] Only admins see Delete, and it asks for confirmation first\n- [ ] A 409 when deleting shows the `detail` from the API",
+      "endpoints": [
+        {
+          "id": "l12",
+          "endpointId": "endpoint-11",
+          "trigger": "on_load",
+          "note": "Again when search, filters, sort, or page change, and after a delete"
+        },
+        {
+          "id": "l13",
+          "endpointId": "endpoint-10",
+          "trigger": "on_load",
+          "note": "Category filter"
+        },
+        {
+          "id": "l14",
+          "endpointId": "endpoint-15",
+          "trigger": "on_action",
+          "note": "Delete in a row's menu, for admins"
+        }
+      ],
+      "mockups": [
+        {
+          "id": "mockup-9",
+          "file": "mockups/mockup-9.png",
+          "originalName": "stock-list.png",
+          "caption": "Items low on stock and out of stock stand out"
+        },
+        {
+          "id": "mockup-10",
+          "file": "mockups/mockup-10.png",
+          "originalName": "stock-list-loading.png",
+          "caption": "Grey rows while the items load"
+        },
+        {
+          "id": "mockup-11",
+          "file": "mockups/mockup-11.png",
+          "originalName": "stock-list-empty.png",
+          "caption": "Nothing matches the search"
+        },
+        {
+          "id": "mockup-12",
+          "file": "mockups/mockup-12.png",
+          "originalName": "stock-list-delete-error.png",
+          "caption": "The item still has stock, so it can't be deleted"
+        }
+      ],
+      "states": [
+        {
+          "id": "s1",
+          "kind": "loading",
+          "name": "Loading items",
+          "description": "Grey rows stand in for the items; search and filters stay usable.",
+          "causes": [
+            {
+              "type": "request",
+              "linkId": "l12"
+            }
+          ],
+          "mockupIds": [
+            "mockup-10"
+          ]
+        },
+        {
+          "id": "s2",
+          "kind": "success",
+          "name": "Items",
+          "description": "Low stock shows an amber badge, out of stock a red one.",
+          "causes": [
+            {
+              "type": "response",
+              "linkId": "l12",
+              "responseId": "200",
+              "exampleId": "first-page"
+            }
+          ],
+          "mockupIds": [
+            "mockup-9"
+          ]
+        },
+        {
+          "id": "s3",
+          "kind": "empty",
+          "name": "No matching items",
+          "description": "Says that nothing matches, with a button that clears the search and filters.",
+          "causes": [
+            {
+              "type": "response",
+              "linkId": "l12",
+              "responseId": "200",
+              "exampleId": "empty"
+            }
+          ],
+          "mockupIds": [
+            "mockup-11"
+          ]
+        },
+        {
+          "id": "s4",
+          "kind": "error",
+          "name": "Can't delete",
+          "description": "The confirmation dialog shows the API's `detail`, and the item stays.",
+          "causes": [
+            {
+              "type": "error",
+              "linkId": "l14",
+              "errorTypeId": "error-type-13",
+              "exampleId": null
+            }
+          ],
+          "mockupIds": [
+            "mockup-12"
+          ]
+        },
+        {
+          "id": "s5",
+          "kind": "success",
+          "name": "Deleted",
+          "description": "The dialog closes, and the list loads again.",
+          "causes": [
+            {
+              "type": "response",
+              "linkId": "l14",
+              "responseId": "204",
+              "exampleId": null
+            }
+          ],
+          "mockupIds": []
+        }
+      ]
+    },
+    {
+      "id": "page-8",
+      "name": "Stock item",
+      "slug": "stock-item",
+      "description": "One item, with its movement history. The warehouse records deliveries, issues, and stock counts here.",
+      "acceptanceCriteria": "- [ ] The quantity on hand and stock status update right after a movement is recorded\n- [ ] Issuing more than is on hand shows the API's `detail` in the dialog\n- [ ] The history shows the newest movement first, 20 per page\n- [ ] Saving twice (e.g. a double click) records the movement once: both requests send the same `Idempotency-Key`",
+      "endpoints": [
+        {
+          "id": "l15",
+          "endpointId": "endpoint-13",
+          "trigger": "on_load",
+          "note": "Again after a movement is recorded, for the new quantity and stock status"
+        },
+        {
+          "id": "l16",
+          "endpointId": "endpoint-16",
+          "trigger": "on_load",
+          "note": "Again after a movement is recorded"
+        },
+        {
+          "id": "l17",
+          "endpointId": "endpoint-17",
+          "trigger": "on_submit",
+          "note": "Record movement dialog. One `Idempotency-Key` per dialog, until it saves"
+        }
+      ],
+      "mockups": [
+        {
+          "id": "mockup-13",
+          "file": "mockups/mockup-13.png",
+          "originalName": "stock-item.png",
+          "caption": "Details and movement history"
+        },
+        {
+          "id": "mockup-14",
+          "file": "mockups/mockup-14.png",
+          "originalName": "record-movement.png",
+          "caption": "Record movement dialog"
+        }
+      ],
+      "states": [
+        {
+          "id": "s1",
+          "kind": "loading",
+          "name": "Loading the item",
+          "description": "Grey blocks stand in for the details and the history.",
+          "causes": [
+            {
+              "type": "request",
+              "linkId": "l15"
+            },
+            {
+              "type": "request",
+              "linkId": "l16"
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "s2",
+          "kind": "success",
+          "name": "Item and history",
+          "description": "The quantity on hand, the stock status, and the movements, newest first.",
+          "causes": [
+            {
+              "type": "response",
+              "linkId": "l15",
+              "responseId": "200",
+              "exampleId": "box"
+            },
+            {
+              "type": "response",
+              "linkId": "l16",
+              "responseId": "200",
+              "exampleId": "history"
+            }
+          ],
+          "mockupIds": [
+            "mockup-13"
+          ]
+        },
+        {
+          "id": "s3",
+          "kind": "error",
+          "name": "Item not found",
+          "description": "Says the item doesn't exist or was deleted, with a link back to Stock list.",
+          "causes": [
+            {
+              "type": "error",
+              "linkId": "l15",
+              "errorTypeId": "error-type-11",
+              "exampleId": null
+            },
+            {
+              "type": "error",
+              "linkId": "l16",
+              "errorTypeId": "error-type-11",
+              "exampleId": null
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "s4",
+          "kind": "idle",
+          "name": "Record movement dialog",
+          "description": "Receipt, Issue, or Count, with the quantity, a reference, and a note.",
+          "causes": [],
+          "mockupIds": [
+            "mockup-14"
+          ]
+        },
+        {
+          "id": "s5",
+          "kind": "loading",
+          "name": "Recording",
+          "description": "The Record button shows a spinner. A `request-in-progress` answer means the first request still runs: send it again after `Retry-After` seconds, with the same key.",
+          "causes": [
+            {
+              "type": "request",
+              "linkId": "l17"
+            },
+            {
+              "type": "error",
+              "linkId": "l17",
+              "errorTypeId": "error-type-14",
+              "exampleId": null
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "s6",
+          "kind": "error",
+          "name": "Not enough stock",
+          "description": "The dialog shows the API's `detail` and stays open.",
+          "causes": [
+            {
+              "type": "error",
+              "linkId": "l17",
+              "errorTypeId": "error-type-12",
+              "exampleId": null
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "s7",
+          "kind": "error",
+          "name": "Invalid movement",
+          "description": "The message shows under the quantity.",
+          "causes": [
+            {
+              "type": "error",
+              "linkId": "l17",
+              "errorTypeId": "error-type-18",
+              "exampleId": "zero-receipt"
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "s8",
+          "kind": "success",
+          "name": "Movement recorded",
+          "description": "The dialog closes, and the item and its history load again.",
+          "causes": [
+            {
+              "type": "response",
+              "linkId": "l17",
+              "responseId": "201",
+              "exampleId": "receipt"
+            }
+          ],
+          "mockupIds": []
+        }
+      ]
+    },
+    {
+      "id": "page-9",
+      "name": "Add or edit stock item",
+      "slug": "add-or-edit-stock-item",
+      "description": "One form for both: `/stock-items/new` adds an item and `/stock-items/{id}/edit` changes one. The quantity isn't on the form: new items start at 0, and movements change it.",
+      "acceptanceCriteria": "- [ ] Each error in a 422 shows under the field its `pointer` names\n- [ ] A 409 shows its `detail` under the field it's about: SKU or unit\n- [ ] After saving, the user goes to the item's page",
+      "endpoints": [
+        {
+          "id": "l18",
+          "endpointId": "endpoint-10",
+          "trigger": "on_load",
+          "note": "Category select"
+        },
+        {
+          "id": "l19",
+          "endpointId": "endpoint-13",
+          "trigger": "on_load",
+          "note": "When editing"
+        },
+        {
+          "id": "l20",
+          "endpointId": "endpoint-12",
+          "trigger": "on_submit",
+          "note": "When adding. One `Idempotency-Key` per form, until it saves"
+        },
+        {
+          "id": "l21",
+          "endpointId": "endpoint-14",
+          "trigger": "on_submit",
+          "note": "When editing. Only the changed fields"
+        }
+      ],
+      "mockups": [
+        {
+          "id": "mockup-15",
+          "file": "mockups/mockup-15.png",
+          "originalName": "stock-item-form.png",
+          "caption": "Edit mode"
+        }
+      ],
+      "states": [
+        {
+          "id": "s1",
+          "kind": "loading",
+          "name": "Loading",
+          "description": "The form waits for the categories, and when editing, for the item.",
+          "causes": [
+            {
+              "type": "request",
+              "linkId": "l18"
+            },
+            {
+              "type": "request",
+              "linkId": "l19"
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "s2",
+          "kind": "idle",
+          "name": "New item",
+          "description": "Empty fields; the category select lists the categories.",
+          "causes": [],
+          "mockupIds": []
+        },
+        {
+          "id": "s3",
+          "kind": "success",
+          "name": "Editing an item",
+          "description": "The fields hold the item's values.",
+          "causes": [
+            {
+              "type": "response",
+              "linkId": "l19",
+              "responseId": "200",
+              "exampleId": "box"
+            }
+          ],
+          "mockupIds": [
+            "mockup-15"
+          ]
+        },
+        {
+          "id": "s4",
+          "kind": "error",
+          "name": "Item not found",
+          "description": "When editing: says the item doesn't exist or was deleted.",
+          "causes": [
+            {
+              "type": "error",
+              "linkId": "l19",
+              "errorTypeId": "error-type-11",
+              "exampleId": null
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "s5",
+          "kind": "loading",
+          "name": "Saving",
+          "description": "The Save button shows a spinner. A `request-in-progress` answer means the first request still runs: send it again after `Retry-After` seconds, with the same key.",
+          "causes": [
+            {
+              "type": "request",
+              "linkId": "l20"
+            },
+            {
+              "type": "request",
+              "linkId": "l21"
+            },
+            {
+              "type": "error",
+              "linkId": "l20",
+              "errorTypeId": "error-type-14",
+              "exampleId": null
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "s6",
+          "kind": "error",
+          "name": "SKU already used",
+          "description": "The API's `detail` shows under the SKU field.",
+          "causes": [
+            {
+              "type": "error",
+              "linkId": "l20",
+              "errorTypeId": "error-type-15",
+              "exampleId": null
+            },
+            {
+              "type": "error",
+              "linkId": "l21",
+              "errorTypeId": "error-type-15",
+              "exampleId": null
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "s7",
+          "kind": "error",
+          "name": "Unit can't change",
+          "description": "The API's `detail` shows under the unit field.",
+          "causes": [
+            {
+              "type": "error",
+              "linkId": "l21",
+              "errorTypeId": "error-type-16",
+              "exampleId": null
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "s8",
+          "kind": "error",
+          "name": "Field errors",
+          "description": "Each error in `errors` shows under the field its `pointer` names.",
+          "causes": [
+            {
+              "type": "error",
+              "linkId": "l20",
+              "errorTypeId": "error-type-18",
+              "exampleId": null
+            },
+            {
+              "type": "error",
+              "linkId": "l21",
+              "errorTypeId": "error-type-18",
+              "exampleId": null
+            }
+          ],
+          "mockupIds": []
+        },
+        {
+          "id": "s9",
+          "kind": "success",
+          "name": "Saved",
+          "description": "Goes to the item's page.",
+          "causes": [
+            {
+              "type": "response",
+              "linkId": "l20",
+              "responseId": "201",
+              "exampleId": "created"
+            },
+            {
+              "type": "response",
+              "linkId": "l21",
+              "responseId": "200",
+              "exampleId": "updated"
+            }
+          ],
+          "mockupIds": []
+        }
+      ]
+    }
+  ]
+}

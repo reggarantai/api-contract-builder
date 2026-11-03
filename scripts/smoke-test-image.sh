@@ -10,6 +10,7 @@ platform=${2:-}
 port=${SMOKE_PORT:-3200}
 name="acb-smoke-$$"
 volume="acb-smoke-data-$$"
+workdir=$(mktemp -d)
 base="http://127.0.0.1:${port}"
 platform_args=()
 if [[ -n "$platform" ]]; then
@@ -19,6 +20,7 @@ fi
 cleanup() {
   docker rm -f "$name" >/dev/null 2>&1 || true
   docker volume rm "$volume" >/dev/null 2>&1 || true
+  rm -rf "$workdir"
 }
 trap cleanup EXIT
 
@@ -70,11 +72,28 @@ zip_type=$(curl -sf -o /dev/null -w '%{content_type}' "${base}/api/projects/${pr
 [[ "$zip_type" == "application/zip" ]] || fail "the Markdown export answered ${zip_type}"
 echo "ok: the sample project exports"
 
+# The sample moves as a project file. The import is read from /data/tmp, so
+# this also checks the volume takes it. On this instance it becomes a copy
+# under a free slug, which exports the same OpenAPI document.
+curl -sf -o "${workdir}/sample.project.zip" "${base}/api/projects/${project_id}/export/project" ||
+  fail "couldn't download the sample's project file"
+imported=$(curl -sf -X POST -H "Content-Type: application/zip" \
+  --data-binary "@${workdir}/sample.project.zip" "${base}/api/projects/import") ||
+  fail "couldn't import the sample's project file"
+copy_id=$(echo "$imported" | json 'd.project.id')
+[[ "$(echo "$imported" | json 'd.project.slug')" == "inventory-app-2" ]] ||
+  fail "the imported copy's slug isn't inventory-app-2: $imported"
+curl -sf -o "${workdir}/original.yaml" "${base}/api/projects/${project_id}/export/openapi"
+curl -sf -o "${workdir}/copy.yaml" "${base}/api/projects/${copy_id}/export/openapi"
+cmp -s "${workdir}/original.yaml" "${workdir}/copy.yaml" ||
+  fail "the imported copy exports a different OpenAPI document"
+echo "ok: the sample moves as a project file"
+
 # Data survives a restart of the container.
 docker restart "$name" >/dev/null
 wait_until_up
 count=$(curl -sf "${base}/api/projects" | json 'd.length')
-[[ "$count" == "1" ]] || fail "expected 1 project after a restart, found ${count}"
+[[ "$count" == "2" ]] || fail "expected 2 projects after a restart, found ${count}"
 echo "ok: data survives a restart"
 
 # The healthcheck reports healthy.

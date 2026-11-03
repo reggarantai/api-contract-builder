@@ -12,6 +12,8 @@ const app = createApp({
   clientDir: config.clientDir,
   uploadsDir: config.uploadsDir,
   maxUploadBytes: config.maxUploadBytes,
+  maxImportBytes: config.maxImportBytes,
+  tmpDir: config.tmpDir,
   samplesDir: config.samplesDir,
 });
 

@@ -3,6 +3,7 @@ import {
   createEndpointDefaults,
   type EndpointFields,
   endpointSchema,
+  examplesOfEndpoint,
   newBody,
   newResponse,
   parsePathTemplate,
@@ -471,5 +472,42 @@ describe("withUniqueIds", () => {
     ]);
 
     expect(fixed[1]?.id).toBe(`${"r".repeat(62)}-2`);
+  });
+});
+
+describe("examplesOfEndpoint", () => {
+  it("lists every example value with its path", () => {
+    const endpoint = createEndpointDefaults("POST", "/orders");
+    const example = (name: string, value: unknown) => ({
+      id: name,
+      name,
+      summary: "",
+      value: value as never,
+    });
+    const body = { ...newBody(), examples: [example("a", 1), example("b", 2)] };
+    const fields = {
+      ...endpoint,
+      requestBody: endpoint.requestBody && {
+        ...endpoint.requestBody,
+        examples: [example("r", "request")],
+      },
+      responses: [
+        { ...newResponse("ok", "200"), body },
+        {
+          ...newResponse("gone", "404"),
+          errors: [
+            { errorTypeId: "e1", examples: [] },
+            { errorTypeId: "e2", examples: [example("x", { error: true })] },
+          ],
+        },
+      ],
+    };
+
+    expect(examplesOfEndpoint(fields)).toEqual([
+      ["requestBody.examples.0.value", "request"],
+      ["responses.0.body.examples.0.value", 1],
+      ["responses.0.body.examples.1.value", 2],
+      ["responses.1.errors.1.examples.0.value", { error: true }],
+    ]);
   });
 });

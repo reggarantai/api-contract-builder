@@ -23,13 +23,22 @@ export class ApiError extends Error {
   }
 }
 
-async function request(method: string, path: string, body?: unknown) {
-  // FormData sets its own multipart Content-Type.
-  const isJson = body !== undefined && !(body instanceof FormData);
+async function request(
+  method: string,
+  path: string,
+  body?: unknown,
+  contentType?: string,
+) {
+  // FormData sets its own multipart Content-Type; a file is sent as it is.
+  const isJson =
+    body !== undefined &&
+    !(body instanceof FormData) &&
+    !(body instanceof Blob);
+  const type = isJson ? "application/json" : contentType;
   const response = await fetch(`/api${path}`, {
     method,
-    headers: isJson ? { "Content-Type": "application/json" } : undefined,
-    body: isJson ? JSON.stringify(body) : (body as FormData | undefined),
+    headers: type ? { "Content-Type": type } : undefined,
+    body: isJson ? JSON.stringify(body) : (body as BodyInit | undefined),
   });
 
   if (!response.ok) {
@@ -82,6 +91,32 @@ export async function apiUpload<T extends z.ZodType>(
 ): Promise<z.infer<T>> {
   const response = await request("POST", path, form);
   return schema.parse(await response.json());
+}
+
+/**
+ * Posts a file as the request body with the given type: browsers report
+ * some types differently (Windows calls a zip application/x-zip-compressed).
+ */
+export async function apiPostFile<T extends z.ZodType>(
+  path: string,
+  file: Blob,
+  contentType: string,
+  schema: T,
+): Promise<z.infer<T>> {
+  const response = await request("POST", path, file, contentType);
+  return schema.parse(await response.json());
+}
+
+/** A file the API makes, with the name it suggests for it. */
+export async function apiGetFile(
+  path: string,
+): Promise<{ blob: Blob; fileName: string | undefined }> {
+  const response = await request("GET", path);
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  return {
+    blob: await response.blob(),
+    fileName: /filename="([^"]+)"/.exec(disposition)?.[1],
+  };
 }
 
 export async function apiPatch<T extends z.ZodType>(

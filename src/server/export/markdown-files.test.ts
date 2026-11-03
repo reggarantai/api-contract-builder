@@ -640,4 +640,106 @@ describe("buildMarkdownFiles", () => {
       expect(together["error-types.md"]).toBe(alone["error-types.md"]);
     });
   });
+
+  it("refuses a bundle whose text would grow past what an export holds", () => {
+    // Page files stand alone, so each repeats the endpoints it calls: one
+    // long description, expanded 500 times, on many pages.
+    const input = testInput({
+      models: [
+        testModel("m1", "Long", {
+          type: "object",
+          properties: {
+            text: { type: "string", description: "x".repeat(2000) },
+          },
+        }),
+      ],
+      endpoints: [
+        testEndpoint("e1", "POST", "/things", {
+          requestBody: {
+            contentType: "application/json",
+            description: "",
+            required: true,
+            examples: [],
+            schema: {
+              type: "object",
+              properties: Object.fromEntries(
+                Array.from({ length: 500 }, (_, index) => [
+                  `p${index}`,
+                  { $ref: "model:m1" },
+                ]),
+              ),
+            },
+          },
+        }),
+      ],
+      pages: Array.from({ length: 200 }, (_, index) =>
+        testPage(`g${index}`, `Page ${index}`, [
+          { endpointId: "e1", trigger: "on_load", note: "" },
+        ]),
+      ),
+    });
+
+    expect(() =>
+      buildMarkdownFiles(
+        input,
+        {},
+        { readImage: () => undefined, openApi: null },
+      ),
+    ).toThrow(
+      "This contract is too large to export as Markdown: its files would hold more than 128 MB of text.",
+    );
+  });
+
+  it("exports a large contract whose pages repeat long examples", () => {
+    // 30 endpoints answering with a list of 650 items, on each of 25 pages.
+    const items = Array.from({ length: 650 }, (_, index) => ({
+      id: `item-${index}`,
+      name: `Item number ${index}`,
+      price: index + 0.5,
+      tags: ["new", "sale"],
+      available: true,
+    }));
+    const endpoints = Array.from({ length: 30 }, (_, index) =>
+      testEndpoint(`e${index}`, "GET", `/lists/${index}`, {
+        responses: [
+          {
+            id: "r200",
+            status: "200",
+            description: "OK",
+            headers: noHeaders,
+            body: {
+              contentType: "application/json",
+              schema: { type: "array" },
+              examples: [{ id: "x1", name: "list", summary: "", value: items }],
+            },
+            errors: [],
+          },
+        ],
+      }),
+    );
+    const pages = Array.from({ length: 25 }, (_, index) =>
+      testPage(
+        `g${index}`,
+        `Page ${index}`,
+        endpoints.map((endpoint) => ({
+          endpointId: endpoint.id,
+          trigger: "on_load" as const,
+          note: "",
+        })),
+      ),
+    );
+
+    const files = buildMarkdownFiles(
+      testInput({ endpoints, pages }),
+      {},
+      { readImage: () => undefined, openApi: null },
+    );
+    const text = Object.values(files).reduce(
+      (total, file) => total + (typeof file === "string" ? file.length : 0),
+      0,
+    );
+    // Over half of what a bundle may hold.
+    expect(text).toBeGreaterThan(64 * 1024 * 1024);
+    expect(files["pages/page-24.md"]).toContain('"id": "item-649"');
+  });
 });

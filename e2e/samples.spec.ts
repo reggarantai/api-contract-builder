@@ -57,7 +57,7 @@ test("the sample exports right away", async ({ page, request }) => {
   await expect(page.getByText("No warnings")).toBeVisible();
 
   const started = page.waitForEvent("download");
-  await page.getByRole("link", { name: "Download Markdown" }).click();
+  await page.getByRole("button", { name: "Download Markdown" }).click();
   const zip = await started;
   const files = Object.keys(
     unzipSync(new Uint8Array(fs.readFileSync(await zip.path()))),
