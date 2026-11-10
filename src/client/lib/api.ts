@@ -12,14 +12,17 @@ export class ApiError extends Error {
   readonly pageStates: NonNullable<ApiErrorBody["pageStates"]>;
   /** The current revision, when a save was based on an older one. */
   readonly revision: number | undefined;
+  /** Seconds the server asks to wait before trying again (Retry-After). */
+  readonly retryAfter: number | undefined;
 
-  constructor(status: number, body: ApiErrorBody) {
+  constructor(status: number, body: ApiErrorBody, retryAfter?: number) {
     super(body.error);
     this.name = "ApiError";
     this.status = status;
     this.issues = body.issues ?? [];
     this.pageStates = body.pageStates ?? [];
     this.revision = body.revision;
+    this.retryAfter = retryAfter;
   }
 }
 
@@ -45,6 +48,7 @@ async function request(
     const parsed = apiErrorSchema.safeParse(
       await response.json().catch(() => null),
     );
+    const retryAfter = Number(response.headers.get("Retry-After"));
     throw new ApiError(
       response.status,
       parsed.success
@@ -52,6 +56,7 @@ async function request(
         : {
             error: `${method} /api${path} failed with status ${response.status}`,
           },
+      Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : undefined,
     );
   }
   return response;

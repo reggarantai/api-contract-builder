@@ -109,9 +109,21 @@ function baseTypeLabel(schema: JsonSchema, context: FieldContext): string {
     return type;
   }
   if (Array.isArray(type)) {
-    return type.join(" or ");
+    // As written, though not every item is a type name: what join() always
+    // made of each, and JSON for one whose text can't be had.
+    return type.map(asWritten).join(" or ");
   }
   return isJsonObject(schema.properties) ? "object" : "any";
+}
+
+/** A value as join() and String() write it, or as JSON when that throws (`{"toString": 1}`). */
+function asWritten(value: unknown) {
+  if (value === null || value === undefined) return "";
+  try {
+    return String(value);
+  } catch {
+    return JSON.stringify(value);
+  }
 }
 
 function plural(count: number, word: string) {
@@ -199,9 +211,13 @@ export class MarkdownTooLargeError extends Error {
 let textBudget: { left: number } | undefined;
 
 /** Runs `build` with the bundle's text budget. */
-export function withTextBudget<T>(build: () => T): T {
+export function withTextBudget<T>(
+  build: () => T,
+  /** Characters it may count; a piece is counted up to three times. */
+  budget = 3 * MAX_MARKDOWN_TEXT,
+): T {
   const outer = textBudget;
-  textBudget = { left: 3 * MAX_MARKDOWN_TEXT };
+  textBudget = { left: budget };
   try {
     return build();
   } finally {
@@ -333,7 +349,9 @@ function rowsOf(
   if (!isJsonObject(inner.properties)) {
     return [];
   }
-  const required = Array.isArray(inner.required) ? inner.required : [];
+  const requiredNames = new Set(
+    Array.isArray(inner.required) ? inner.required : [],
+  );
   const rows: FieldRow[] = [];
   for (const [name, value] of Object.entries(inner.properties)) {
     if (repeated) {
@@ -345,14 +363,22 @@ function rowsOf(
     }
     const property = asSchema(value);
     const field = joinPath(prefix, name);
-    const description =
-      typeof property.description === "string"
-        ? property.description
-        : String(unwrapNullable(property).schema.description ?? "");
+    const inner = unwrapNullable(property).schema.description;
+    let description: string;
+    if (typeof property.description === "string") {
+      description = property.description;
+    } else {
+      // As String() always wrote it, and nothing when it throws.
+      try {
+        description = String(inner ?? "");
+      } catch {
+        description = "";
+      }
+    }
     const row = {
       field,
       type: typeLabel(property, context),
-      required: required.includes(name),
+      required: requiredNames.has(name),
       description: cell(description),
       rules: cell(rulesOf(property)),
       example: cell(exampleOf(property)),

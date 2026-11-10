@@ -38,14 +38,17 @@ import {
   type MockupImageType,
 } from "../storage/mockup-image";
 import type { UploadStorage } from "../storage/uploads";
-import { MAX_PROJECT_JSON_BYTES, MAX_ZIP_ENTRIES } from "./format";
+import {
+  MAX_PROJECT_JSON_BYTES,
+  MAX_ZIP_ENTRIES,
+  type ProjectFile,
+} from "./format";
 import { checkJsonText } from "./json-text";
 import { describeProblems, IssueList, validateProjectFile } from "./validate";
 import {
   NotAZipError,
   openZip,
   type ZipArchive,
-  type ZipEntry,
   ZipError,
   type ZipSource,
 } from "./zip";
@@ -103,7 +106,7 @@ function notAZip(source: ZipSource) {
     /^(openapi|swagger)\s*:/m.test(start) ||
     /^\{[\s\S]*"(openapi|swagger)"\s*:/.test(start)
   ) {
-    return "This is an OpenAPI file, and OpenAPI files can't be imported yet. Choose a project file (.project.zip), from the Export tab of API Contract Builder.";
+    return "This is an OpenAPI document, sent as a zip. Send it as application/json or application/yaml instead; in the app, choose it with Import project (reload the page first if it was open from before the app imported OpenAPI).";
   }
   return "This file isn't a zip file. Choose a project file (.project.zip), from the Export tab of API Contract Builder.";
 }
@@ -275,13 +278,7 @@ function importFrom(
 
   // --- Images, by their content, like uploads --------------------------------------
 
-  type Image = {
-    entry: ZipEntry;
-    type: MockupImageType;
-    width: number;
-    height: number;
-  };
-  const images = new Map<string, Image>();
+  const images = new Map<string, ImportImage>();
   const issues = new IssueList();
   for (const [pageIndex, page] of document.pages.entries()) {
     const owner = `Page ${shown(page.name)}`;
@@ -325,7 +322,10 @@ function importFrom(
         );
         continue;
       }
-      images.set(mockup.id, { entry, ...image });
+      images.set(mockup.id, {
+        ...image,
+        read: () => archive.read(entry, entry.size),
+      });
     }
   }
   if (!issues.empty) {
@@ -335,6 +335,32 @@ function importFrom(
     });
   }
 
+  return writeImport(
+    { db, storage, limits, appVersion, tmpDir, newId, now },
+    document,
+    images,
+  );
+}
+
+/** A checked mockup image of an import, and how to read it again. */
+export type ImportImage = {
+  type: MockupImageType;
+  width: number;
+  height: number;
+  read: () => Uint8Array;
+};
+
+/**
+ * Writes a checked project file document as a new project, in one
+ * transaction: IDs kept or all new, a free slug, the images moved in last.
+ * `slugPath` is where the notice of a taken slug points.
+ */
+export function writeImport(
+  { db, storage, tmpDir, newId = makeId, now = new Date() }: ImportContext,
+  document: ProjectFile,
+  images: ReadonlyMap<string, ImportImage>,
+  { slugPath = "project.slug" }: { slugPath?: string } = {},
+): ImportResult {
   // --- IDs ---------------------------------------------------------------------
   // The file's IDs are kept when they're the IDs of an instance (ULIDs) and
   // this one has none of them, so a restored project keeps its links and its
@@ -509,7 +535,7 @@ function importFrom(
       }
       const id = to(mockupIds, mockup.id);
       return {
-        entry: image.entry,
+        image,
         row: {
           id,
           pageId: to(pageIds, page.id),
@@ -537,11 +563,8 @@ function importFrom(
   let committed = false;
   try {
     fs.mkdirSync(staging, { recursive: true });
-    for (const { entry, row } of uploads) {
-      fs.writeFileSync(
-        path.join(staging, row.fileName),
-        archive.read(entry, entry.size),
-      );
+    for (const { image, row } of uploads) {
+      fs.writeFileSync(path.join(staging, row.fileName), image.read());
     }
     const project = db.transaction((tx) => {
       const slug = uniqueSlug(
@@ -587,7 +610,7 @@ function importFrom(
     committed = true;
     if (project.slug !== document.project.slug) {
       notices.push({
-        path: "project.slug",
+        path: slugPath,
         message: `${document.project.slug} is used by another project, so this one is ${project.slug}`,
       });
     }

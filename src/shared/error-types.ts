@@ -136,9 +136,12 @@ export function responseForStatus<T extends { status: string }>(
  */
 export function checkResponseErrors(
   endpoint: Pick<EndpointFields, "responses">,
-  catalog: CatalogEntry[],
+  catalog: CatalogEntry[] | ReadonlyMap<string, CatalogEntry>,
 ): ApiIssue[] {
-  const byId = new Map(catalog.map((errorType) => [errorType.id, errorType]));
+  // A caller checking many endpoints passes the catalog by ID, made once.
+  const byId = Array.isArray(catalog)
+    ? new Map(catalog.map((errorType) => [errorType.id, errorType]))
+    : catalog;
   const issues: ApiIssue[] = [];
 
   endpoint.responses.forEach((response, responseIndex) => {

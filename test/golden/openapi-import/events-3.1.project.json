@@ -1,0 +1,916 @@
+{
+  "format": "api-contract-builder/project",
+  "formatVersion": 1,
+  "generator": "API Contract Builder",
+  "project": {
+    "id": "project",
+    "name": "Events API",
+    "slug": "events-api",
+    "description": "Everything about events: listing, creating, cancelling, and the tickets people hold.",
+    "apiVersion": "1.0",
+    "servers": [
+      {
+        "id": "server-1",
+        "name": "Production",
+        "url": "https://api.events.example",
+        "description": "Main region"
+      }
+    ],
+    "securitySchemes": [
+      {
+        "id": "oidc",
+        "key": "oidc",
+        "description": "OpenID Connect: https://auth.events.example/.well-known/openid-configuration",
+        "type": "bearer",
+        "bearerFormat": ""
+      },
+      {
+        "id": "apiKey",
+        "key": "apiKey",
+        "description": "",
+        "type": "apiKey",
+        "in": "query",
+        "name": "key"
+      },
+      {
+        "id": "basic",
+        "key": "basic",
+        "description": "",
+        "type": "basic"
+      }
+    ],
+    "defaultSecuritySchemeId": "oidc"
+  },
+  "models": [
+    {
+      "id": "model-1",
+      "name": "Event",
+      "description": "An event people can buy tickets for.",
+      "schema": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "startsAt",
+          "kind"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "examples": [
+              "NodeConf"
+            ]
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endsAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "kind": {
+            "const": "conference"
+          },
+          "price": {
+            "$ref": "model:model-4",
+            "description": "What a ticket costs"
+          },
+          "tags": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              }
+            ],
+            "items": false
+          },
+          "slot": {
+            "$ref": "model:model-5"
+          },
+          "extra": {
+            "$ref": "model:model-6"
+          }
+        },
+        "unevaluatedProperties": false,
+        "dependentRequired": {
+          "endsAt": [
+            "startsAt"
+          ]
+        }
+      }
+    },
+    {
+      "id": "model-2",
+      "name": "EventInput",
+      "description": "",
+      "schema": {
+        "type": "object",
+        "required": [
+          "name",
+          "startsAt"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    {
+      "id": "model-3",
+      "name": "Ticket",
+      "description": "",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "holder": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "model-4",
+      "name": "Money",
+      "description": "",
+      "schema": {
+        "type": "object",
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "properties": {
+          "amount": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$"
+          }
+        }
+      }
+    },
+    {
+      "id": "model-5",
+      "name": "Slot",
+      "description": "",
+      "schema": {
+        "$id": "https://events.example/schemas/slot",
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+          },
+          "to": {
+            "type": "string",
+            "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+          }
+        },
+        "$defs": {
+          "time": {
+            "type": "string",
+            "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+          }
+        }
+      }
+    },
+    {
+      "id": "model-6",
+      "name": "Anything",
+      "description": "",
+      "schema": {}
+    },
+    {
+      "id": "model-7",
+      "name": "Problem",
+      "description": "",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ],
+  "errorTypes": [
+    {
+      "id": "error-type-1",
+      "name": "event-not-found",
+      "status": "404",
+      "title": "Event not found",
+      "description": "No event has this ID, or it was deleted.",
+      "headers": {
+        "type": "object",
+        "properties": {}
+      },
+      "body": {
+        "contentType": "application/problem+json",
+        "schema": {
+          "$ref": "model:model-7"
+        },
+        "example": {
+          "type": "https://events.example/problems/event-not-found",
+          "title": "Event not found",
+          "status": 404
+        }
+      }
+    },
+    {
+      "id": "error-type-2",
+      "name": "event-full",
+      "status": "409",
+      "title": "Event full",
+      "description": "",
+      "headers": {
+        "type": "object",
+        "properties": {}
+      },
+      "body": {
+        "contentType": "application/problem+json",
+        "schema": {
+          "$ref": "model:model-7"
+        },
+        "example": {
+          "type": "https://events.example/problems/event-full",
+          "title": "Event full",
+          "status": 409
+        }
+      }
+    }
+  ],
+  "endpoints": [
+    {
+      "id": "endpoint-1",
+      "method": "GET",
+      "path": "/events",
+      "operationId": "listEvents",
+      "summary": "List events",
+      "description": "",
+      "status": "draft",
+      "deprecated": false,
+      "security": {
+        "type": "none"
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {}
+        },
+        "query": {
+          "type": "object",
+          "properties": {}
+        },
+        "header": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "requestBody": null,
+      "responses": [
+        {
+          "id": "r-200",
+          "status": "200",
+          "description": "The events",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": {
+            "contentType": "application/json",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "model:model-1"
+              }
+            },
+            "examples": []
+          },
+          "errors": []
+        }
+      ],
+      "notesFe": "",
+      "notesBe": ""
+    },
+    {
+      "id": "endpoint-2",
+      "method": "POST",
+      "path": "/events",
+      "operationId": "createEvent",
+      "summary": "Create an event",
+      "description": "",
+      "status": "draft",
+      "deprecated": false,
+      "security": {
+        "type": "default"
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {}
+        },
+        "query": {
+          "type": "object",
+          "properties": {}
+        },
+        "header": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "requestBody": {
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "model:model-2"
+        },
+        "examples": [
+          {
+            "id": "x1",
+            "name": "conference",
+            "summary": "",
+            "value": {
+              "name": "NodeConf",
+              "startsAt": "2026-05-04T09:00:00Z"
+            }
+          }
+        ],
+        "required": true,
+        "description": ""
+      },
+      "responses": [
+        {
+          "id": "r-201",
+          "status": "201",
+          "description": "Created",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": {
+            "contentType": "application/json",
+            "schema": {
+              "$ref": "model:model-1"
+            },
+            "examples": []
+          },
+          "errors": []
+        }
+      ],
+      "notesFe": "",
+      "notesBe": ""
+    },
+    {
+      "id": "endpoint-3",
+      "method": "GET",
+      "path": "/events/{eventId}",
+      "operationId": "getEvent",
+      "summary": "Get an event",
+      "description": "",
+      "status": "draft",
+      "deprecated": false,
+      "security": {
+        "type": "default"
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {
+            "eventId": {
+              "type": "string",
+              "format": "uuid",
+              "description": "The event's ID, from its URL"
+            }
+          },
+          "required": [
+            "eventId"
+          ]
+        },
+        "query": {
+          "type": "object",
+          "properties": {}
+        },
+        "header": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "requestBody": null,
+      "responses": [
+        {
+          "id": "r-200",
+          "status": "200",
+          "description": "The event",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": {
+            "contentType": "application/json",
+            "schema": {
+              "$ref": "model:model-1"
+            },
+            "examples": [
+              {
+                "id": "x1",
+                "name": "conference",
+                "summary": "A conference",
+                "value": {
+                  "id": "6f1c2b9e-0b7a-4c64-9a8e-2f1d3c4b5a69",
+                  "name": "NodeConf",
+                  "startsAt": "2026-05-04T09:00:00Z",
+                  "endsAt": null,
+                  "kind": "conference"
+                }
+              }
+            ]
+          },
+          "errors": []
+        },
+        {
+          "id": "r-404",
+          "status": "404",
+          "description": "No such event",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-1",
+              "examples": []
+            }
+          ]
+        }
+      ],
+      "notesFe": "",
+      "notesBe": ""
+    },
+    {
+      "id": "endpoint-4",
+      "method": "PUT",
+      "path": "/events/{eventId}",
+      "operationId": "replaceEvent",
+      "summary": "Replace an event",
+      "description": "",
+      "status": "draft",
+      "deprecated": false,
+      "security": {
+        "type": "default"
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {
+            "eventId": {
+              "type": "string",
+              "format": "uuid",
+              "description": "The event's ID, from its URL"
+            }
+          },
+          "required": [
+            "eventId"
+          ]
+        },
+        "query": {
+          "type": "object",
+          "properties": {}
+        },
+        "header": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "requestBody": {
+        "contentType": "application/json",
+        "schema": {
+          "$ref": "model:model-2"
+        },
+        "examples": [],
+        "required": true,
+        "description": ""
+      },
+      "responses": [
+        {
+          "id": "r-200",
+          "status": "200",
+          "description": "The event, replaced",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": {
+            "contentType": "application/json",
+            "schema": {
+              "$ref": "model:model-1"
+            },
+            "examples": []
+          },
+          "errors": []
+        },
+        {
+          "id": "r-404",
+          "status": "404",
+          "description": "No such event",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-1",
+              "examples": []
+            }
+          ]
+        },
+        {
+          "id": "r-409",
+          "status": "409",
+          "description": "The event is full",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-2",
+              "examples": [
+                {
+                  "id": "x1",
+                  "name": "over-capacity",
+                  "summary": "Fewer seats than tickets sold",
+                  "value": {
+                    "type": "https://events.example/problems/event-full",
+                    "title": "Event full",
+                    "status": 409,
+                    "detail": "120 tickets are sold, so the room can't hold fewer seats."
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "notesFe": "",
+      "notesBe": ""
+    },
+    {
+      "id": "endpoint-5",
+      "method": "POST",
+      "path": "/events/{eventId}:cancel",
+      "operationId": "cancelEvent",
+      "summary": "Cancel an event",
+      "description": "",
+      "status": "draft",
+      "deprecated": false,
+      "security": {
+        "type": "default"
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {
+            "eventId": {
+              "type": "string",
+              "format": "uuid",
+              "description": "The event's ID"
+            }
+          },
+          "required": [
+            "eventId"
+          ]
+        },
+        "query": {
+          "type": "object",
+          "properties": {}
+        },
+        "header": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "requestBody": null,
+      "responses": [
+        {
+          "id": "r-204",
+          "status": "204",
+          "description": "Cancelled",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": []
+        },
+        {
+          "id": "r-404",
+          "status": "404",
+          "description": "No such event",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-1",
+              "examples": []
+            }
+          ]
+        },
+        {
+          "id": "r-409",
+          "status": "409",
+          "description": "The event already happened",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": [
+            {
+              "errorTypeId": "error-type-2",
+              "examples": []
+            }
+          ]
+        }
+      ],
+      "notesFe": "",
+      "notesBe": ""
+    },
+    {
+      "id": "endpoint-6",
+      "method": "GET",
+      "path": "/events/{eventId}/tickets",
+      "operationId": "listTickets",
+      "summary": "List an event's tickets",
+      "description": "",
+      "status": "draft",
+      "deprecated": false,
+      "security": {
+        "type": "default"
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {
+            "eventId": {
+              "type": "string",
+              "format": "uuid",
+              "description": "The event's ID"
+            }
+          },
+          "required": [
+            "eventId"
+          ]
+        },
+        "query": {
+          "type": "object",
+          "properties": {
+            "filter": {
+              "type": "object",
+              "properties": {
+                "holder": {
+                  "type": "string"
+                }
+              },
+              "description": "Which tickets, as JSON"
+            }
+          }
+        },
+        "header": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "requestBody": null,
+      "responses": [
+        {
+          "id": "r-2XX",
+          "status": "2XX",
+          "description": "The tickets",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": {
+            "contentType": "application/json",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "model:model-3"
+              }
+            },
+            "examples": []
+          },
+          "errors": []
+        },
+        {
+          "id": "r-default",
+          "status": "default",
+          "description": "Anything else, as a problem",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": {
+            "contentType": "application/problem+json",
+            "schema": {
+              "$ref": "model:model-7"
+            },
+            "examples": []
+          },
+          "errors": []
+        }
+      ],
+      "notesFe": "",
+      "notesBe": ""
+    },
+    {
+      "id": "endpoint-7",
+      "method": "GET",
+      "path": "/reports",
+      "operationId": "getReport",
+      "summary": "Download the sales report",
+      "description": "",
+      "status": "draft",
+      "deprecated": false,
+      "security": {
+        "type": "schemes",
+        "schemeIds": [
+          "apiKey"
+        ]
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {}
+        },
+        "query": {
+          "type": "object",
+          "properties": {}
+        },
+        "header": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "requestBody": null,
+      "responses": [
+        {
+          "id": "r-200",
+          "status": "200",
+          "description": "The report",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": {
+            "contentType": "application/json",
+            "schema": {
+              "type": "object"
+            },
+            "examples": []
+          },
+          "errors": []
+        }
+      ],
+      "notesFe": "",
+      "notesBe": ""
+    },
+    {
+      "id": "endpoint-8",
+      "method": "GET",
+      "path": "/public/feed",
+      "operationId": "publicFeed",
+      "summary": "Upcoming events, for everyone",
+      "description": "",
+      "status": "draft",
+      "deprecated": false,
+      "security": {
+        "type": "schemes",
+        "schemeIds": [
+          "oidc"
+        ]
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {}
+        },
+        "query": {
+          "type": "object",
+          "properties": {}
+        },
+        "header": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "requestBody": null,
+      "responses": [
+        {
+          "id": "r-200",
+          "status": "200",
+          "description": "The feed",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": {
+            "contentType": "application/json",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "model:model-1"
+              }
+            },
+            "examples": []
+          },
+          "errors": []
+        }
+      ],
+      "notesFe": "",
+      "notesBe": ""
+    },
+    {
+      "id": "endpoint-9",
+      "method": "DELETE",
+      "path": "/admin/purge",
+      "operationId": "purge",
+      "summary": "Delete past events",
+      "description": "",
+      "status": "draft",
+      "deprecated": false,
+      "security": {
+        "type": "none"
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {}
+        },
+        "query": {
+          "type": "object",
+          "properties": {}
+        },
+        "header": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "requestBody": null,
+      "responses": [
+        {
+          "id": "r-204",
+          "status": "204",
+          "description": "Purged",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": []
+        }
+      ],
+      "notesFe": "",
+      "notesBe": ""
+    }
+  ],
+  "pages": []
+}

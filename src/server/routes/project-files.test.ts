@@ -1184,17 +1184,17 @@ describe("importing a project file", () => {
       );
     });
 
-    it("says what to do with an OpenAPI file", async () => {
+    it("says how to send an OpenAPI document sent as a zip", async () => {
       const t = app();
       await nothingWritten(
         t,
         strToU8("openapi: 3.1.0\ninfo:\n  title: Shop\n"),
-        /OpenAPI file.*can't be imported yet/,
+        /OpenAPI document, sent as a zip\. Send it as application\/json or application\/yaml/,
       );
       await nothingWritten(
         t,
         strToU8('{\n  "openapi": "3.1.0"\n}'),
-        /OpenAPI file/,
+        /OpenAPI document, sent as a zip/,
       );
     });
 
@@ -1430,17 +1430,20 @@ describe("importing a project file", () => {
     it("must say it sends a zip", async () => {
       const t = app();
       const zip = fixtureZip();
+      // application/json is an OpenAPI document now (see openapi-import.test).
       for (const type of [
         null,
         "text/plain",
         "multipart/form-data; boundary=x",
-        "application/json",
         "application/octet-stream",
       ]) {
         const response = await importFile(t, zip, type);
         expect(response.status, String(type)).toBe(415);
+        expect(response.headers.get("accept"), String(type)).toMatch(
+          /^application\/zip, application\/x-zip-compressed, /,
+        );
         expect(((await response.json()) as Loose).error).toMatch(
-          /Content-Type: application\/zip/,
+          /project file as application\/zip/,
         );
       }
       expect(projectCount(t)).toBe(0);

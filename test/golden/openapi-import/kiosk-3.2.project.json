@@ -1,0 +1,151 @@
+{
+  "format": "api-contract-builder/project",
+  "formatVersion": 1,
+  "generator": "API Contract Builder",
+  "project": {
+    "id": "project",
+    "name": "Kiosk API",
+    "slug": "kiosk-api",
+    "description": "",
+    "apiVersion": "3.0.0",
+    "servers": [
+      {
+        "id": "server-1",
+        "name": "Production",
+        "url": "https://api.kiosk.example",
+        "description": "Main region"
+      }
+    ],
+    "securitySchemes": [
+      {
+        "id": "legacyKey",
+        "key": "legacyKey",
+        "description": "",
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Kiosk-Key"
+      }
+    ],
+    "defaultSecuritySchemeId": null
+  },
+  "models": [],
+  "errorTypes": [],
+  "endpoints": [
+    {
+      "id": "endpoint-1",
+      "method": "GET",
+      "path": "/products",
+      "operationId": "listProducts",
+      "summary": "List products",
+      "description": "",
+      "status": "draft",
+      "deprecated": false,
+      "security": {
+        "type": "default"
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {}
+        },
+        "query": {
+          "type": "object",
+          "properties": {
+            "sort": {
+              "type": "string",
+              "enum": [
+                "name",
+                "price"
+              ],
+              "examples": [
+                "price"
+              ]
+            }
+          }
+        },
+        "header": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "requestBody": null,
+      "responses": [
+        {
+          "id": "r-200",
+          "status": "200",
+          "description": "The products, one JSON object a line",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": {
+            "contentType": "application/jsonl",
+            "schema": {},
+            "examples": [
+              {
+                "id": "x1",
+                "name": "two",
+                "summary": "",
+                "value": [
+                  {
+                    "name": "Tea"
+                  },
+                  {
+                    "name": "Coffee"
+                  }
+                ]
+              }
+            ]
+          },
+          "errors": []
+        }
+      ],
+      "notesFe": "",
+      "notesBe": ""
+    },
+    {
+      "id": "endpoint-2",
+      "method": "GET",
+      "path": "/search",
+      "operationId": "search",
+      "summary": "",
+      "description": "",
+      "status": "draft",
+      "deprecated": false,
+      "security": {
+        "type": "default"
+      },
+      "parameters": {
+        "path": {
+          "type": "object",
+          "properties": {}
+        },
+        "query": {
+          "type": "object",
+          "properties": {}
+        },
+        "header": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "requestBody": null,
+      "responses": [
+        {
+          "id": "r-200",
+          "status": "200",
+          "description": "OK",
+          "headers": {
+            "type": "object",
+            "properties": {}
+          },
+          "body": null,
+          "errors": []
+        }
+      ],
+      "notesFe": "",
+      "notesBe": ""
+    }
+  ],
+  "pages": []
+}

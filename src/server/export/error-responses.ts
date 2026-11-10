@@ -81,7 +81,7 @@ export function errorResponseParts(
   const ownNames = new Set(Object.keys(own).map((name) => name.toLowerCase()));
   const headers = new Map<string, MergedHeader>();
   for (const { errorType } of used) {
-    const required = requiredNames(errorType.headers);
+    const required = new Set(requiredNames(errorType.headers));
     for (const [name, value] of Object.entries(properties(errorType.headers))) {
       const key = name.toLowerCase();
       if (ownNames.has(key)) {
@@ -108,7 +108,7 @@ export function errorResponseParts(
         }
       }
       header.senders.push(errorType);
-      header.requiredBy += required.includes(name) ? 1 : 0;
+      header.requiredBy += required.has(name) ? 1 : 0;
       headers.set(key, header);
     }
   }
@@ -129,7 +129,13 @@ export function errorResponseParts(
     } else if (header.requiredBy === used.length) {
       mergedRequired.push(header.name);
     }
-    mergedProperties[header.name] = schema;
+    // Defined, not assigned: a header named __proto__ would set the prototype.
+    Object.defineProperty(mergedProperties, header.name, {
+      value: schema,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
   }
 
   const contents = new Map<

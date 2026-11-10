@@ -13,7 +13,8 @@
       "!pnpm-lock.yaml",
       "!pnpm-workspace.yaml",
       "!test/golden",
-      "!test/fixtures/project-file-v1"
+      "!test/fixtures/project-file-v1",
+      "!test/fixtures/openapi"
     ]
   },
   "formatter": {

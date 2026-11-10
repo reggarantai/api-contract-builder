@@ -1,0 +1,50 @@
+[
+  {
+    "path": "/info/summary",
+    "message": "The project has no place for these parts of info, so they aren't kept: summary and license"
+  },
+  {
+    "path": "/components/securitySchemes/oidc",
+    "message": "OAuth 2.0 and OpenID Connect schemes are bearer token schemes in the app; their flows, URLs, and scopes are in each one's description: oidc"
+  },
+  {
+    "path": "/components/securitySchemes/mtls",
+    "message": "These security schemes have no counterpart in the app, so they were left out, and the operations that need only them are public in the project: mtls (mutualTLS)"
+  },
+  {
+    "path": "/security/0/oidc",
+    "message": "Scopes aren't kept (1 requirement, like oidc: events:read)"
+  },
+  {
+    "path": "/paths/~1events~1{eventId}:cancel/post/x-rate-limit",
+    "message": "Extensions aren't kept (2 places: x-rate-limit and x-tagGroups)"
+  },
+  {
+    "path": "/paths/~1events~1{eventId}~1tickets/get/parameters/1/content",
+    "message": "1 parameter or header described by a media type keeps only its schema: filter (GET /events/{eventId}/tickets)"
+  },
+  {
+    "path": "/paths/~1reports/get/security/0",
+    "message": "The app records one scheme per alternative, so 1 requirement for several schemes together records only the first it has: apiKey and basic → apiKey"
+  },
+  {
+    "path": "/paths/~1reports/get/responses/200/content",
+    "message": "A body has one media type in the app, so 1 other one was left out: text/csv (GET /reports 200)"
+  },
+  {
+    "path": "/paths/~1public~1feed/get/security",
+    "message": "Authentication is optional in 1 place (/paths/~1public~1feed/get/security); the project records it as required"
+  },
+  {
+    "path": "/paths/~1public~1feed/get/responses/200/content/application~1json/examples/from-file",
+    "message": "1 example was left out, since the app keeps example values: from-file (GET /public/feed 200: its value is in another file, which the app never reads)"
+  },
+  {
+    "path": "/components/examples/conference",
+    "message": "Shared examples were copied into each response that uses them (1 example: conference)"
+  },
+  {
+    "path": "/webhooks",
+    "message": "Webhooks aren't kept: eventCreated"
+  }
+]

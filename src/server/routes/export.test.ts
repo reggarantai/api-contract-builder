@@ -133,6 +133,137 @@ describe("export API", () => {
     expect(response.status).toBe(422);
   });
 
+  it("takes a $ref inside example data as data, as OpenAPI does, not as a reference", async () => {
+    const data = { $ref: "#/components/examples/not-there" };
+    const model = await t.request(
+      "POST",
+      `/api/projects/${fixture.projectId}/models`,
+      {
+        name: "WithData",
+        schema: { type: "object", examples: [data], default: data },
+      },
+    );
+    expect(model.status).toBe(201);
+    const created = (await (
+      await t.request("POST", `/api/projects/${fixture.projectId}/endpoints`, {
+        method: "GET",
+        path: "/with-data",
+      })
+    ).json()) as { id: string; responses: { id: string }[] };
+    const saved = await t.request(
+      "PATCH",
+      `/api/projects/${fixture.projectId}/endpoints/${created.id}`,
+      {
+        responses: [
+          {
+            id: created.responses[0]?.id,
+            status: "200",
+            description: "OK",
+            headers: { type: "object", properties: {} },
+            body: {
+              contentType: "application/json",
+              schema: { type: "object" },
+              examples: [
+                {
+                  id: "x",
+                  name: "nested",
+                  summary: "",
+                  value: { configuration: data },
+                },
+              ],
+            },
+            errors: [],
+          },
+        ],
+      },
+    );
+    expect(saved.status).toBe(200);
+
+    const report = (await (
+      await t.request("GET", `/api/projects/${fixture.projectId}/export/report`)
+    ).json()) as { valid: boolean; errors: string[] };
+    expect(report).toMatchObject({ valid: true, errors: [] });
+    const exported = await t.request("GET", exportUrl("?format=json"));
+    expect(exported.status).toBe(200);
+    // The download still has it as written.
+    const document = JSON.parse(await exported.text());
+    expect(
+      document.paths["/with-data"].get.responses["200"].content[
+        "application/json"
+      ].examples.nested.value,
+    ).toEqual({ configuration: data });
+    expect(document.components.schemas.WithData).toEqual({
+      type: "object",
+      examples: [data],
+      default: data,
+    });
+  });
+
+  it("says a schema of another JSON Schema dialect is invalid, rather than failing", async () => {
+    for (const [name, dialect] of [
+      ["Draft7", "http://json-schema.org/draft-07/schema#"],
+      ["Unknown", "https://schemas.example/my-dialect"],
+      // OpenAPI's own dialect, and 2020-12's, are what the export checks.
+      ["Oas", "https://spec.openapis.org/oas/3.1/dialect/base"],
+      ["Current", "https://json-schema.org/draft/2020-12/schema"],
+    ]) {
+      const created = await t.request(
+        "POST",
+        `/api/projects/${fixture.projectId}/models`,
+        { name, schema: { $schema: dialect, type: "string" } },
+      );
+      expect(created.status).toBe(201);
+    }
+
+    const report = await t.request(
+      "GET",
+      `/api/projects/${fixture.projectId}/export/report`,
+    );
+    expect(report.status).toBe(200);
+    expect(
+      ((await report.json()) as { errors: string[] }).errors.filter((error) =>
+        error.includes("$schema"),
+      ),
+    ).toEqual([
+      "Model Draft7: its $schema, http://json-schema.org/draft-07/schema#, isn't JSON Schema 2020-12, which OpenAPI 3.1 schemas use; remove it if the schema means the same in 2020-12",
+      "Model Unknown: its $schema, https://schemas.example/my-dialect, isn't JSON Schema 2020-12, which OpenAPI 3.1 schemas use; remove it if the schema means the same in 2020-12",
+    ]);
+    expect((await t.request("GET", exportUrl())).status).toBe(422);
+    const markdown = await t.request(
+      "GET",
+      `/api/projects/${fixture.projectId}/export/markdown`,
+    );
+    expect(markdown.status).toBe(200);
+  });
+
+  it("says a schema whose $schema isn't a URI is invalid, rather than failing", async () => {
+    // As an import brings one in from someone else's document.
+    const created = await t.request(
+      "POST",
+      `/api/projects/${fixture.projectId}/models`,
+      { name: "NotUri", schema: { $schema: 5, type: "object" } },
+    );
+    expect(created.status).toBe(201);
+    const report = await t.request(
+      "GET",
+      `/api/projects/${fixture.projectId}/export/report`,
+    );
+    expect(report.status).toBe(200);
+    expect(
+      ((await report.json()) as { errors: string[] }).errors.filter((error) =>
+        error.includes("$schema"),
+      ),
+    ).toEqual([
+      "Model NotUri: its $schema isn't a URI, as JSON Schema 2020-12 needs; remove it",
+    ]);
+    expect((await t.request("GET", exportUrl())).status).toBe(422);
+    const markdown = await t.request(
+      "GET",
+      `/api/projects/${fixture.projectId}/export/markdown`,
+    );
+    expect(markdown.status).toBe(200);
+  });
+
   it("rejects unknown formats, pages, and projects", async () => {
     expect((await t.request("GET", exportUrl("?format=xml"))).status).toBe(400);
     expect((await t.request("GET", exportUrl("?page=nope"))).status).toBe(404);

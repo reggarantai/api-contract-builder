@@ -1,0 +1,92 @@
+# A made-up OpenAPI 3.2 document with what 3.2 adds to 3.1. Frozen: never
+# change it, since the import tests compare what it becomes with golden files.
+openapi: 3.2.0
+$self: https://kiosk.example/openapi.yaml
+info:
+  title: Kiosk API
+  version: 3.0.0
+servers:
+  - name: Production
+    url: https://api.kiosk.example
+    description: Main region
+tags:
+  - name: catalog
+    summary: Catalog
+    kind: nav
+  - name: products
+    parent: catalog
+paths:
+  /products:
+    query:
+      operationId: searchProducts
+      summary: Search products with a query in the body
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Matching products
+    get:
+      operationId: listProducts
+      summary: List products
+      parameters:
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum:
+              - name
+              - price
+          examples:
+            by-price:
+              dataValue: price
+              serializedValue: sort=price
+      responses:
+        "200":
+          summary: Products
+          description: The products, one JSON object a line
+          content:
+            application/jsonl:
+              itemSchema:
+                type: object
+                properties:
+                  name:
+                    type: string
+              examples:
+                two:
+                  dataValue:
+                    - name: Tea
+                    - name: Coffee
+                  serializedValue: |
+                    {"name":"Tea"}
+                    {"name":"Coffee"}
+    additionalOperations:
+      PURGE:
+        operationId: purgeProducts
+        responses:
+          "204":
+            description: Purged
+  /search:
+    get:
+      operationId: search
+      parameters:
+        - name: query
+          in: querystring
+          content:
+            application/x-www-form-urlencoded:
+              schema:
+                type: object
+                properties:
+                  q:
+                    type: string
+      responses:
+        "200": {}
+components:
+  securitySchemes:
+    legacyKey:
+      type: apiKey
+      in: header
+      name: X-Kiosk-Key
+      deprecated: true

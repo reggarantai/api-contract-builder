@@ -1,0 +1,47 @@
+openapi: 3.1.0
+info:
+  title: Kiosk API
+  version: 3.0.0
+servers:
+  - url: https://api.kiosk.example
+    description: Production — Main region
+paths:
+  /products:
+    get:
+      operationId: listProducts
+      summary: List products
+      parameters:
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum:
+              - name
+              - price
+            examples:
+              - price
+      responses:
+        "200":
+          description: The products, one JSON object a line
+          content:
+            application/jsonl:
+              schema: {}
+              examples:
+                two:
+                  value:
+                    - name: Tea
+                    - name: Coffee
+      x-status: draft
+  /search:
+    get:
+      operationId: search
+      responses:
+        "200":
+          description: OK
+      x-status: draft
+components:
+  securitySchemes:
+    legacyKey:
+      type: apiKey
+      in: header
+      name: X-Kiosk-Key

@@ -162,12 +162,15 @@ test("imports a project file from the Projects page", async ({
 test("shows why a file can't be imported", async ({ page }) => {
   await page.goto("/");
 
+  // Read as YAML, since it isn't named .zip and doesn't start like one.
   await chooseFile(page, "notes.txt", strToU8("not a zip"));
   const dialog = page.getByRole("alertdialog");
   await expect(dialog.getByRole("heading")).toHaveText(
     "Couldn't import notes.txt",
   );
-  await expect(dialog).toContainText("This file isn't a zip file.");
+  await expect(dialog).toContainText(
+    "This file isn't a project file (.project.zip) or an OpenAPI document (JSON or YAML).",
+  );
   await dialog.getByRole("button", { name: "Close" }).click();
   await expect(dialog).toBeHidden();
 

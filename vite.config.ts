@@ -36,5 +36,8 @@ export default defineConfig({
   test: {
     include: ["src/**/*.test.ts", "scripts/**/*.test.ts"],
     environment: "node",
+    // Some tests read and convert whole documents: on a busy machine (a
+    // loaded CI runner) they take several times their usual second.
+    testTimeout: 30_000,
   },
 });

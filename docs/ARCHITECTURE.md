@@ -57,6 +57,9 @@ Project
 - **A project file** (`<slug>.project.zip`) holds one whole project, mockups included, to
   move it to another machine or instance, or to keep it as a backup. Importing one makes a
   new project; see [Project files](#project-files).
+- **An OpenAPI document** (3.0, 3.1, or 3.2, JSON or YAML) can start a project too: its
+  schemas become models and its operations endpoints, and what a project can't hold is
+  reported. See [OpenAPI import](#openapi-import).
 
 ## Data
 
@@ -109,7 +112,8 @@ under `/uploads`:
 - `/api/projects`: projects and, under each, `models`, `endpoints`, `pages` (with their
   `mockups` and order), and `export/openapi`, `export/markdown`, `export/report`, and
   `export/project` (with its own `report`); `POST /api/projects/import` takes a project
-  file;
+  file (`application/zip`) or an OpenAPI document (`application/json`,
+  `application/yaml`, and their aliases);
 - `/api/samples`: creates the sample project, through the API itself;
 - `/api/health`: status, version, when the data directory was created, and the largest
   project file it imports; the Docker healthcheck calls it.
@@ -156,9 +160,15 @@ it, and says "Only with `x`" when only some send it.
 The Export tab shows **warnings** (bodies without examples, endpoints no page uses, models
 or error types nothing uses, problem details whose `status` or `title` differ from their
 error type, error types sharing a `type`, a header that error types in one response
-define differently) and **errors**. Errors come from two checks: the document against the
-official OpenAPI 3.1 schema, and every schema against the JSON Schema 2020-12 meta-schema,
-because the first alone accepts schemas like `{"type": "strng"}`. A contract with errors
+define differently), grouped by kind with the first ten of each, and **errors**. Errors
+come from two checks: the document against the official OpenAPI 3.1 schema, and every
+schema against the JSON Schema 2020-12 meta-schema, because the first alone accepts
+schemas like `{"type": "strng"}`. A schema whose `$schema` names another dialect
+(draft-07, …) is an error of its own: the meta-schema check is 2020-12's (OpenAPI's own
+dialect, 2020-12 with its keywords, is checked as 2020-12). The OpenAPI validator follows
+every `$ref` it finds, so it gets a copy of the document in which the `$ref`s inside data
+(example values, and a schema's `examples`, `default`, `enum`, and `const`) are renamed:
+OpenAPI reads those as data, and an API about JSON Schema shows them. A contract with errors
 can't be downloaded as OpenAPI. Checking and writing schemas recurse, and give out a few
 hundred levels down; the API saves no more than 256, but data saved before can be
 deeper. The OpenAPI download then answers 422, the report lists it as an error, and the
@@ -247,6 +257,193 @@ when this instance couldn't import it, by any of these limits or rules, and when
 mockup's image is missing from the data directory, since the file then leaves that mockup
 out.
 
+## OpenAPI import
+
+`POST /api/projects/import` with an OpenAPI document as the body (the Projects page's
+**Import project** sends `.json` as `application/json` and `.yaml`/`.yml` as
+`application/yaml`, and anything else by its first bytes) makes a project of it, the same
+way a project file does: the document becomes a project file document (format 1), which
+`validateProjectFile` checks with every rule the API applies, and the project file
+import's writer saves it in one transaction, with new IDs. Code: `src/server/openapi-import`.
+
+**Reading the text.** Limits: 16 MB (or `MAX_IMPORT_MB`, if lower), 272 levels of nesting
+(`MAX_NESTING` plus the 16 levels a schema or example sits deep in a document), and a
+million values, as for project files. All are checked before anything that recurses or
+builds a tree.
+
+- JSON is UTF-8 (RFC 8259) and read by the project file import's checker: no name twice
+  in an object and no number a double can't hold (I-JSON).
+- YAML is YAML 1.2, in UTF-8, UTF-16, or UTF-32 (by its byte order mark or zero bytes),
+  read with the `yaml` package, in a worker thread whose heap is limited to the server's
+  own (`yaml-reader.ts`, a second entry of the server build), in steps:
+  1. its lexer counts the tokens, at most a million (every token but spaces, line
+     breaks, and the closing bracket of a collection it opened, since an empty item, a
+     comment, or a stray closing bracket costs memory too), and the line breaks, at most
+     a million (the tree keeps a small token for each, blank lines too), so the tree's
+     size is bounded before it's built;
+  2. its parser makes the syntax tree, whose depth is counted without recursion;
+  3. its composer, with the core schema, no merge keys, and string keys;
+  4. our own walk to plain values, without recursion.
+
+  The walk allows only the tags of YAML's JSON schema ruleset, as OpenAPI says (`!!str`,
+  `!!int`, …; `!!binary`, `!!timestamp`, and custom tags are refused). It refuses keys
+  twice in a mapping (with a Set: yaml's own check compares each key with every one
+  before it, 17 s for 40,000 keys), a `<<` merge key (YAML 1.1's), a `%YAML` other than
+  1.2, `.inf` and `.nan`, and anything yaml warns about. It copies what an alias points
+  at, resolving it to the anchor before it, once, and counts every copied value, so a
+  "billion laughs" stops at a million, and the text of every copied string and key, at
+  most 16 MB in all (as much as the file may have, so only copies can reach it); an alias
+  inside what it points at is refused.
+- Both keep `__proto__` as a key, and report integers a double changes.
+- The text of a YAML plain scalar that isn't a string is kept for fields that must be
+  text: `version: 1.0` is "1.0". The worker sends it back by the object it's in (a
+  worker's answer keeps which object is which), not by its path, so it costs a few
+  slots a scalar however deep the document is.
+- OpenAPI imports run one at a time, from reading to writing: each can take much of the
+  server's memory, a YAML worker as much heap as the server has. Three more wait, each
+  holding its document (16 MB at most); while one runs and three wait, another answers
+  503 with `Retry-After: 1` before its document is received, so it holds nothing, and
+  **Import project** waits its turn as asked, for a minute at most. A document that
+  takes more than a minute to arrive is stopped (408), giving its turn back.
+
+**Versions.** OpenAPI 3.0.x, 3.1.x, and 3.2.x (read as 3.1 is: 3.2 adds without changing,
+and what it adds that a project can't hold is reported). Swagger 2.0 is refused with how
+to convert it; so are other versions, a version that isn't text, and a project.json.
+
+**References.** Nothing is ever fetched. A `$ref` is a JSON Pointer into the document
+(percent-decoded, then `~1` and `~0`, following own properties only), or a URI that
+resolves, by RFC 3986, to the document's `$self` (3.2) or to a schema's `$id` in it (3.1).
+Anything else (another file, a URL, `file:`) is refused, every one listed, with a hint to
+bundle the document. Outside schemas, only fields that take a Reference Object are
+followed (in 3.2 a media type too); a chain of them is followed once, however many places
+lead through it, and one that comes back is refused. Inside schemas, the app's own rules
+say where `$ref`s are: everywhere but the data keywords (`examples`, `example`,
+`default`, `enum`, `const`). Each schema's `$ref` is located once, however often the
+schema is copied, and a chain of schemas that are only references is followed in a loop,
+so its length takes no stack. The 3.1 `$id`s and `$anchor`s are indexed with a link to
+the place each value is in, not its path, and a path is worked out only for a place a
+reference names.
+
+**Copies count.** What references copy in counts against the million values, as the
+document's own values do: schemas and examples, and parameters, headers, responses,
+media types, examples, and every field and key read, so a part used by a thousand
+operations costs a thousand times what it holds, and a small document that would become
+millions of values is refused ("more than 1,000,000 values once its references are copied
+in"). Its text counts too: copies share their strings in memory, but the database and
+every export write each one out, so the project may hold at most 16 MB of text (strings
+and names, as much as a document may have) once references are copied in; 250 KB whose
+2,000 responses use one example of 100 KB would be 200 MB. It's measured while each
+response still has its own body and headers, as the exports write them: an error type
+holds its schema and headers once, but the OpenAPI export writes them into every
+response that uses it. The exports write more than the project holds, though, so
+before it's saved the import builds both once and measures them as the downloads write
+them: the OpenAPI download may take 32 MB, about twice GitHub's (16 MB as JSON), counted
+as `JSON.stringify(doc, null, 2)` writes it (each value on its own line, indented two
+spaces a level), with escapes as JSON or YAML writes them, whichever is longer, and each
+line of a text YAML writes as a block indented as deep as it sits; the Markdown files may
+take 16 MB. The OpenAPI export writes each page into every operation it links (tags and
+`x-pages`) and a model's name into every reference to it, and the Markdown bundle writes
+every endpoint into each page that calls it, and each nested field with the names of the
+fields it's in. That takes about a tenth of a second for GitHub's; links, each writing
+its page's name and slug, are counted first, so building them can't cost much either.
+Measured in a 587 MB heap with the import in the same process, exports of 30 MB as
+written (indented or escaped) peaked at 450–560 MB; 36 MB of OpenAPI made of page links
+took 550 MB more, and so did 42 MB of Markdown. Nothing costs more for being
+deep or for long names: notices tell places apart by the object they're in and their key,
+never by a pointer (which, in a small document, can be megabytes long), each note at a
+place is a small number, and a place a notice or a refusal shows is cut to 1,000
+characters. Names made unique (models, operation IDs, slugs) remember, for each start
+they're cut to and each length of number, how far their numbers are taken, so ten
+thousand alike names take linear time, cut to fit or not.
+
+| OpenAPI                                                | Project                                                                                              |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `info.title`, `version`, `description`                 | name (and slug), API version, description                                                            |
+| `servers`                                              | servers: 3.2's `name`, or the description ("Name — description" splits); URL variables get defaults  |
+| `components.securitySchemes`                           | bearer, basic, API key; OAuth 2.0 and OpenID Connect as bearer, their flows in the description       |
+| `security`, an operation's `security`                  | the default scheme, or any one of some schemes, or none                                              |
+| `components.schemas`                                   | models, renamed only to fit the app's names; their `description` the model's                         |
+| `$ref` to `#/components/schemas/X`                     | a model reference                                                                                    |
+| any other `$ref`                                       | a copy of what it points at (a pointer that comes back to itself makes its schema a model)           |
+| `paths` × get, put, post, delete, options, head, patch | endpoints; `x-status`, `x-notes-fe`, `x-notes-be` back as what they were                             |
+| `operationId`                                          | kept, changed to the app's letters, numbers, and underscores; left empty where the export derives it |
+| parameters in path, query, header                      | one property each, with its description and examples                                                 |
+| a request body, a response's content                   | its one media type (JSON first), named examples                                                      |
+| `components.examples` used by error responses          | error types, where the export writes those responses back the same                                   |
+| tags and `x-pages`, as this app writes them            | pages and their links                                                                                |
+
+OpenAPI 3.0's Schema Objects become JSON Schema 2020-12 as OpenAPI 3.0.3 defines them:
+`nullable: true` adds `"null"` to a `type` (and has no effect without one, which is
+reported, since the `allOf` "nullable reference" then doesn't allow null), boolean
+`exclusiveMinimum`/`exclusiveMaximum` become numbers, `example` becomes `examples`, a
+`$ref`'s siblings are left out but for annotations, and a `$schema` is left out. 3.1's
+schemas are taken as they are, but for 3.0's boolean bounds, which become 3.1's numbers
+with a notice. A `$ref` whose target is copied, beside other keywords, goes first in an
+`allOf` with what they add, an `allOf` beside it included. A `$schema` that isn't
+2020-12's or OpenAPI's dialect, or isn't a URI at all, is kept, and the Export tab lists
+it.
+
+**Error types.** This app's export writes each error type once, in `components.examples`,
+and a response that uses it as `examples.<name>: {$ref}`; an endpoint's own examples of it
+are inline, with the same problem `type` (RFC 9457 identifies a problem type by it). So
+every component example that error responses use, by its own name or by its `type`
+(never `about:blank`, a type two examples share, or a `status` that doesn't fit), is a
+candidate, with the status, media type, and schema of the responses that use it. A
+response is given error types only when the export's own `errorResponseParts`, run on the
+result, writes exactly the content and headers the document has; the headers the export
+merged in go back to an error type only where that's certain (an "Only with `x`" note, or
+the same header everywhere it's used alone, at least twice). Everywhere else a response
+keeps a plain body, each example copied in under its own name.
+
+**Pages** come back only from what this app writes: when some operation has `x-pages`, or
+every one has its `x-status`, the tags are pages and each `x-pages` entry a link.
+Another document's tags group operations, which isn't what a page is: its endpoints start
+without pages, and the Export tab lists them as unused until pages link them.
+
+**Notices.** Whatever a project can't hold is reported, never dropped quietly: cookie
+parameters, other media types, callbacks, links, webhooks, extensions and unknown fields
+(one notice for all extensions, and one for each kind of part, with a few of the names:
+a document may have a million),
+unused components, scopes, security requirements naming schemes the document doesn't
+define (which can leave an operation public), shortened texts, renamed names, examples
+without a value, and more, each kind once with how many places, the first few, and the
+JSON Pointer of the first. Whatever breaks a rule
+of the app (a response without a description, a name it can't take, an example without a
+value) is repaired or left out with a notice, so what the converter makes always passes
+the project file's rules and exports (tested on a thousand random mutations of each
+fixture, values whose `toString` isn't a function included). A value of the document is
+never turned into text with `String()`, which throws for `{"toString": 1}`; a mistake in
+the app is refused with a request to report it, never answered with a server error.
+**Import project** lists the notices before opening the project, with a button to copy
+them.
+
+**Cost.** On the Mac this was built on, in a fresh process: GitHub's REST API description
+(1,272 operations, 1,010 schemas) takes 0.65 s and 440 MB as JSON (14 MB), 2.7 s and
+880 MB as YAML (11 MB, the worker's heap included); Stripe's takes 0.4 s and 350 MB as
+JSON (8 MB), 1.5 s and 670 MB as YAML. Measuring its exports is a tenth of a second of
+that. GitHub's counts about 324,000 of the million values, and 7 MB of the 16 MB of
+text, once its references are copied in. The Export tab's report of such a project takes
+about half a second. YAML costs more because its syntax tree takes about 0.7 KB a token,
+so a file of 1.5 MB can need several hundred MB to read; in the worker, one that needs
+more than the server's heap is refused ("needs more memory to read than this instance
+gives it"), and the server goes on. In a container limited to 1 GB (where Node takes a
+587 MB heap), all of the above import, and documents made to cost the most are refused or
+imported without stopping the server, their exports included: one made of empty maps at
+the token limit, 770 KB of YAML with 60,000 numbers 260 levels deep, 1.8 MB of 3.1 JSON
+with 900,000 values 250 levels deep, 183 KB whose 1,000 responses refer to one with
+10,000 headers, 808 KB whose 4,000 responses share 20,000 media types, 8 MB of blank
+lines, 2 million stray closing brackets, 15 MB whose 450,000 notices sit under 120 levels
+of 60,000-character names (whose exports would be too large), 4.35 MB with 400,000
+extensions on one operation, 251 KB of JSON or 121 KB of YAML that copies a 100 KB
+example thousands of times, 1.08 MB whose 300 responses share one error response with a
+1 MB schema or header, 1.44 MB whose 7,000 pages link one operation 50 paths share,
+137 KB of 1,000 references to a model with a long name in a response 450 operations use,
+and 1.8 MB whose model nests 125 levels deep over a list of 900,000 values (462 MB once
+indented) or 626 KB whose 150 responses share 100 KB of control characters (92 MB once
+escaped).
+A project imported from a document that large can be more than a project file holds
+(GitHub's would be 16.3 MB of project.json); the Export tab says so.
+
 ## Client
 
 A React single-page app built with Vite: TanStack Router (file-based routes) and Query,
@@ -294,6 +491,19 @@ has moved, the latest release is rebuilt and published again as `X.Y` and `lates
   OpenAPI export through Prism's mock engine (examples, errors, request validation,
   security), and every page state's headers through Prism's HTTP server; the data
   migrations.
+- **Vitest, for OpenAPI imports**: every reading rule and limit (with the YAML shapes
+  that cost memory without values); references; each mapping rule; error types and
+  pages; the frozen documents in `test/fixtures/openapi` (3.0 and 3.1 as JSON and YAML,
+  and 3.2) against the project files, notices, and OpenAPI they become in
+  `test/golden/openapi-import` (a JSON and a YAML form of one document import the same);
+  the sample's OpenAPI export imported into an empty instance, whose export must be the
+  same bytes, for the whole project and every page, with what the project loses locked;
+  random mutations of the fixtures, which must never make the import throw and whose
+  projects must export; what a small document can make the import do (copies a
+  reference makes, long chains, deep places with long names, thousands of alike names),
+  timed, and in a separate process with a small container's heap for what costs memory
+  (`limits.test.ts`); and the operation IDs left empty against the fixpoint they replace.
+  Every protection was checked by disabling it and seeing a test fail.
 - **Vitest, for project files**:
   - the sample's file against `test/golden/inventory.project.json`, with IDs normalized;
   - round trips into an empty instance, whose OpenAPI and Markdown exports must be
@@ -442,10 +652,74 @@ The calls that shape the code, and why. Earlier plans and their history are in g
   saved, not in the shared Zod schemas, because the client parses what it reads with
   those, and data saved before the limit must still open; a save that leaves such data
   as it was goes through, so only what changes must fit.
-- **Imports need `Content-Type: application/zip`** (or `application/x-zip-compressed`, as
-  Windows names it). A browser has to ask the server before sending either type from
-  another site, and the server doesn't answer, so a page elsewhere can't import into the
-  local app. HTML forms can't send them at all.
+- **Imports choose by `Content-Type`, on one endpoint.** It's one resource, "a project
+  from a file", in two representations, as HTTP intends: `application/zip` (or
+  `application/x-zip-compressed`, as Windows names it) for project files, and for OpenAPI
+  documents `application/json`, `application/yaml` and the aliases RFC 9512 lists, or
+  OpenAPI's own types. A 415 lists them all in `Accept` (RFC 9110). A browser has to ask
+  the server before sending any of them from another site, and the server doesn't answer,
+  so a page elsewhere can't import into the local app; HTML forms can't send them at all.
+  Clients from before keep sending zips as they did.
+- **An OpenAPI document becomes a project file document, imported by the same code.** One
+  set of rules decides what a project can hold, and one writer saves it in a transaction,
+  so an OpenAPI import can't make a project that saving through the API couldn't. The
+  converter repairs what the rules refuse, with a notice, and the rules still check
+  everything it makes.
+- **YAML is read with the `yaml` package already used for exports, and our own walk.** It
+  follows YAML 1.2 closely and says where in the text a problem is. Its defaults aren't
+  safe for untrusted text: its duplicate key check is quadratic, its alias limit refuses
+  an anchor used more than about a hundred times (real documents do), `toJS` would make
+  shared and cyclic objects, and a tag like `!!binary` becomes a Buffer. So its composer
+  makes the tree, and the walk checks every rule with bounded work. js-yaml 5 builds no
+  tree and would take less memory, but it's a new dependency; the token limit bounds what
+  the tree costs.
+- **YAML is read in a worker thread with a heap limit.** Its memory follows its tokens,
+  not its size, and differs by shape: GitHub's description needs about 0.6 KB a token,
+  a file of empty items 0.7 KB. No fixed limit lets GitHub's 11 MB in and keeps a 1.5 MB
+  file made of empty items within a small container: in a 1 GB one, that file stopped the
+  whole server ("heap out of memory"). A check of the memory left before reading would
+  depend on when garbage was last collected. In a worker whose heap is the server's own,
+  the same file is refused with the reason and the server goes on, while everything the
+  server could read before still reads. The server also keeps answering while a large
+  document is read, and a document that takes more than two minutes is stopped. Readings
+  wait for each other, since two workers could each take the whole heap. What a worker
+  sends back is the document and, for each scalar whose text fields need, its object, not
+  its path: paths cost scalars × depth, and 124 KB of deep YAML stopped the server that
+  way after the worker had finished.
+- **What references copy in counts, and nothing costs more for being deep.** The reading
+  limits bound a document's text, but references multiply what it becomes: 183 KB whose
+  1,000 responses refer to one with 10,000 headers is 10 million headers. So every part a
+  reference brings in counts against the million values each time, fields read included,
+  not only the schemas copied, and the text it holds counts against 16 MB: a project of a
+  few hundred MB imported fine, then stopped the server (587 MB of heap) when its Export
+  tab opened. A project of 16 MB of text exports everything there at about 620 MB of
+  memory; 32 MB took 830 MB, too close to a 1 GB container. And a small document can reach many places with long
+  pointers (272 levels of 60,000-character names), so nothing per place builds a
+  pointer: places are told apart by their object and key, indexes link to parents, a
+  shown pointer is cut to 1,000 characters, and a schema's `$ref` is located once.
+  Names made unique remember how far their numbers are taken, and so does the export's
+  operation ID numbering, which the Export tab runs on every view: 20,000 alike names took
+  10 to 18 seconds before.
+- **Nothing a document refers to is fetched**, neither another file nor a URL, so an
+  import can't read the server's files or reach its network (SSRF). A `$ref` by `$id` or
+  `$self` to a schema in the same document is followed, since the document is whole.
+- **OpenAPI 3.0 is read as 3.0.3 defines it.** Patch versions clarify, and 3.0.3 says
+  `nullable` adds null to a `type` and does nothing without one. Many documents mean "this
+  reference may be null" by `nullable` beside `allOf`; changing that by guessing would
+  turn a contract into another, so each such place is reported with how to allow null.
+- **Error types come back only where the export would write the same response.** Reading
+  the catalog back from merged responses is a guess, so the export's own function checks
+  each one; RFC 9457's `type` tells an endpoint's own examples of an error type apart. An
+  error type's headers stay on its responses where whose they are can't be told.
+- **Pages come only from this app's own extensions.** OpenAPI tags group operations by
+  topic ("pets", "store"), not by screen, so they aren't pages; making them pages would
+  invent a page structure the document doesn't have.
+- **Notices are grouped and shown once, not stored.** They describe the import, not the
+  project, and would go stale as soon as the project changes; **Copy notices** keeps
+  them. The answer lists each kind once, so a thousand operations make a short list.
+- **The project file's limits stay.** Raising project.json past 16 MB for the largest
+  imports would make importing a project file take several times the memory, and
+  instances of 0.4.0 couldn't import such files; very large imports move as OpenAPI.
 - **The sample project is built through the API and is the export fixture**, so what users
   see is what the golden files pin. It's written like a production contract, and tests
   check its conventions on every operation and that the builder can edit every schema in

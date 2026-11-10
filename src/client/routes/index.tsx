@@ -43,7 +43,8 @@ function HomePage() {
             <CardTitle>No projects yet</CardTitle>
             <CardDescription>
               Create a project to start writing API contracts page by page, look
-              around a finished sample first, or import a project file.
+              around a finished sample first, or import a project file or an
+              OpenAPI document (JSON or YAML).
             </CardDescription>
           </CardHeader>
           <CardFooter className="justify-center gap-2">

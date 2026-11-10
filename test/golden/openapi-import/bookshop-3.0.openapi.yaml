@@ -1,0 +1,557 @@
+openapi: 3.1.0
+info:
+  title: Bookshop API
+  version: 2.4.0
+  description: |-
+    Books, authors, and orders for the Bookshop app.
+
+    Errors are problem details (RFC 9457) in `application/problem+json`.
+servers:
+  - url: https://eu.api.bookshop.example/v2
+    description: Production
+  - url: /v2
+    description: Server 2 — The API on the app's own origin, which the web frontend calls
+security:
+  - bearerAuth: []
+paths:
+  /authors/{author-id}:
+    get:
+      operationId: authors_get_one
+      summary: Get an author
+      deprecated: true
+      parameters:
+        - name: author-id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The author
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Author"
+              examples:
+                tolkien:
+                  summary: An author
+                  value:
+                    id: 0b5c2d4e-8f1a-4b3c-9d2e-7a6f5e4d3c2b
+                    name: J. R. R. Tolkien
+                    born: 1892-01-03
+      x-status: draft
+  /books:
+    get:
+      operationId: listBooks
+      summary: List books
+      description: Books in the catalog, newest first.
+      parameters:
+        - name: page
+          in: query
+          description: Which page, from 1
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: genre
+          in: query
+          description: Only books of these genres
+          schema:
+            type: array
+            items:
+              $ref: "#/components/schemas/Genre"
+        - name: q
+          in: query
+          description: Words in the title or the author's name
+          schema:
+            type: string
+            maxLength: 100
+            examples:
+              - tolkien
+      responses:
+        "200":
+          description: A page of books
+          headers:
+            X-Total-Count:
+              description: How many books match
+              schema:
+                type: integer
+                minimum: 0
+            RateLimit-Remaining:
+              description: Requests left in this minute
+              schema:
+                type: integer
+                minimum: 0
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Book"
+              examples:
+                first-page:
+                  summary: The first page
+                  value:
+                    data:
+                      - id: 6f1c2b9e-0b7a-4c64-9a8e-2f1d3c4b5a69
+                        title: The Hobbit
+                        subtitle: null
+                        price: 12.5
+                        genre: fiction
+        "401":
+          description: The access token is missing or expired
+          headers:
+            WWW-Authenticate:
+              required: true
+              schema:
+                type: string
+                examples:
+                  - Bearer realm="bookshop"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                unauthenticated:
+                  $ref: "#/components/examples/unauthenticated"
+      x-status: draft
+    post:
+      operationId: createBook
+      summary: Add a book
+      security:
+        - bearerAuth: []
+        - apiKey: []
+      requestBody:
+        description: The book to add
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Book"
+            examples:
+              hobbit:
+                summary: A novel
+                value:
+                  title: The Hobbit
+                  price: 12.5
+                  genre: fiction
+      responses:
+        "201":
+          description: Created
+          headers:
+            Location:
+              required: true
+              description: Where the new book is
+              schema:
+                type: string
+                format: uri-reference
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Book"
+              examples:
+                example:
+                  value:
+                    id: 6f1c2b9e-0b7a-4c64-9a8e-2f1d3c4b5a69
+                    title: The Hobbit
+                    subtitle: null
+                    price: 12.5
+                    genre: fiction
+        "409":
+          description: Conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                isbn-taken:
+                  $ref: "#/components/examples/isbn-taken"
+        "422":
+          description: Invalid fields
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ValidationProblem"
+              examples:
+                missing-title:
+                  value:
+                    type: https://bookshop.example/problems/validation-failed
+                    title: Validation failed
+                    status: 422
+                    errors:
+                      - pointer: "#/title"
+                        detail: Enter a title.
+        4XX:
+          description: Another client error
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        default:
+          description: Something went wrong
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+      x-status: draft
+  /books/{bookId}:
+    get:
+      operationId: getBook
+      summary: Get a book
+      parameters:
+        - name: bookId
+          in: path
+          required: true
+          description: The book's ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The book
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Book"
+        "404":
+          description: Not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                not-found:
+                  $ref: "#/components/examples/not-found"
+      x-status: draft
+    patch:
+      operationId: updateBook
+      summary: Change a book
+      parameters:
+        - name: bookId
+          in: path
+          required: true
+          description: The book's ID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/BookPatch"
+      responses:
+        "200":
+          description: The changed book
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Book"
+        "404":
+          description: Not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                not-found:
+                  $ref: "#/components/examples/not-found"
+      x-status: draft
+    delete:
+      operationId: deleteBook
+      summary: Remove a book
+      security:
+        - oauth: []
+      parameters:
+        - name: bookId
+          in: path
+          required: true
+          description: The book's ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Removed
+        "404":
+          description: Not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                not-found:
+                  $ref: "#/components/examples/not-found"
+      x-status: draft
+  /books/{bookId}/cover:
+    get:
+      operationId: getCover
+      summary: Get a book's cover
+      parameters:
+        - name: bookId
+          in: path
+          required: true
+          description: The book's ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The cover image
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                not-found:
+                  $ref: "#/components/examples/not-found"
+      x-status: draft
+  /health:
+    get:
+      operationId: health
+      summary: Is the API up?
+      security: []
+      responses:
+        "200":
+          description: Up
+      x-status: draft
+  /orders:
+    post:
+      operationId: placeOrder
+      summary: Place an order
+      security:
+        - oauth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderInput"
+      responses:
+        "201":
+          description: Placed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+      x-status: draft
+components:
+  schemas:
+    Author:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        born:
+          type:
+            - string
+            - "null"
+          format: date
+    Book:
+      description: A book in the catalog.
+      type: object
+      required:
+        - id
+        - title
+        - price
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          examples:
+            - The Hobbit
+        subtitle:
+          type:
+            - string
+            - "null"
+        price:
+          type: number
+          exclusiveMinimum: 0
+        discount:
+          type: number
+          maximum: 100
+        genre:
+          $ref: "#/components/schemas/Genre"
+        author:
+          description: Null for anonymous works
+          allOf:
+            - $ref: "#/components/schemas/Author"
+        format:
+          oneOf:
+            - $ref: "#/components/schemas/Ebook"
+            - $ref: "#/components/schemas/Paperback"
+          discriminator:
+            propertyName: kind
+            mapping:
+              ebook: "#/components/schemas/Ebook"
+              paperback: "#/components/schemas/Paperback"
+        status:
+          type:
+            - string
+            - "null"
+          enum:
+            - draft
+            - published
+      x-internal-id: book
+    BookAlias:
+      description: The same as a book; kept for older clients
+      $ref: "#/components/schemas/Book"
+    BookPatch:
+      type: object
+      minProperties: 1
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        subtitle:
+          type:
+            - string
+            - "null"
+        price:
+          type: number
+          exclusiveMinimum: 0
+    Ebook:
+      type: object
+      required:
+        - kind
+      properties:
+        kind:
+          type: string
+          enum:
+            - ebook
+        sizeBytes:
+          type: integer
+          format: int64
+          maximum: 9223372036854776000
+    Genre:
+      type: string
+      enum:
+        - fiction
+        - non-fiction
+        - poetry
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+        total:
+          type: number
+    OrderInput:
+      type: object
+      required:
+        - bookIds
+      properties:
+        bookIds:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            format: uuid
+    Paperback:
+      type: object
+      required:
+        - kind
+      properties:
+        kind:
+          type: string
+          enum:
+            - paperback
+        pages:
+          type: integer
+          minimum: 1
+    Problem:
+      type: object
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+    ValidationProblem:
+      allOf:
+        - $ref: "#/components/schemas/Problem"
+        - type: object
+          properties:
+            errors:
+              type: array
+              items:
+                type: object
+                properties:
+                  pointer:
+                    type: string
+                  detail:
+                    type: string
+  examples:
+    unauthenticated:
+      summary: Not signed in
+      value:
+        type: https://bookshop.example/problems/unauthenticated
+        title: Not signed in
+        status: 401
+    not-found:
+      summary: Not found
+      value:
+        type: https://bookshop.example/problems/not-found
+        title: Not found
+        status: 404
+    isbn-taken:
+      summary: ISBN already used
+      description: Another book has this ISBN.
+      value:
+        type: https://bookshop.example/problems/isbn-taken
+        title: ISBN already used
+        status: 409
+        detail: 978-0-261-10221-7 is already used by The Hobbit.
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+    oauth:
+      type: http
+      scheme: bearer
+      description: |-
+        For partner apps
+
+        OAuth 2.0
+        authorizationCode: authorizationUrl https://auth.bookshop.example/authorize; tokenUrl https://auth.bookshop.example/token; scopes books:delete, orders:write

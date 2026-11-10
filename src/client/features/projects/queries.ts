@@ -11,6 +11,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { apiDelete, apiGet, apiPatch, apiPost, apiPostFile } from "@/lib/api";
+import { whenNotBusy } from "@/lib/busy-retry";
 
 export const projectKeys = {
   all: ["projects"] as const,
@@ -90,17 +91,20 @@ export function useCreateSampleProject() {
 /** Running imports share this key, so any button can tell one is running. */
 export const importProjectKey = [...projectKeys.all, "import"] as const;
 
-/** Imports a project file (.project.zip) as a new project. */
+/** Imports a project file (.project.zip) or an OpenAPI document as a new project. */
 export function useImportProject() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationKey: importProjectKey,
-    mutationFn: (file: File) =>
-      apiPostFile(
-        "/projects/import",
-        file,
-        "application/zip",
-        projectImportResultSchema,
+    // Waits its turn while other imports run, as the server asks.
+    mutationFn: ({ file, contentType }: { file: File; contentType: string }) =>
+      whenNotBusy(() =>
+        apiPostFile(
+          "/projects/import",
+          file,
+          contentType,
+          projectImportResultSchema,
+        ),
       ),
     onSuccess: ({ project }) => {
       queryClient.setQueryData(projectKeys.detail(project.id), project);

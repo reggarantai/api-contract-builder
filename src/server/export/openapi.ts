@@ -20,11 +20,13 @@ import {
 import type { LintIssue } from "../../shared/export";
 import {
   collectRefs,
+  DATA_KEYWORDS,
   isJsonObject,
   type JsonSchema,
   type JsonValue,
   modelIdOfRef,
   refsToComponentNames,
+  SCHEMA_MAP_KEYWORDS,
 } from "../../shared/json-schema";
 import type { Model } from "../../shared/models";
 import type { Page, PageTrigger } from "../../shared/pages";
@@ -128,6 +130,7 @@ export function scopeOf(input: ExportInput, { pageId }: ExportOptions) {
   );
 
   // Models the endpoints and errors use, and the models those use, and so on.
+  const modelsById = new Map(input.models.map((model) => [model.id, model]));
   const used = new Set<string>();
   const pending = [
     ...endpoints.flatMap((endpoint) => schemasOfEndpoint(endpoint)),
@@ -135,7 +138,7 @@ export function scopeOf(input: ExportInput, { pageId }: ExportOptions) {
   ].flatMap(([, schema]) => modelRefsIn(schema));
   while (pending.length > 0) {
     const id = pending.pop() as string;
-    const model = input.models.find((item) => item.id === id);
+    const model = modelsById.get(id);
     if (model && !used.has(id)) {
       used.add(id);
       pending.push(...modelRefsIn(model.schema));
@@ -187,28 +190,51 @@ export function buildOpenApi(
 
   // Tags: one per page; a repeated page name gets its slug.
   const tagNames = new Map<string, string>();
+  const usedTags = new Set<string>();
   for (const page of scope.pages) {
-    const taken = [...tagNames.values()].includes(page.name);
-    tagNames.set(page.id, taken ? `${page.name} (${page.slug})` : page.name);
+    const name = usedTags.has(page.name)
+      ? `${page.name} (${page.slug})`
+      : page.name;
+    tagNames.set(page.id, name);
+    usedTags.add(name);
   }
 
-  // Operation IDs: explicit ones first, then unique suggestions.
+  // Operation IDs: explicit ones first, then unique suggestions. Each base
+  // remembers how far its numbers are taken, so endpoints that share one
+  // take linear time.
   const endpoints = [...scope.endpoints].sort(compareEndpoints);
   const usedIds = new Set(
     endpoints.map((endpoint) => endpoint.operationId).filter(Boolean),
   );
+  const nextNumber = new Map<string, number>();
   const operationIds = new Map<string, string>();
   for (const endpoint of endpoints) {
     let id = endpoint.operationId;
     if (!id) {
       const base = suggestOperationId(endpoint.method, endpoint.path);
-      id = base;
-      for (let n = 2; usedIds.has(id); n++) {
+      let n = nextNumber.get(base) ?? 1;
+      id = n === 1 ? base : `${base}${n}`;
+      while (usedIds.has(id)) {
+        n++;
         id = `${base}${n}`;
       }
+      nextNumber.set(base, n + 1);
       usedIds.add(id);
     }
     operationIds.set(endpoint.id, id);
+  }
+
+  // The pages that link each endpoint, in page order, then link order.
+  const linksOf = new Map<
+    string,
+    { page: Page; link: Page["endpoints"][number] }[]
+  >();
+  for (const page of scope.pages) {
+    for (const link of page.endpoints) {
+      const links = linksOf.get(link.endpointId);
+      if (links) links.push({ page, link });
+      else linksOf.set(link.endpointId, [{ page, link }]);
+    }
   }
 
   function content(body: EndpointBody) {
@@ -233,11 +259,13 @@ export function buildOpenApi(
     alwaysRequired = false,
   ): [string, JsonSchema][] {
     const properties = isJsonObject(schema.properties) ? schema.properties : {};
-    const required = Array.isArray(schema.required) ? schema.required : [];
+    const required = new Set(
+      Array.isArray(schema.required) ? schema.required : [],
+    );
     return Object.entries(properties).map(([name, property]) => {
       const { description, ...rest } = isJsonObject(property) ? property : {};
       const field: JsonSchema = {};
-      if (alwaysRequired || required.includes(name)) {
+      if (alwaysRequired || required.has(name)) {
         field.required = true;
       }
       if (typeof description === "string" && description) {
@@ -297,11 +325,7 @@ export function buildOpenApi(
   }
 
   function operation(endpoint: Endpoint): Operation {
-    const links = scope.pages.flatMap((page) =>
-      page.endpoints
-        .filter((link) => link.endpointId === endpoint.id)
-        .map((link) => ({ page, link })),
-    );
+    const links = linksOf.get(endpoint.id) ?? [];
     const tags = [
       ...new Set(links.map(({ page }) => tagNames.get(page.id) ?? page.name)),
     ];
@@ -554,11 +578,13 @@ export function lintContract(
 
   // Whole-project checks; a page export only includes what the page uses.
   if (options.pageId === undefined) {
+    const linked = new Set(
+      input.pages.flatMap((page) =>
+        page.endpoints.map((link) => link.endpointId),
+      ),
+    );
     for (const endpoint of scope.endpoints) {
-      const used = input.pages.some((page) =>
-        page.endpoints.some((link) => link.endpointId === endpoint.id),
-      );
-      if (!used) {
+      if (!linked.has(endpoint.id)) {
         issues.push({
           kind: "unused-endpoint",
           target: { type: "endpoint", id: endpoint.id },
@@ -646,6 +672,88 @@ function schemaLabel(endpoint: Endpoint, fieldPath: string) {
     : `${status} response`;
 }
 
+/** A `$ref` key inside data, renamed so the validator doesn't follow it. */
+const DATA_REF = "$ref (data)";
+
+/** Renames every `$ref` key in data, at any depth, without recursion. */
+function renameDataRefs(root: unknown) {
+  const pending = [root];
+  for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
+    if (typeof next !== "object" || next === null) continue;
+    const value = next as Record<string, unknown>;
+    if (!Array.isArray(value) && Object.hasOwn(value, "$ref")) {
+      value[DATA_REF] = value.$ref;
+      delete value.$ref;
+    }
+    for (const child of Object.values(value)) pending.push(child);
+  }
+}
+
+/** Renames `$ref` keys in a schema's data keywords (examples, default, …). */
+function renameSchemaDataRefs(root: unknown) {
+  const pending = [root];
+  for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
+    if (Array.isArray(next)) {
+      pending.push(...next);
+      continue;
+    }
+    if (!isJsonObject(next)) continue;
+    for (const [key, child] of Object.entries(next)) {
+      if (DATA_KEYWORDS.has(key)) {
+        renameDataRefs(child);
+      } else if (SCHEMA_MAP_KEYWORDS.has(key) && isJsonObject(child)) {
+        pending.push(...Object.values(child));
+      } else {
+        pending.push(child);
+      }
+    }
+  }
+}
+
+/**
+ * The document as the OpenAPI validator should see it. It follows every
+ * `$ref` it finds, but in an example's value or a schema's examples a
+ * `$ref` is data, as OpenAPI reads it (an API about JSON Schema shows them).
+ */
+function forValidator(doc: OpenApiDocument): Record<string, unknown> {
+  const copy = JSON.parse(JSON.stringify(doc)) as OpenApiDocument;
+  const schemas: unknown[] = Object.values(copy.components?.schemas ?? {});
+  const values: unknown[] = Object.values(copy.components?.examples ?? {}).map(
+    (example) => example.value,
+  );
+  const media = (content: unknown) => {
+    for (const item of Object.values(isJsonObject(content) ? content : {})) {
+      if (!isJsonObject(item)) continue;
+      schemas.push(item.schema);
+      for (const example of Object.values(
+        isJsonObject(item.examples) ? item.examples : {},
+      )) {
+        if (isJsonObject(example) && Object.hasOwn(example, "value"))
+          values.push(example.value);
+      }
+    }
+  };
+  for (const item of Object.values(copy.paths)) {
+    for (const operation of Object.values(item ?? {})) {
+      if (!operation) continue;
+      for (const parameter of operation.parameters ?? [])
+        schemas.push(parameter.schema);
+      media(operation.requestBody?.content);
+      for (const response of Object.values(operation.responses)) {
+        for (const header of Object.values(
+          isJsonObject(response.headers) ? response.headers : {},
+        )) {
+          if (isJsonObject(header)) schemas.push(header.schema);
+        }
+        media(response.content);
+      }
+    }
+  }
+  for (const schema of schemas) renameSchemaDataRefs(schema);
+  for (const value of values) renameDataRefs(value);
+  return copy as unknown as Record<string, unknown>;
+}
+
 /**
  * Problems that make the export wrong: schemas that aren't valid JSON Schema
  * (2020-12) and documents that aren't valid OpenAPI 3.1.
@@ -660,10 +768,35 @@ export async function validateContract(
   openApiValidator ??= new Validator();
   const ajv = schemaValidator;
 
-  const checkSchema = (prefix: string, schema: JsonSchema) =>
-    ajv.validateSchema(schema)
+  const checkSchema = (prefix: string, schema: JsonSchema) => {
+    // Ajv checks a schema against the meta-schema its $schema names, and
+    // throws for one it doesn't have; the export is 2020-12 throughout.
+    const dialect = schema.$schema;
+    let checked = schema;
+    if (dialect !== undefined && typeof dialect !== "string") {
+      return [
+        `${prefix}its $schema isn't a URI, as JSON Schema 2020-12 needs; remove it`,
+      ];
+    }
+    if (typeof dialect === "string") {
+      // OpenAPI's own dialect is 2020-12 with OpenAPI's keywords.
+      if (
+        /^https:\/\/spec\.openapis\.org\/oas\/3\.[12]\/dialect\//.test(dialect)
+      ) {
+        const { $schema: _dialect, ...rest } = schema;
+        checked = rest;
+      } else if (
+        !/^https:\/\/json-schema\.org\/draft\/2020-12\/schema#?$/.test(dialect)
+      ) {
+        return [
+          `${prefix}its $schema, ${dialect.length > 200 ? `${dialect.slice(0, 199)}…` : dialect}, isn't JSON Schema 2020-12, which OpenAPI 3.1 schemas use; remove it if the schema means the same in 2020-12`,
+        ];
+      }
+    }
+    return ajv.validateSchema(checked)
       ? []
       : formatErrors(prefix, (ajv.errors ?? []) as AjvError[]);
+  };
 
   const messages = [
     ...scope.models.flatMap((model) =>
@@ -687,9 +820,7 @@ export async function validateContract(
     ),
   ];
 
-  const result = await openApiValidator.validate(
-    JSON.parse(JSON.stringify(doc)) as Record<string, unknown>,
-  );
+  const result = await openApiValidator.validate(forValidator(doc));
   if (!result.valid) {
     messages.push(
       ...(typeof result.errors === "string"

@@ -9,6 +9,13 @@ import type { Db } from "../db/client";
 import { loadExportInput } from "../export/load";
 import { newId } from "../ids";
 import {
+  BUSY_MESSAGE,
+  ImportLine,
+  type ImportTurn,
+  importOpenApi,
+} from "../openapi-import/import";
+import { OPENAPI_LIMITS } from "../openapi-import/read";
+import {
   buildProjectFile,
   projectFileName,
   projectFileText,
@@ -22,8 +29,41 @@ import { importProjectFile } from "../project-file/import";
 import { fileSource } from "../project-file/zip";
 import type { UploadStorage } from "../storage/uploads";
 
-/** Media types a zip comes as; both make browsers ask before a cross-site send. */
+/** Media types a zip comes as. */
 const ZIP_TYPES = new Set(["application/zip", "application/x-zip-compressed"]);
+/** An OpenAPI document as JSON: RFC 8259's type, and OpenAPI's own. */
+const OPENAPI_JSON_TYPES = new Set([
+  "application/json",
+  "application/openapi+json",
+  "application/vnd.oai.openapi+json",
+]);
+/** As YAML: RFC 9512's type and the aliases it lists, and OpenAPI's own. */
+const OPENAPI_YAML_TYPES = new Set([
+  "application/yaml",
+  "application/openapi+yaml",
+  "application/vnd.oai.openapi",
+  "application/x-yaml",
+  "text/yaml",
+  "text/x-yaml",
+]);
+/**
+ * Every type an import takes. None is one a browser sends from another site
+ * without asking first (CORS-safelisted), and the server never answers that
+ * request, so a page elsewhere can't import into the local app; HTML forms
+ * can't send them at all.
+ */
+const ACCEPTED_TYPES = [
+  ...ZIP_TYPES,
+  "application/json",
+  "application/yaml",
+  "application/openapi+json",
+  "application/openapi+yaml",
+  "application/vnd.oai.openapi+json",
+  "application/vnd.oai.openapi",
+  "application/x-yaml",
+  "text/yaml",
+  "text/x-yaml",
+].join(", ");
 /** An upload being read, or an import's images waiting to be moved in. */
 const TEMPORARY = /^import-[0-9A-HJKMNP-TV-Z]{26}(?:\.zip)?$/;
 
@@ -33,6 +73,11 @@ export type ProjectFileOptions = {
   maxUploadBytes: number;
   /** Where an import is kept while it's read; only its own files are touched. */
   tmpDir: string;
+  /**
+   * How long an OpenAPI document may take to arrive: it holds a turn to
+   * import (one runs, one waits) while it does.
+   */
+  openApiBodyTimeoutMs?: number;
 };
 
 /**
@@ -43,9 +88,17 @@ export type ProjectFileOptions = {
 export function projectFileRoutes(
   db: Db,
   storage: UploadStorage,
-  { version, maxImportBytes, maxUploadBytes, tmpDir }: ProjectFileOptions,
+  {
+    version,
+    maxImportBytes,
+    maxUploadBytes,
+    tmpDir,
+    openApiBodyTimeoutMs = 60_000,
+  }: ProjectFileOptions,
 ) {
   const generator = `API Contract Builder ${version}`;
+  /** This instance's OpenAPI imports, one at a time. */
+  const importLine = new ImportLine();
   const limits = { maxImportBytes, maxUploadBytes };
   const fileOf = (mockup: Mockup) => path.posix.basename(mockup.url);
 
@@ -69,6 +122,111 @@ export function projectFileRoutes(
       },
       400,
     );
+
+  /**
+   * An OpenAPI document, read into memory whole: at most 16 MB (as a project
+   * file's project.json), or MAX_IMPORT_MB when that's lower.
+   */
+  async function importOpenApiDocument(c: Context, format: "json" | "yaml") {
+    // A turn before the document comes in: one turned away holds nothing.
+    const turn = importLine.take();
+    if (!turn) {
+      return c.json<ApiErrorBody>({ error: BUSY_MESSAGE }, 503, {
+        "Retry-After": "1",
+      });
+    }
+    try {
+      return await receiveAndImport(c, format, turn);
+    } finally {
+      turn.release();
+    }
+  }
+
+  async function receiveAndImport(
+    c: Context,
+    format: "json" | "yaml",
+    turn: ImportTurn,
+  ) {
+    const limit = Math.min(OPENAPI_LIMITS.maxBytes, maxImportBytes);
+    const tooLarge = () =>
+      c.json<ApiErrorBody>(
+        {
+          error:
+            limit < OPENAPI_LIMITS.maxBytes
+              ? `The file is larger than ${formatSize(maxImportBytes)}, the most this instance imports. Start it with MAX_IMPORT_MB set higher to import it.`
+              : `An OpenAPI document may be at most ${formatSize(OPENAPI_LIMITS.maxBytes)}, and this one is larger. Split it, or leave out parts like long examples.`,
+        },
+        413,
+      );
+    const length = Number(c.req.header("content-length"));
+    if (Number.isFinite(length) && length > limit) {
+      return tooLarge();
+    }
+    const chunks: Uint8Array[] = [];
+    let received = 0;
+    const reader = c.req.raw.body?.getReader();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<"late">((resolve) => {
+      timer = setTimeout(() => resolve("late"), openApiBodyTimeoutMs);
+    });
+    try {
+      for (;;) {
+        const chunk = reader
+          ? await Promise.race([reader.read(), late])
+          : ({ done: true } as const);
+        if (chunk === "late") {
+          void reader?.cancel().catch(() => undefined);
+          return c.json<ApiErrorBody>(
+            {
+              error: `The document took longer than ${Math.round(openApiBodyTimeoutMs / 1000)} seconds to arrive, so the import was stopped. Send it again.`,
+            },
+            408,
+          );
+        }
+        if (chunk.done) {
+          break;
+        }
+        received += chunk.value.byteLength;
+        if (received > limit) {
+          await reader?.cancel();
+          return tooLarge();
+        }
+        chunks.push(chunk.value);
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+    const bytes = new Uint8Array(received);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    // Copied: not kept twice while the import waits its turn.
+    chunks.length = 0;
+    const result = await importOpenApi(
+      { db, storage, limits, appVersion: version, tmpDir },
+      bytes,
+      format,
+      turn,
+    );
+    if ("busy" in result) {
+      return c.json<ApiErrorBody>(
+        { error: result.error, issues: result.issues },
+        503,
+        { "Retry-After": "1" },
+      );
+    }
+    if ("error" in result) {
+      return c.json<ApiErrorBody>(
+        { error: result.error, issues: result.issues },
+        400,
+      );
+    }
+    return c.json(result, 201, {
+      Location: `/api/projects/${result.project.id}`,
+    });
+  }
 
   return new Hono()
     .get("/:projectId/export/project", (c) => {
@@ -130,13 +288,23 @@ export function projectFileRoutes(
         ?.split(";")[0]
         ?.trim()
         .toLowerCase();
+      if (
+        type &&
+        (OPENAPI_JSON_TYPES.has(type) || OPENAPI_YAML_TYPES.has(type))
+      ) {
+        return importOpenApiDocument(
+          c,
+          OPENAPI_JSON_TYPES.has(type) ? "json" : "yaml",
+        );
+      }
       if (!type || !ZIP_TYPES.has(type)) {
         return c.json<ApiErrorBody>(
           {
             error:
-              "Send the project file itself as the request body, with Content-Type: application/zip",
+              "Send a project file as application/zip, or an OpenAPI document as application/json or application/yaml, as the request body",
           },
           415,
+          { Accept: ACCEPTED_TYPES },
         );
       }
       const tooLarge = (size?: number) =>

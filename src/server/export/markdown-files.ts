@@ -46,7 +46,9 @@ import { type ExportInput, type ExportOptions, scopeOf } from "./openapi";
 /** One row per property of an object schema, without nested fields. */
 function topLevelRows(schema: JsonSchema, context: FieldContext) {
   const properties = isJsonObject(schema.properties) ? schema.properties : {};
-  const required = Array.isArray(schema.required) ? schema.required : [];
+  const required = new Set(
+    Array.isArray(schema.required) ? schema.required : [],
+  );
   // Only each property's own row is kept, so nothing is expanded.
   const flat = { ...context, expand: false };
   return Object.entries(properties).flatMap(([name, property]) =>
@@ -54,7 +56,7 @@ function topLevelRows(schema: JsonSchema, context: FieldContext) {
       {
         type: "object",
         properties: { [name]: property },
-        required: required.includes(name) ? [name] : [],
+        required: required.has(name) ? [name] : [],
       },
       flat,
     ).slice(0, 1),
@@ -92,8 +94,10 @@ export function buildMarkdownFiles(
   input: ExportInput,
   options: ExportOptions,
   assets: MarkdownAssets,
+  /** Characters of text it may count, when not the bundle's own budget. */
+  budget?: number,
 ): Record<string, string | Uint8Array> {
-  return withTextBudget(() => markdownFiles(input, options, assets));
+  return withTextBudget(() => markdownFiles(input, options, assets), budget);
 }
 
 type MarkdownAssets = {
@@ -115,10 +119,35 @@ function markdownFiles(
     modelLink: (name) => `${pathToRoot}models.md#${anchorOf(name)}`,
   });
   const pageFile = (page: Page) => `pages/${page.slug}.md`;
+  // The pages that call each endpoint, and the endpoints that send each
+  // error type, found once rather than for each.
+  const pagesByEndpoint = new Map<string, Page[]>();
+  for (const page of scope.pages) {
+    for (const endpointId of new Set(
+      page.endpoints.map((link) => link.endpointId),
+    )) {
+      const pages = pagesByEndpoint.get(endpointId);
+      if (pages) pages.push(page);
+      else pagesByEndpoint.set(endpointId, [page]);
+    }
+  }
   const pagesUsing = (endpoint: Endpoint) =>
-    scope.pages.filter((page) =>
-      page.endpoints.some((link) => link.endpointId === endpoint.id),
-    );
+    pagesByEndpoint.get(endpoint.id) ?? [];
+  const sendersOf = new Map<string, Endpoint[]>();
+  for (const endpoint of scope.endpoints) {
+    for (const errorTypeId of new Set(
+      endpoint.responses.flatMap((response) =>
+        response.errors.map((error) => error.errorTypeId),
+      ),
+    )) {
+      const senders = sendersOf.get(errorTypeId);
+      if (senders) senders.push(endpoint);
+      else sendersOf.set(errorTypeId, [endpoint]);
+    }
+  }
+  const scopeEndpoints = new Map(
+    scope.endpoints.map((endpoint) => [endpoint.id, endpoint]),
+  );
   const errorTypesById = new Map(
     input.errorTypes.map((errorType) => [errorType.id, errorType]),
   );
@@ -410,9 +439,7 @@ function markdownFiles(
   // Pages
   for (const page of scope.pages) {
     const links = page.endpoints.flatMap((link) => {
-      const endpoint = scope.endpoints.find(
-        (item) => item.id === link.endpointId,
-      );
+      const endpoint = scopeEndpoints.get(link.endpointId);
       return endpoint ? [{ link, endpoint }] : [];
     });
     const endpoints = [...new Set(links.map(({ endpoint }) => endpoint))];
@@ -501,11 +528,7 @@ function markdownFiles(
           ],
           row.example,
         ]);
-        const returnedBy = scope.endpoints.filter((endpoint) =>
-          endpoint.responses.some((response) =>
-            response.errors.some((error) => error.errorTypeId === errorType.id),
-          ),
-        );
+        const returnedBy = sendersOf.get(errorType.id) ?? [];
         return blocks(
           `## ${errorType.name}`,
           `**${errorType.status}** — ${errorType.title}`,

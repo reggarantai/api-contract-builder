@@ -31,6 +31,8 @@ export type AppOptions = {
   tmpDir: string;
   /** Assets of the sample project (mockup images). */
   samplesDir: string;
+  /** How long an OpenAPI document may take to arrive. */
+  openApiBodyTimeoutMs?: number;
 };
 
 export function createApp({
@@ -42,6 +44,7 @@ export function createApp({
   maxImportBytes,
   tmpDir,
   samplesDir,
+  openApiBodyTimeoutMs,
 }: AppOptions) {
   const app = new Hono();
   const storage = createUploadStorage(uploadsDir);
@@ -60,6 +63,7 @@ export function createApp({
       maxImportBytes,
       maxUploadBytes,
       tmpDir,
+      openApiBodyTimeoutMs,
     }),
   );
   app.route(

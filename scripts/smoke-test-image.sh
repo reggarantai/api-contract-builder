@@ -89,11 +89,22 @@ cmp -s "${workdir}/original.yaml" "${workdir}/copy.yaml" ||
   fail "the imported copy exports a different OpenAPI document"
 echo "ok: the sample moves as a project file"
 
+# Its OpenAPI document starts a project too, which exports it again as the
+# same bytes: pages, error types, and all.
+imported=$(curl -sf -X POST -H "Content-Type: application/yaml" \
+  --data-binary "@${workdir}/original.yaml" "${base}/api/projects/import") ||
+  fail "couldn't import the sample's OpenAPI document"
+from_openapi=$(echo "$imported" | json 'd.project.id')
+curl -sf -o "${workdir}/from-openapi.yaml" "${base}/api/projects/${from_openapi}/export/openapi"
+cmp -s "${workdir}/original.yaml" "${workdir}/from-openapi.yaml" ||
+  fail "the project made from the sample's OpenAPI document exports a different one"
+echo "ok: the sample comes back from its OpenAPI document"
+
 # Data survives a restart of the container.
 docker restart "$name" >/dev/null
 wait_until_up
 count=$(curl -sf "${base}/api/projects" | json 'd.length')
-[[ "$count" == "2" ]] || fail "expected 2 projects after a restart, found ${count}"
+[[ "$count" == "3" ]] || fail "expected 3 projects after a restart, found ${count}"
 echo "ok: data survives a restart"
 
 # The healthcheck reports healthy.

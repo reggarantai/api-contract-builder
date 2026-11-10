@@ -4,6 +4,64 @@ All notable changes to this project are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Import an OpenAPI document**: **Import project** on the Projects page also takes an
+  OpenAPI 3.0, 3.1, or 3.2 document, as JSON or YAML, and makes a project of it.
+  `components.schemas` become models; operations become endpoints, with their parameters,
+  bodies, responses, headers, named examples, and security; the title, version,
+  description, servers, and security schemes become the project's. OpenAPI 3.0 schemas
+  become JSON Schema 2020-12, as OpenAPI 3.0.3 defines them. A document this app exported
+  brings back its pages and their links, its error types, each endpoint's status and
+  notes, and exports again as the same bytes. Endpoints of other documents start without
+  pages. What a project can't hold (cookie parameters, other media types, callbacks,
+  links, webhooks, extensions, and so on) is listed after the import with where it is in
+  the document, and can be copied. Nothing a document refers to is ever fetched.
+  Through the API: `POST /api/projects/import` with `Content-Type: application/json` or
+  `application/yaml`.
+
+### Changed
+
+- `POST /api/projects/import` takes OpenAPI documents as `application/json`,
+  `application/yaml`, the aliases RFC 9512 lists for YAML (`application/x-yaml`,
+  `text/yaml`, `text/x-yaml`), and OpenAPI's own types. A body sent as `application/json`
+  answered 415 before. Other types still answer 415, now listing the ones it takes in
+  `Accept`.
+- An OpenAPI document may be at most 16 MB (or `MAX_IMPORT_MB`, if lower), nest 272
+  levels, and hold a million values, or a million tokens and a million lines as YAML
+  (GitHub's 11 MB REST API description has about 680,000 tokens and 285,000 lines);
+  copying in what its references point at (schemas, parameters, headers, responses,
+  examples, each time they're used) may make it at most a million values and 16 MB of
+  text, its OpenAPI download at most 32 MB as written (indented and escaped, about twice
+  GitHub's), and its Markdown files at most 16 MB. YAML aliases are copies and count
+  too. YAML takes much more memory to read than
+  JSON, so it's read apart from the server, and a document that needs more memory than
+  the server has is refused (save it as JSON) instead of stopping it. OpenAPI imports
+  run one at a time; while one runs and three wait, more answer 503 with
+  `Retry-After` (Import project waits its turn), and a document that takes more than a
+  minute to arrive answers 408.
+- The Export tab groups warnings by kind, showing the first ten of each, since a project
+  imported from a large document can have thousands.
+- The export report lists a schema whose `$schema` names another JSON Schema dialect
+  (like draft-07), or isn't a URI, as an error: the exports check schemas as 2020-12.
+
+### Fixed
+
+- A schema whose `$schema` named another dialect, or wasn't text, made the export report,
+  the OpenAPI download, and the Markdown bundle fail with a server error; so did, for the
+  Markdown bundle, a schema `type` list or `description` holding objects.
+- The exports took time growing with the square of the endpoints sharing a suggested
+  operation ID, the pages sharing a name, or the pages and endpoints there are: 20,000
+  such endpoints and pages took 17 seconds to export as OpenAPI, and 2 more for the Export
+  tab's report, which runs on every view. They take linear time.
+- An error type's header named `__proto__` was left out of the responses the export
+  writes.
+- A `$ref` inside an example's value, or in a schema's `examples`, `default`, `enum`, or
+  `const`, is data, as OpenAPI reads it: the export no longer calls such a contract
+  invalid.
+
 ## [0.4.0] - 2026-11-03
 
 ### Added
@@ -157,6 +215,7 @@ The first release.
 - **Docker image** `reggarantai/api-contract-builder` for `linux/amd64` and `linux/arm64`:
   runs as a non-root user, keeps everything in the `/data` volume, and has a healthcheck.
 
+[Unreleased]: https://github.com/reggarantai/api-contract-builder/compare/v0.4.0...HEAD
 [0.4.0]: https://github.com/reggarantai/api-contract-builder/releases/tag/v0.4.0
 [0.3.0]: https://github.com/reggarantai/api-contract-builder/releases/tag/v0.3.0
 [0.2.0]: https://github.com/reggarantai/api-contract-builder/releases/tag/v0.2.0

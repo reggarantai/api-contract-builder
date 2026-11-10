@@ -1,0 +1,34 @@
+[
+  {
+    "path": "/components/securitySchemes/legacyKey/deprecated",
+    "message": "Security schemes can't be marked deprecated in the app: legacyKey"
+  },
+  {
+    "path": "/paths/~1products/query",
+    "message": "The app has no operations like these, so they were left out: QUERY /products and PURGE /products"
+  },
+  {
+    "path": "/paths/~1products/get/parameters/0/examples",
+    "message": "Examples of parameters and headers keep their values, in the schema's examples; their names, summaries, and descriptions aren't kept (1 place: sort (GET /products))"
+  },
+  {
+    "path": "/paths/~1products/get/responses/200/summary",
+    "message": "Response summaries aren't kept (1 response: GET /products 200)"
+  },
+  {
+    "path": "/paths/~1products/get/responses/200/content/application~1jsonl/itemSchema",
+    "message": "itemSchema isn't kept (1 body: GET /products 200)"
+  },
+  {
+    "path": "/paths/~1search/get/parameters/0",
+    "message": "in: querystring parameters aren't kept (1 parameter: query (GET /search))"
+  },
+  {
+    "path": "/paths/~1search/get/responses/200",
+    "message": "1 response without a description got one from its status: GET /search 200: OK"
+  },
+  {
+    "path": "/tags",
+    "message": "2 tags (catalog and products) weren't imported: OpenAPI tags group operations, and a project's pages are the screens that call them, so the endpoints start without pages. The Export tab lists them as unused until pages link them."
+  }
+]

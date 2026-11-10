@@ -5,7 +5,7 @@ import type { Project } from "@shared/projects";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { CircleAlertIcon, CircleCheckIcon, DownloadIcon } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useId, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
@@ -24,6 +24,7 @@ import {
   projectFileDownloadUrl,
   projectFileReportQueryOptions,
 } from "./queries";
+import { groupsOf } from "./warning-groups";
 
 const WHOLE_PROJECT = "all";
 
@@ -173,15 +174,14 @@ export function ExportPanel({
           {report.data.warnings.length === 0 ? (
             <p className="text-sm text-muted-foreground">No warnings.</p>
           ) : (
-            <ul className="divide-y">
-              {report.data.warnings.map((warning) => (
-                <WarningItem
-                  key={`${warning.kind} ${warning.message}`}
-                  projectId={project.id}
-                  warning={warning}
-                />
-              ))}
-            </ul>
+            groupsOf(report.data.warnings).map(([kind, warnings]) => (
+              <WarningGroup
+                key={kind}
+                kind={kind}
+                projectId={project.id}
+                warnings={warnings}
+              />
+            ))
           )}
         </section>
       )}
@@ -318,6 +318,69 @@ function ValidityStatus({
       <CircleAlertIcon className="size-4" />
       Not valid OpenAPI yet
     </p>
+  );
+}
+
+const WARNING_GROUPS: Record<LintIssue["kind"], string> = {
+  "missing-example": "Bodies without examples",
+  "unused-endpoint": "Endpoints no page uses",
+  "unused-model": "Models nothing uses",
+  "unused-error-type": "Error types nothing uses",
+  "error-mismatch": "Errors that differ from their error type",
+};
+
+/** Warnings shown of each kind before "Show all". */
+const SHOWN_WARNINGS = 10;
+
+/**
+ * One kind of warning: a project imported from a large OpenAPI document can
+ * have thousands (every endpoint waits for a page), so each kind shows its
+ * first ones and how many there are.
+ */
+function WarningGroup({
+  kind,
+  projectId,
+  warnings,
+}: {
+  kind: LintIssue["kind"];
+  projectId: string;
+  warnings: LintIssue[];
+}) {
+  const [all, setAll] = useState(false);
+  const heading = useId();
+  const shown = all ? warnings : warnings.slice(0, SHOWN_WARNINGS);
+  return (
+    // A group of related items, not of form controls, so not a fieldset.
+    // biome-ignore lint/a11y/useSemanticElements: see above.
+    <div role="group" aria-labelledby={heading} className="grid gap-1">
+      <h4 id={heading} className="text-sm font-medium">
+        {WARNING_GROUPS[kind]}{" "}
+        <span className="font-normal text-muted-foreground">
+          {warnings.length.toLocaleString("en-US")}
+        </span>
+      </h4>
+      <ul className="divide-y">
+        {shown.map((warning) => (
+          <WarningItem
+            key={`${warning.kind} ${warning.message}`}
+            projectId={projectId}
+            warning={warning}
+          />
+        ))}
+      </ul>
+      {!all && warnings.length > SHOWN_WARNINGS && (
+        <div>
+          <Button
+            variant="link"
+            size="sm"
+            className="px-0"
+            onClick={() => setAll(true)}
+          >
+            Show all {warnings.length.toLocaleString("en-US")}
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }
 

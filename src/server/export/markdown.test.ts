@@ -166,8 +166,35 @@ describe("typeLabel", () => {
       "one of string, integer",
     ],
     [{}, "any"],
+    // Not schemas, but kept as written: what these always showed, and a
+    // value whose text can't be had (String() throws) as JSON.
+    [{ type: ["string", null] } as unknown as JsonSchema, "string or "],
+    [
+      { type: ["string", ["a", "b"], {}] } as unknown as JsonSchema,
+      "string or a,b or [object Object]",
+    ],
+    [
+      { type: ["string", { toString: 1 }] } as unknown as JsonSchema,
+      'string or {"toString":1}',
+    ],
   ])("%j → %s", (schema, label) => {
     expect(typeLabel(schema, context)).toBe(label);
+  });
+
+  it("shows a description as it always did, and one String() can't take as nothing", () => {
+    const rows = (description: unknown) =>
+      fieldRows(
+        {
+          type: "object",
+          properties: {
+            a: { anyOf: [{ type: "string", description }, { type: "null" }] },
+          },
+        } as unknown as JsonSchema,
+        context,
+      ).map((row) => row.description);
+    expect(rows(["x", "y"])).toEqual(["x,y"]);
+    expect(rows(5)).toEqual(["5"]);
+    expect(rows({ toString: 1 })).toEqual([""]);
   });
 });
 

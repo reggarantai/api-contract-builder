@@ -18,7 +18,7 @@ export const COMPONENT_REF_PREFIX = "#/components/schemas/";
 
 // Keywords whose values are data, not subschemas: a `$ref` inside an example
 // is just a string.
-const DATA_KEYWORDS = new Set([
+export const DATA_KEYWORDS: ReadonlySet<string> = new Set([
   "examples",
   "example",
   "default",
@@ -27,7 +27,7 @@ const DATA_KEYWORDS = new Set([
 ]);
 // Keywords whose values map names to subschemas: their keys are names, not
 // keywords (a property may well be called "examples").
-const SCHEMA_MAP_KEYWORDS = new Set([
+export const SCHEMA_MAP_KEYWORDS: ReadonlySet<string> = new Set([
   "properties",
   "patternProperties",
   "$defs",

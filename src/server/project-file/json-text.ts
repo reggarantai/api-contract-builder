@@ -76,14 +76,29 @@ export type JsonTextLimits = {
   /** Deeper than anything the API can store (JSON.stringify stops near 6,000). */
   maxDepth?: number;
   maxValues?: number;
+  /**
+   * Called for each integer a double can't hold exactly (JSON.parse reads
+   * 9223372036854775807 as 9223372036854775808), with what gives the names
+   * and indexes leading to it: working that out costs the depth, so only
+   * call it for the ones reported. I-JSON says not to expect more precision
+   * than a double's.
+   */
+  onInexactInteger?: (
+    literal: string,
+    place: () => (string | number)[],
+  ) => void;
 };
 
 export function checkJsonText(
   text: string,
-  { maxDepth = 10_000, maxValues = 1_000_000 }: JsonTextLimits = {},
+  {
+    maxDepth = 10_000,
+    maxValues = 1_000_000,
+    onInexactInteger,
+  }: JsonTextLimits = {},
 ): JsonTextProblem | null {
   try {
-    scan(text, maxDepth, maxValues);
+    scan(text, maxDepth, maxValues, onInexactInteger);
     return null;
   } catch (error) {
     if (!(error instanceof Problem)) {
@@ -98,11 +113,37 @@ export function checkJsonText(
   }
 }
 
-function scan(text: string, maxDepth: number, maxValues: number) {
+/** Whether a JSON integer literal names a number a double holds exactly. */
+export function isExactInteger(literal: string) {
+  const digits = literal.startsWith("-") ? literal.length - 1 : literal.length;
+  // Doubles hold every integer of 15 digits.
+  if (digits <= 15) {
+    return true;
+  }
+  const value = Number(literal);
+  return BigInt(literal) === BigInt(value);
+}
+
+function scan(
+  text: string,
+  maxDepth: number,
+  maxValues: number,
+  onInexactInteger: JsonTextLimits["onInexactInteger"],
+) {
   const length = text.length;
   const stack: Frame[] = [];
   let at = 0;
   let values = 0;
+
+  /** The names and indexes leading to the value being read. */
+  const place = () =>
+    stack.flatMap((frame): (string | number)[] =>
+      frame.kind === "array"
+        ? [frame.index]
+        : frame.name === undefined
+          ? []
+          : [frame.name],
+    );
 
   const path = (extra?: string) =>
     [
@@ -205,6 +246,13 @@ function scan(text: string, maxDepth: number, maxValues: number) {
         start,
         "rule",
       );
+    }
+    if (
+      onInexactInteger &&
+      !/[.eE]/.test(literal) &&
+      !isExactInteger(literal)
+    ) {
+      onInexactInteger(literal, place);
     }
   };
 

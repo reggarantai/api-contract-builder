@@ -30,6 +30,9 @@ hand the contract over as **OpenAPI 3.1** for frontend and backend tools and as
   contradict their error type.
 - **Project files**: a whole project, mockups included, as one .zip, to import on another
   machine or instance, or to keep as a backup.
+- **OpenAPI import**: start a project from an OpenAPI 3.0, 3.1, or 3.2 document, as JSON or
+  YAML. Its schemas become models and its operations endpoints, ready to link to pages,
+  and anything a project can't hold is listed, never dropped quietly.
 
 It runs locally, for one author, as a single Docker container. Data stays on your machine.
 
@@ -46,13 +49,40 @@ The image runs on `linux/amd64` and `linux/arm64`, Apple silicon included. To bu
 from this repository instead: `docker build -t api-contract-builder .`
 
 Open <http://127.0.0.1:3000> and choose **Create sample project** to look around a
-finished contract, or start your own with **New project**. The sample is an inventory app
+finished contract, start your own with **New project**, or bring an existing OpenAPI
+document in with **Import project**. The sample is an inventory app
 with sign-in, registration, password reset, and stock pages, written the way a production
 API would be: problem details for errors, paged lists, refresh tokens in a cookie, and
 idempotent creates.
 
 The port is published on `127.0.0.1` only, so the app is reachable from your machine and
 nowhere else. With Docker Compose: `docker compose up -d`.
+
+## Starting from an existing OpenAPI document
+
+Choose **Import project** on the Projects page and pick an OpenAPI 3.0, 3.1, or 3.2
+document (`.json`, `.yaml`, or `.yml`, up to 16 MB). It becomes a new project:
+
+- `components.schemas` become models, and references to them model references;
+- each operation becomes an endpoint, with its parameters, request body, responses,
+  headers, named examples, and security;
+- the project gets the document's title, version, description, servers, and security
+  schemes.
+
+Pages are screens, which OpenAPI doesn't have, so the endpoints start without pages and
+the Export tab lists them as unused until you link them. A document this app exported
+brings its pages back, with their links; acceptance criteria, mockups, and states aren't in
+OpenAPI. Error types come back from the `components.examples` this app's export writes.
+
+What a project can't hold, like cookie parameters, a second media type, callbacks, or
+`x-` extensions, is listed after the import, each with where it is in the document, ready to
+copy. Nothing is fetched: a document that refers to other files or URLs is refused, with
+each reference listed, so you can bundle it into one file first (for example with
+`npx @redocly/cli bundle openapi.yaml -o bundled.yaml`). Swagger 2.0 documents need
+converting to OpenAPI 3 first.
+
+Through the API: `POST /api/projects/import` with the document as the body and
+`Content-Type: application/json` or `application/yaml`.
 
 ## Handing the contract over
 
@@ -152,13 +182,13 @@ images' security fixes every week, while `0.1.0` stays exactly as released.
 
 ## Configuration
 
-| Variable        | Default                           | Description                                                              |
-| --------------- | --------------------------------- | ------------------------------------------------------------------------ |
-| `HOST`          | `127.0.0.1` (`0.0.0.0` in Docker) | Interface the server listens on                                          |
-| `PORT`          | `3000`                            | Port the server listens on                                               |
-| `DATA_DIR`      | `./data` (`/data` in Docker)      | SQLite database and uploaded images                                      |
-| `MAX_UPLOAD_MB` | `10`                              | Largest mockup image accepted, per file                                  |
-| `MAX_IMPORT_MB` | `1024`                            | Largest project file Import project takes, and the most it may unpack to |
+| Variable        | Default                           | Description                                                                                             |
+| --------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `HOST`          | `127.0.0.1` (`0.0.0.0` in Docker) | Interface the server listens on                                                                         |
+| `PORT`          | `3000`                            | Port the server listens on                                                                              |
+| `DATA_DIR`      | `./data` (`/data` in Docker)      | SQLite database and uploaded images                                                                     |
+| `MAX_UPLOAD_MB` | `10`                              | Largest mockup image accepted, per file                                                                 |
+| `MAX_IMPORT_MB` | `1024`                            | Largest project file Import project takes, and the most it may unpack to; OpenAPI documents up to 16 MB |
 
 ## Security
 

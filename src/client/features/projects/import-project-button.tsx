@@ -1,12 +1,14 @@
 import type { ApiIssue } from "@shared/api-error";
 import { formatSize } from "@shared/format-size";
+import { MAX_OPENAPI_BYTES } from "@shared/project-file";
 import { useIsMutating, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
-import { UploadIcon } from "lucide-react";
+import { CopyIcon, UploadIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   AlertDialog,
+  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -17,9 +19,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api";
 import { healthQueryOptions } from "@/lib/health";
+import { importFileType } from "./import-file";
 import { importProjectKey, useImportProject } from "./queries";
 
 type Failure = { fileName: string; error: string; issues: ApiIssue[] };
+/** An OpenAPI import, and what it changed or left out. */
+type Report = { projectId: string; name: string; notices: ApiIssue[] };
 
 function messageOf(error: unknown) {
   // A server that stops reading a large upload can close the connection
@@ -30,7 +35,34 @@ function messageOf(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Imports a project file (.project.zip) as a new project, then opens it. */
+/** Issues with their places, one a line, the way the dialogs show them. */
+function IssueList({ issues }: { issues: ApiIssue[] }) {
+  return (
+    <ul className="grid max-h-72 gap-2 overflow-y-auto text-sm">
+      {issues.map((issue, index) => (
+        <li
+          // Issues have no IDs; their place in the list is theirs.
+          // biome-ignore lint/suspicious/noArrayIndexKey: see above.
+          key={index}
+          className="grid gap-0.5"
+        >
+          <span>{issue.message}</span>
+          {issue.path && (
+            <code className="font-mono text-xs break-all text-muted-foreground">
+              {issue.path}
+            </code>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * Imports a project file (.project.zip) or an OpenAPI document (JSON or
+ * YAML) as a new project, then opens it. An OpenAPI import that changed or
+ * left out something first lists it.
+ */
 export function ImportProjectButton() {
   const input = useRef<HTMLInputElement>(null);
   const router = useRouter();
@@ -41,6 +73,7 @@ export function ImportProjectButton() {
   const [checking, setChecking] = useState(false);
   const busy = useIsMutating({ mutationKey: importProjectKey }) > 0 || checking;
   const [failure, setFailure] = useState<Failure | null>(null);
+  const [report, setReport] = useState<Report | null>(null);
   const mounted = useRef(false);
   useEffect(() => {
     mounted.current = true;
@@ -49,6 +82,9 @@ export function ImportProjectButton() {
     };
   }, []);
 
+  const open = (projectId: string) =>
+    router.navigate({ to: "/projects/$projectId", params: { projectId } });
+
   async function onFile(file: File) {
     setChecking(true);
     const startedOn = router.state.location.pathname;
@@ -56,36 +92,53 @@ export function ImportProjectButton() {
     const stayed = () =>
       mounted.current && router.state.location.pathname === startedOn;
     try {
+      const type = await importFileType(file);
       // A file over the limit is refused before it's sent.
       const health = await queryClient
         .fetchQuery(healthQueryOptions())
         .catch(() => undefined);
-      if (health && file.size > health.maxImportBytes) {
+      const instanceLimit = health?.maxImportBytes ?? Number.POSITIVE_INFINITY;
+      const limit = type.openapi
+        ? Math.min(MAX_OPENAPI_BYTES, instanceLimit)
+        : instanceLimit;
+      if (file.size > limit) {
         setFailure({
           fileName: file.name,
-          error: `This file is ${formatSize(file.size)}; this instance imports up to ${formatSize(health.maxImportBytes)} (MAX_IMPORT_MB).`,
+          error:
+            type.openapi && limit === MAX_OPENAPI_BYTES
+              ? `This file is ${formatSize(file.size)}; an OpenAPI document may be at most ${formatSize(MAX_OPENAPI_BYTES)}.`
+              : `This file is ${formatSize(file.size)}; this instance imports up to ${formatSize(limit)} (MAX_IMPORT_MB).`,
           issues: [],
         });
         return;
       }
-      const importing = importProject.mutateAsync(file);
+      const importing = importProject.mutateAsync({
+        file,
+        contentType: type.contentType,
+      });
       setChecking(false);
       const { project, notices } = await importing;
-      const open = () =>
-        router.navigate({
-          to: "/projects/$projectId",
-          params: { projectId: project.id },
-        });
       const here = stayed();
+      if (here && type.openapi && notices.length > 0) {
+        setReport({ projectId: project.id, name: project.name, notices });
+        return;
+      }
       toast.success(`Imported ${project.name}`, {
         description:
           notices.length > 0
-            ? notices.map((notice) => `${notice.message}.`).join(" ")
+            ? [
+                ...notices.slice(0, 3).map((notice) => `${notice.message}.`),
+                ...(notices.length > 3
+                  ? [`And ${notices.length - 3} more.`]
+                  : []),
+              ].join(" ")
             : undefined,
-        action: here ? undefined : { label: "Open", onClick: open },
+        action: here
+          ? undefined
+          : { label: "Open", onClick: () => void open(project.id) },
       });
       if (here) {
-        await open();
+        await open(project.id);
       }
     } catch (error) {
       const failed = {
@@ -109,6 +162,24 @@ export function ImportProjectButton() {
     }
   }
 
+  function copyNotices(notices: ApiIssue[]) {
+    const failed = () => toast.error("Couldn't copy; select the text instead");
+    // Browsers only offer the clipboard on https and localhost.
+    if (!navigator.clipboard) {
+      failed();
+      return;
+    }
+    navigator.clipboard
+      .writeText(
+        notices
+          .map((notice) =>
+            notice.path ? `${notice.message} (${notice.path})` : notice.message,
+          )
+          .join("\n"),
+      )
+      .then(() => toast.success("Copied the notices"), failed);
+  }
+
   return (
     <>
       <Button
@@ -122,7 +193,7 @@ export function ImportProjectButton() {
       <input
         ref={input}
         type="file"
-        accept=".zip,application/zip"
+        accept=".zip,.json,.yaml,.yml,application/zip,application/json,application/yaml"
         aria-label="Import project"
         className="hidden"
         tabIndex={-1}
@@ -136,8 +207,8 @@ export function ImportProjectButton() {
       />
       <AlertDialog
         open={failure !== null}
-        onOpenChange={(open) => {
-          if (!open) {
+        onOpenChange={(isOpen) => {
+          if (!isOpen) {
             setFailure(null);
           }
         }}
@@ -150,26 +221,50 @@ export function ImportProjectButton() {
             <AlertDialogDescription>{failure?.error}</AlertDialogDescription>
           </AlertDialogHeader>
           {failure && failure.issues.length > 0 && (
-            <ul className="grid max-h-72 gap-2 overflow-y-auto text-sm">
-              {failure.issues.map((issue, index) => (
-                <li
-                  // Issues have no IDs; their place in the list is theirs.
-                  // biome-ignore lint/suspicious/noArrayIndexKey: see above.
-                  key={index}
-                  className="grid gap-0.5"
-                >
-                  <span>{issue.message}</span>
-                  {issue.path && (
-                    <code className="font-mono text-xs text-muted-foreground">
-                      {issue.path}
-                    </code>
-                  )}
-                </li>
-              ))}
-            </ul>
+            <IssueList issues={failure.issues} />
           )}
           <AlertDialogFooter>
             <AlertDialogCancel>Close</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={report !== null}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) {
+            setReport(null);
+          }
+        }}
+      >
+        <AlertDialogContent className="sm:max-w-xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Imported {report?.name}</AlertDialogTitle>
+            <AlertDialogDescription>
+              The OpenAPI document is a project now. These parts of it were
+              changed to fit, or aren't kept, each with where it is in the
+              document:
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {report && <IssueList issues={report.notices} />}
+          <AlertDialogFooter>
+            <AlertDialogCancel>Close</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => report && copyNotices(report.notices)}
+            >
+              <CopyIcon />
+              Copy notices
+            </Button>
+            <AlertDialogAction
+              onClick={() => {
+                if (report) {
+                  void open(report.projectId);
+                }
+              }}
+            >
+              Open project
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -1,0 +1,618 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Events API",
+    "summary": "Conferences, meetups, and their tickets",
+    "version": "1.0",
+    "description": "Everything about events: listing, creating, cancelling, and the tickets people hold.",
+    "license": {
+      "name": "Apache 2.0",
+      "identifier": "Apache-2.0"
+    }
+  },
+  "jsonSchemaDialect": "https://spec.openapis.org/oas/3.1/dialect/base",
+  "servers": [
+    {
+      "url": "https://api.events.example",
+      "description": "Production — Main region"
+    }
+  ],
+  "x-tagGroups": [
+    {
+      "name": "Everything",
+      "tags": [
+        "events"
+      ]
+    }
+  ],
+  "security": [
+    {
+      "oidc": [
+        "events:read"
+      ]
+    }
+  ],
+  "webhooks": {
+    "eventCreated": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Event"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Received"
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/events": {
+      "$ref": "#/components/pathItems/Events"
+    },
+    "/events/{eventId}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/EventId",
+          "description": "The event's ID, from its URL"
+        }
+      ],
+      "get": {
+        "operationId": "getEvent",
+        "summary": "Get an event",
+        "responses": {
+          "200": {
+            "description": "The event",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Event"
+                },
+                "examples": {
+                  "conference": {
+                    "$ref": "#/components/examples/conference"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such event",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "examples": {
+                  "event-not-found": {
+                    "$ref": "#/components/examples/event-not-found"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "replaceEvent",
+        "summary": "Replace an event",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The event, replaced",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Event"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such event",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "examples": {
+                  "event-not-found": {
+                    "$ref": "#/components/examples/event-not-found"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The event is full",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "examples": {
+                  "over-capacity": {
+                    "summary": "Fewer seats than tickets sold",
+                    "value": {
+                      "type": "https://events.example/problems/event-full",
+                      "title": "Event full",
+                      "status": 409,
+                      "detail": "120 tickets are sold, so the room can't hold fewer seats."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events/{eventId}:cancel": {
+      "post": {
+        "operationId": "cancelEvent",
+        "summary": "Cancel an event",
+        "x-rate-limit": 10,
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/EventId"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Cancelled"
+          },
+          "404": {
+            "description": "No such event",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "examples": {
+                  "event-not-found": {
+                    "$ref": "#/components/examples/event-not-found"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The event already happened",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "examples": {
+                  "event-full": {
+                    "$ref": "#/components/examples/event-full"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events/{eventId}/tickets": {
+      "get": {
+        "operationId": "listTickets",
+        "summary": "List an event's tickets",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/EventId"
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "description": "Which tickets, as JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "holder": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "2XX": {
+            "description": "The tickets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Ticket"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem",
+            "description": "Anything else, as a problem"
+          }
+        }
+      }
+    },
+    "/reports": {
+      "get": {
+        "operationId": "getReport",
+        "summary": "Download the sales report",
+        "security": [
+          {
+            "apiKey": [],
+            "basic": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The report",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/public/feed": {
+      "get": {
+        "operationId": "publicFeed",
+        "summary": "Upcoming events, for everyone",
+        "security": [
+          {},
+          {
+            "oidc": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The feed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Event"
+                  }
+                },
+                "examples": {
+                  "from-file": {
+                    "externalValue": "https://events.example/feed.json"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/purge": {
+      "delete": {
+        "operationId": "purge",
+        "summary": "Delete past events",
+        "security": [
+          {
+            "mtls": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Purged"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Event": {
+        "description": "An event people can buy tickets for.",
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "startsAt",
+          "kind"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "examples": [
+              "NodeConf"
+            ]
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endsAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "kind": {
+            "const": "conference"
+          },
+          "price": {
+            "$ref": "#/components/schemas/Money",
+            "description": "What a ticket costs"
+          },
+          "tags": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              }
+            ],
+            "items": false
+          },
+          "slot": {
+            "$ref": "#/components/schemas/Slot"
+          },
+          "extra": {
+            "$ref": "#/components/schemas/Anything"
+          }
+        },
+        "unevaluatedProperties": false,
+        "dependentRequired": {
+          "endsAt": [
+            "startsAt"
+          ]
+        }
+      },
+      "EventInput": {
+        "type": "object",
+        "required": [
+          "name",
+          "startsAt"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Ticket": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "holder": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "Money": {
+        "type": "object",
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "properties": {
+          "amount": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$"
+          }
+        }
+      },
+      "Slot": {
+        "$id": "https://events.example/schemas/slot",
+        "type": "object",
+        "properties": {
+          "from": {
+            "$ref": "#/$defs/time"
+          },
+          "to": {
+            "$ref": "#/$defs/time"
+          }
+        },
+        "$defs": {
+          "time": {
+            "type": "string",
+            "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+          }
+        }
+      },
+      "Anything": true,
+      "Problem": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "pathItems": {
+      "Events": {
+        "get": {
+          "operationId": "listEvents",
+          "summary": "List events",
+          "security": [],
+          "responses": {
+            "200": {
+              "description": "The events",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Event"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "operationId": "createEvent",
+          "summary": "Create an event",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventInput"
+                },
+                "examples": {
+                  "conference": {
+                    "value": {
+                      "name": "NodeConf",
+                      "startsAt": "2026-05-04T09:00:00Z"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Created",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Event"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "parameters": {
+      "EventId": {
+        "name": "eventId",
+        "in": "path",
+        "required": true,
+        "description": "The event's ID",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    },
+    "responses": {
+      "Problem": {
+        "description": "A problem",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      }
+    },
+    "examples": {
+      "conference": {
+        "summary": "A conference",
+        "value": {
+          "id": "6f1c2b9e-0b7a-4c64-9a8e-2f1d3c4b5a69",
+          "name": "NodeConf",
+          "startsAt": "2026-05-04T09:00:00Z",
+          "endsAt": null,
+          "kind": "conference"
+        }
+      },
+      "event-not-found": {
+        "summary": "Event not found",
+        "description": "No event has this ID, or it was deleted.",
+        "value": {
+          "type": "https://events.example/problems/event-not-found",
+          "title": "Event not found",
+          "status": 404
+        }
+      },
+      "event-full": {
+        "summary": "Event full",
+        "value": {
+          "type": "https://events.example/problems/event-full",
+          "title": "Event full",
+          "status": 409
+        }
+      }
+    },
+    "securitySchemes": {
+      "oidc": {
+        "type": "openIdConnect",
+        "openIdConnectUrl": "https://auth.events.example/.well-known/openid-configuration"
+      },
+      "apiKey": {
+        "type": "apiKey",
+        "in": "query",
+        "name": "key"
+      },
+      "basic": {
+        "type": "http",
+        "scheme": "Basic"
+      },
+      "mtls": {
+        "type": "mutualTLS",
+        "description": "For the admin tool"
+      }
+    }
+  }
+}

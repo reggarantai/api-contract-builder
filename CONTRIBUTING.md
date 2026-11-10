@@ -52,7 +52,8 @@ pnpm check && pnpm typecheck && pnpm test && pnpm test:e2e
 CI (`.github/workflows/ci.yml`) runs the same on every push to `main` and every pull
 request, and also builds the Docker image and runs `scripts/smoke-test-image.sh` on it:
 the container must turn healthy, run as a non-root user, export the sample project
-cleanly, import the sample's project file as a copy that exports the same OpenAPI, keep its
+cleanly, import the sample's project file as a copy that exports the same OpenAPI, import
+the sample's OpenAPI document as a project that exports it again unchanged, keep its
 data across a restart, ship only the SQLite binary for its platform, and have no shell or
 package manager. Then Trivy scans the image, and CI fails on any high
 or critical vulnerability that already has a fix. To check an image locally, including
@@ -195,10 +196,13 @@ src/server      Hono API and SQLite (Drizzle)
   routes/       API routes and their tests
   export/       OpenAPI and Markdown builders
   project-file/ project files: the format, export, import, and the zip reader
+  openapi-import/ OpenAPI documents into projects: reading JSON and YAML, references,
+                schemas, the mapping, error types, and pages
   samples/      the sample project
 src/shared      Zod schemas and pure helpers used by both sides
 e2e/            Playwright browser tests
-test/           fixtures shared by tests (images, zips, project files) and golden files
+test/           fixtures shared by tests (images, zips, project files, OpenAPI documents)
+                and golden files
 drizzle/        SQL migrations
 samples/        sample project assets (mockup images)
 scripts/        maintenance scripts (mockups, screenshots, image smoke test, release notes,

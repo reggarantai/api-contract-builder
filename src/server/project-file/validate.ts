@@ -590,11 +590,10 @@ export function validateProjectFile(
   const schemeIds = new Set(
     file.project.securitySchemes.map((scheme) => scheme.id),
   );
-  const catalog = file.errorTypes.map(({ id, name, status }) => ({
-    id,
-    name,
-    status,
-  }));
+  // By ID, made once for every endpoint's check.
+  const catalog = new Map(
+    file.errorTypes.map(({ id, name, status }) => [id, { id, name, status }]),
+  );
   const byPath = new Map<string, EndpointFields>();
   const byOperationId = new Map<string, EndpointFields>();
   for (const [index, endpoint] of file.endpoints.entries()) {

@@ -1,0 +1,94 @@
+[
+  {
+    "path": "/components/schemas/Ebook/properties/sizeBytes/maximum",
+    "message": "9223372036854775807 can't be held exactly as a number, so it's 9223372036854775808, as JSON tools read numbers (I-JSON)"
+  },
+  {
+    "path": "/info/termsOfService",
+    "message": "The project has no place for these parts of info, so they aren't kept: termsOfService, contact, and license"
+  },
+  {
+    "path": "/info/x-logo",
+    "message": "Extensions aren't kept (2 places: x-logo and x-codegen-name)"
+  },
+  {
+    "path": "/servers/0/variables",
+    "message": "Server URL variables were replaced with their defaults, since a project's servers are plain URLs; other values left out: region: us"
+  },
+  {
+    "path": "/components/securitySchemes/oauth",
+    "message": "OAuth 2.0 and OpenID Connect schemes are bearer token schemes in the app; their flows, URLs, and scopes are in each one's description: oauth"
+  },
+  {
+    "path": "/components/schemas/Book/properties/author/nullable",
+    "message": "nullable: true without type has no effect in OpenAPI 3.0.3, so null isn't allowed in 1 place (/components/schemas/Book/properties/author). To allow it, put the schema in anyOf with {type: \"null\"}."
+  },
+  {
+    "path": "/components/schemas/Book/properties/status/enum",
+    "message": "1 schema with nullable: true and an enum without null doesn't allow null, as OpenAPI 3.0.3 reads it (/components/schemas/Book/properties/status)"
+  },
+  {
+    "path": "/components/schemas/BookAlias/maxLength",
+    "message": "1 keyword beside a $ref was left out, since OpenAPI 3.0 ignores it there: maxLength (/components/schemas/BookAlias)"
+  },
+  {
+    "path": "/paths/~1books/get/parameters/2",
+    "message": "The app writes parameters with OpenAPI's default serialization, so style, explode, allowReserved, and allowEmptyValue aren't kept (1 parameter: genre (GET /books))"
+  },
+  {
+    "path": "/paths/~1books/get/parameters/4",
+    "message": "Header parameters named Accept, Content-Type, or Authorization were left out, since OpenAPI ignores them (1 parameter: Accept (GET /books))"
+  },
+  {
+    "path": "/paths/~1books/get/parameters/5",
+    "message": "Cookie parameters aren't kept, since endpoints have path, query, and header parameters (1 parameter: session (GET /books))"
+  },
+  {
+    "path": "/paths/~1books/get/responses/200/links",
+    "message": "Links aren't kept (1 response: GET /books 200)"
+  },
+  {
+    "path": "/paths/~1books/post/callbacks",
+    "message": "Callbacks aren't kept (1 operation, like POST /books)"
+  },
+  {
+    "path": "/components/requestBodies/BookInput/content/application~1json/examples/from-file",
+    "message": "1 example was left out, since the app keeps example values: from-file (POST /books request: its value is in another file, which the app never reads)"
+  },
+  {
+    "path": "/paths/~1books~1{bookId}/trace",
+    "message": "The app has no operation like this, so it was left out: TRACE /books/{bookId}"
+  },
+  {
+    "path": "/paths/~1books~1{bookId}/delete/security/0/oauth",
+    "message": "Scopes aren't kept (2 requirements, like oauth: books:delete and oauth: orders:write)"
+  },
+  {
+    "path": "/paths/~1books~1{bookId}~1cover/get/responses/200/content",
+    "message": "A body has one media type in the app, so 2 others were left out: image/jpeg (GET /books/{bookId}/cover 200) and application/x-www-form-urlencoded (POST /orders request)"
+  },
+  {
+    "path": "/paths/~1authors~1{author-id}/get/operationId",
+    "message": "1 operation ID was changed to letters, numbers, and underscores, unique, as the app takes them: authors.get-one → authors_get_one (GET /authors/{author-id})"
+  },
+  {
+    "path": "/components/examples/author-tolkien",
+    "message": "Shared examples were copied into each response that uses them (1 example: author-tolkien)"
+  },
+  {
+    "path": "/components/requestBodies/BookInput/content/application~1json/examples/hobbit",
+    "message": "Examples have no description in the app, so 1 description wasn't kept: hobbit (POST /books request)"
+  },
+  {
+    "path": "/tags",
+    "message": "2 tags (books and orders) weren't imported: OpenAPI tags group operations, and a project's pages are the screens that call them, so the endpoints start without pages. The Export tab lists them as unused until pages link them."
+  },
+  {
+    "path": "/externalDocs",
+    "message": "The document's external docs aren't kept"
+  },
+  {
+    "path": "/components/parameters/Unused",
+    "message": "1 part of components.parameters that no operation uses isn't imported: Unused"
+  }
+]

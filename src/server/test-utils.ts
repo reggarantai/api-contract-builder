@@ -20,6 +20,7 @@ export function createTempDir(prefix: string) {
 export function createTestApp({
   maxUploadBytes = 1024 * 1024,
   maxImportBytes = 200 * 1024 * 1024,
+  openApiBodyTimeoutMs = undefined as number | undefined,
 } = {}) {
   const temp = createTempDir("app");
   const database = openDatabase(path.join(temp.dir, "app.db"), migrationsDir);
@@ -34,6 +35,7 @@ export function createTestApp({
     maxImportBytes,
     tmpDir,
     samplesDir: path.resolve("samples"),
+    openApiBodyTimeoutMs,
   });
 
   return {
